@@ -55,6 +55,9 @@ public:
     using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
     FixedString() = default;
+    FixedString(const Ty* Chars, size_t Length) noexcept { append(Chars, Length); }
+    FixedString(const std::basic_string<Ty>& String) noexcept { append(String.data(), String.size()); }
+    FixedString(std::string_view StringView) noexcept { append(StringView.data(), StringView.size()); }
     ~FixedString() = default;
     FixedString(const FixedString& Other) = default;
     FixedString(FixedString&& Other) = default;
@@ -64,38 +67,56 @@ public:
 
     bool operator==(const FixedString& Other) const noexcept;
 
-    [[nodiscard]] constexpr iterator begin() noexcept;
-    [[nodiscard]] constexpr iterator end() noexcept;
-    [[nodiscard]] constexpr reverse_iterator rbegin() noexcept;
-    [[nodiscard]] constexpr reverse_iterator rend() noexcept;
-    [[nodiscard]] constexpr const_iterator cbegin() const noexcept;
-    [[nodiscard]] constexpr const_iterator cend() const noexcept;
-    [[nodiscard]] constexpr const_reverse_iterator crbegin() const noexcept;
-    [[nodiscard]] constexpr const_reverse_iterator crend() const noexcept;
+    [[nodiscard]] constexpr iterator begin() noexcept { return Data.begin(); }
+    [[nodiscard]] constexpr iterator end() noexcept { return Data.end(); }
+    [[nodiscard]] constexpr reverse_iterator rbegin() noexcept { return reverse_iterator(end()); }
+    [[nodiscard]] constexpr reverse_iterator rend() noexcept { return reverse_iterator(begin()); }
+    [[nodiscard]] constexpr const_iterator cbegin() const noexcept { return Data.cbegin(); }
+    [[nodiscard]] constexpr const_iterator cend() const noexcept { return Data.cend(); }
+    [[nodiscard]] constexpr const_reverse_iterator crbegin() const noexcept { return const_reverse_iterator(cend()); }
+    [[nodiscard]] constexpr const_reverse_iterator crend() const noexcept { return const_reverse_iterator(cbegin()); }
 
     [[nodiscard]] constexpr reference at(size_type Position);
     [[nodiscard]] constexpr const_reference at(size_type Position) const;
     [[nodiscard]] constexpr reference operator[](size_type Position) noexcept;
     [[nodiscard]] constexpr const_reference operator[](size_type Position) const noexcept;
 
-    [[nodiscard]] constexpr reference front() noexcept;
-    [[nodiscard]] constexpr const_reference front() const noexcept;
-    [[nodiscard]] constexpr reference back() noexcept;
-    [[nodiscard]] constexpr const_reference back() const noexcept;
+    [[nodiscard]] constexpr reference front() noexcept { return Data.front(); }
+    [[nodiscard]] constexpr const_reference front() const noexcept { return Data.front(); }
+    [[nodiscard]] constexpr reference back() noexcept { return Data.back(); }
+    [[nodiscard]] constexpr const_reference back() const noexcept { return Data.back(); }
 
-    void clear() noexcept;
+    void clear() noexcept { Data.fill(Ty{}); }
 public:
-    FixedString& append(const Ty* Chars, size_t Length) noexcept;
-    FixedString& append(const std::basic_string<Ty>& String) noexcept;
-    FixedString& append(std::string_view StringView) noexcept;
+    FixedString& append(const Ty* Chars, size_t Length) noexcept 
+    {
+        if (Length + CurrentLength <= max_size)
+        {
+            std::copy_n(Chars, Length, Data.begin() + CurrentLength);
+            CurrentLength += Length;
+        }
+        return *this;
+    }
+    FixedString& append(const std::basic_string<Ty>& String) noexcept
+    {
+        return append(String.data(), String.size());
+    }
+    FixedString& append(std::string_view StringView) noexcept
+    {
+        return append(StringView.data(), StringView.size());
+    }
 
     template <class AllocTy = std::allocator<Ty>>
-    [[nodiscard]] std::basic_string<Ty, traits_type, AllocTy> toString() const;
+    [[nodiscard]] std::basic_string<Ty, traits_type, AllocTy> toString() const
+    {
+        return std::basic_string<Ty, traits_type, AllocTy>(Data.data(), CurrentLength);
+    }
 
     // @param StatefulAllocator 有状态内存分配器
     template <class StatefulAllocTy>
     [[nodiscard]] std::basic_string<Ty, traits_type, StatefulAllocTy> toString(StatefulAllocTy StatefulAllocator) const;
 private:
+    size_t CurrentLength { 0 };
     std::array<Ty, max_size> Data;
 };
 
