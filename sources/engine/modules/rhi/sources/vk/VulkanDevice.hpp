@@ -109,7 +109,7 @@ public:
     std::shared_ptr<RQueryPool> createQueryPool(const QueryPoolDescriptor& Desc) override;
     [[nodiscard]] FormatCapabilities getFormatCapabilities(EFormat Format) const override;
 	[[nodiscard]] std::optional<SwapchainCapabilities> getSwapchainCapabilities() const override;
-	RTexture* createTexture() override;
+	std::shared_ptr<RTexture> createTexture(const RTexture::Descriptor_t& Desc) override;
     std::shared_ptr<DeviceMemory> allocateMemory(
         MemoryRequirements Requirements,
         EMemoryProperty Property) override;

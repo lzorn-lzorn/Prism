@@ -12,6 +12,7 @@
 #include "VulkanSampler.hpp"
 #include "VulkanSwapchain.hpp"
 #include "VulkanSync.hpp"
+#include "VulkanTexture.hpp"
 #include "VulkanWSI.hpp"
 #include <algorithm>
 #include <limits>
@@ -100,14 +101,6 @@ VulkanDevice::~VulkanDevice()
 	{
 		drainDeferredReleases();
 	}
-}
-
-namespace
-{
-[[noreturn]] void throwResourceNotImplemented(const char* Resource)
-{
-	throw std::logic_error(std::string("Vulkan ") + Resource + " creation is not implemented yet.");
-}
 }
 
 std::shared_ptr<RBuffer> VulkanDevice::createBuffer(const RBuffer::Descriptor_t& Desc)
@@ -386,10 +379,10 @@ std::optional<SwapchainCapabilities> VulkanDevice::getSwapchainCapabilities() co
 	}
 }
 
-RTexture* VulkanDevice::createTexture()
+std::shared_ptr<RTexture> VulkanDevice::createTexture(const RTexture::Descriptor_t& Desc)
 {
 	requireReady();
-	throwResourceNotImplemented("texture");
+	return VulkanTexture::create(*this, Desc);
 }
 
 std::shared_ptr<DeviceMemory> VulkanDevice::allocateMemory(

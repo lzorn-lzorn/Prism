@@ -775,7 +775,7 @@ DEFINE_ENUM_OPERATOR(EFormatFeature_t);
 /** @brief Forward declaration of the query-pool wrapper. */ class RQueryPool;
 /** @brief Forward declaration of the presentation swapchain wrapper. */ class RSwapchain;
 /** @brief Forward declaration of the device-memory allocator interface. */ class DeviceMemoryAllocator;
-/** @brief Forward declaration of the legacy texture wrapper. */ class RTexture;
+/** @brief Forward declaration of the sampled-texture wrapper. */ class RTexture;
 /** @brief Forward declaration of the image-view wrapper. */ class RImageView;
 /** @brief Forward declaration of the device-memory allocation wrapper. */ class DeviceMemory;
 /** @brief Forward declaration of the ray-tracing acceleration-structure wrapper. */ class RAccelerationStructure;
@@ -1299,6 +1299,59 @@ protected:
 
 private:
 	const Descriptor_t Descriptor;
+};
+
+/**
+ * @brief 高层"纹理"资源: 把底层图像存储、默认视图与默认采样器打包成一个可直接采样的整体.
+ *
+ * ## 与 RImage 的语义区别
+ *
+ * - `RImage` 是"原始图像"原语: 它只描述一段 GPU 显存中的多维像素数据及其格式、维度、
+ *   用途与内存策略. RImage 本身 **不携带采样信息**, 不能直接绑定到着色器采样; 调用方必须
+ *   另外创建 `RImageView`(选定子资源范围与解释)并配合 `RSampler`(选定过滤/寻址策略)才能采样.
+ *
+ * - `RTexture` 是"纹理"语义: 对应传统图形 API(如 D3D11 的 Texture2D + ShaderResourceView +
+ *   SamplerState)中"创建即可采样"的纹理对象. 它把上述三件事组合为一个整体 —— 底层 `RImage`
+ *   存储、覆盖完整 mip/layer 范围的默认 `RImageView`, 以及默认 `RSampler`.
+ *
+ * `RTexture` 不引入新的 GPU 原语, 只是 RImage/RImageView/RSampler 的组合与便捷封装. 需要独立
+ * 控制 attachment/storage 视图, 或同一图像需要多种采样配置时, 仍应直接使用 RImage + RImageView + RSampler.
+ * 因此 RTexture 刻意不暴露单一的原生句柄, 应通过 getImage()/getImageView()/getSampler() 访问组合部件.
+ */
+class RTexture
+{
+public:
+	/** @brief Immutable texture creation descriptor. */
+	struct Descriptor_t
+	{
+		// 底层图像存储描述; Usage 为空时后端默认使用 Sampled|TransferDst.
+		RImage::Descriptor_t Image {};
+		// 默认采样器描述(过滤/寻址/比较策略); 缺省为线性过滤 + Repeat 寻址.
+		RSampler::Descriptor_t Sampler {};
+		std::string DebugName;
+	};
+
+	virtual ~RTexture() = default;
+	RTexture(const RTexture&) = delete;
+	RTexture& operator=(const RTexture&) = delete;
+	RTexture(RTexture&&) = delete;
+	RTexture& operator=(RTexture&&) = delete;
+
+	/** @brief 返回所属设备.  @return 创建此 Texture 的设备.  */
+	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
+	/** @brief 返回不可变创建描述.  @return 创建描述.  */
+	[[nodiscard]] virtual const Descriptor_t& getDescriptor() const noexcept = 0;
+	/** @brief 返回底层图像存储.  @return RImage 引用.  */
+	[[nodiscard]] virtual const std::shared_ptr<RImage>& getImage() const noexcept = 0;
+	/** @brief 返回覆盖完整 mip/layer 范围的默认视图.  @return RImageView 引用.  */
+	[[nodiscard]] virtual const std::shared_ptr<RImageView>& getImageView() const noexcept = 0;
+	/** @brief 返回默认采样器.  @return RSampler 引用.  */
+	[[nodiscard]] virtual const std::shared_ptr<RSampler>& getSampler() const noexcept = 0;
+	/** @brief 查询 Texture 及其组合部件是否全部有效.  @return 全部有效时为 true.  */
+	[[nodiscard]] virtual bool isValid() const noexcept = 0;
+
+protected:
+	RTexture() = default;
 };
 
 /** @brief Color attachment and optional multisample resolve state. */
@@ -2749,10 +2802,11 @@ public:
      */
 	[[nodiscard]] virtual std::optional<SwapchainCapabilities> getSwapchainCapabilities() const { return std::nullopt; }
 	/** 
-     * @brief Creates the legacy texture abstraction. 
-     * @return Texture pointer owned according to legacy API, or nullptr when unavailable. 
+     * @brief Creates a high-level sampled texture combining an image, a default full-range view and a default sampler. 
+     * @param Desc Image storage and default sampling policy; an empty image usage defaults to Sampled|TransferDst. 
+     * @return Texture, or nullptr when unsupported/invalid/out-of-memory/device-lost. 
      */
-	virtual RTexture* createTexture() = 0;
+	virtual std::shared_ptr<RTexture> createTexture(const RTexture::Descriptor_t& Desc) = 0;
 	/** 
      * @brief Allocates legacy device memory. 
      * @param Requirements Size/alignment/type constraints. 
