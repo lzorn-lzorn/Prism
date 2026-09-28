@@ -3,7 +3,7 @@ file(GLOB_RECURSE SOURCES_LIST
     ${CMAKE_CURRENT_SOURCE_DIR}/includes/*.hpp
 )
 
-add_internal_module(Engine
+add_internal_library(Engine
     TYPE                STATIC
     SOURCES             ${SOURCES_LIST}
     INCLUDES            "${CMAKE_CURRENT_SOURCE_DIR}/includes"

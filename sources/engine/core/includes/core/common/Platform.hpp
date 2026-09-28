@@ -36,6 +36,11 @@
 #		define CPU_RELAX __builtin_ia32_pause()
 #	endif
 #elif defined(__arm__) || defined(__aarch64__)
+#	if defined(_MSC_VER)
+#		include <intrin.h>
+#	else
+#		include <arm_acle.h>
+#	endif
 #	define CPU_RELAX __yield()
 #else
 #	define CPU_RELAX std::this_thread::yield()

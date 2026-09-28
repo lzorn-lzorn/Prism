@@ -725,7 +725,7 @@ HDR10_ST2084/ExtendedSRGBLinear 的受支持 pair；`VK_EXT_hdr_metadata` 可用
 | WSI recovery classification | 已实现 | 公共初始化仍是一窗口一 Surface；DeviceLost 不透明恢复 |
 | 2D batch, 完整 3D RenderGraph, transient alias | 合同/设计 | 尚未成为完整 Renderer 产品路径 |
 | D3D12/Metal/OpenGL 后端 | 占位 | 当前唯一可用后端是 Vulkan 1.3 |
-| Legacy `RTexture::createTexture()` | 合同占位 | Vulkan 明确抛出未实现，不应在新代码使用 |
+| `RTexture` 组合纹理(Image+默认 View+默认 Sampler) | 已实现 | 仅为便捷封装，不引入新 GPU 原语；独立视图/多采样配置应直接用 RImage+RImageView+RSampler |
 
 ## 21. 权威依据与术语映射
 

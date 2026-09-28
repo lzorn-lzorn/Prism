@@ -5,8 +5,6 @@
 #include <vector>
 #include <memory>
 
-#include <world/World.hpp>
-#include <world/WorldContext.hpp>
 #include <renderer/RenderThread.hpp>
 #include <RTCommon.hpp>
 
@@ -62,8 +60,6 @@ private:
 	bool IsFirstFrame { true };
 
 	std::unique_ptr<runtime::RenderThread> RenderThread;
-	std::unique_ptr<runtime::WorldContext> CurrentWorldContext;
-	std::vector<std::unique_ptr<runtime::World>> Worlds;
 	
 };
 }

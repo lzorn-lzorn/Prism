@@ -67,9 +67,9 @@ template <your_concept Ty>
 ## 头文件
 头文件统一使用 .hpp 因为 .h 的后缀有时静态分析器会按照C来解析
 
-在使用 `add_internal_module` 时, 可以参考 `GenericApplication/CMakeLists.txt`
+在使用 `add_internal_library` 时, 可以参考 `GenericApplication/CMakeLists.txt`
 ```cmake
-add_internal_module(GenericApplication
+add_internal_library(GenericApplication
     TYPE                STATIC
     SOURCES             ${SOURCES_LIST}
     INCLUDES            "${CMAKE_CURRENT_SOURCE_DIR}/includes"

@@ -13,7 +13,7 @@ foreach(Child ${Children})
 endforeach()
 
 add_library(Runtime INTERFACE)
-# 收集所有内部真实目标名（由 add_internal_module 添加到全局属性）
+# 收集所有内部真实目标名（由 add_internal_library 添加到全局属性）
 get_property(RuntimeModules GLOBAL PROPERTY INTERNAL_MODULES_LIST)
 if (RuntimeModules)
 	list(REMOVE_DUPLICATES RuntimeModules)

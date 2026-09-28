@@ -118,7 +118,7 @@
  *      auto& Pool = core::HandleManager::self()
  *                       .getPool<mesh::MeshTag, mesh::Mesh>();
  *
- *      auto H = Pool.create(/* 构造 Mesh 的参数 *\/);
+ *      auto H = Pool.create(构造 Mesh 的参数);
  *
  *      if (core::HandleManager::self().isValid(H))
  *      {

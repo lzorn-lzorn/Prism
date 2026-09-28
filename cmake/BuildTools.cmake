@@ -197,7 +197,7 @@ endfunction()
 
 
 # @brief
-#   add_internal_module(<name>
+#   add_internal_library(<name>
 #       TYPE      <STATIC|SHARED|OBJECT|INTERFACE>   # 可选, 默认 STATIC
 #       SOURCES   <src1> [<src2> ...]                # 源文件列表(接口库不填写)
 #       INCLUDES  <inc1> [<inc2> ...]                # PUBLIC 头文件路径, 告诉调用者如何找到我的头文件
@@ -207,7 +207,7 @@ endfunction()
 #       ALIAS              <alias_name>              # 可选, 创建别名目标
 #   )
 # @example
-# add_internal_module(Renderer
+# add_internal_library(Renderer
 #     TYPE                STATIC
 #     SOURCES             src/renderer.cpp
 #     INCLUDES            include/renderer        # 公开头文件
@@ -218,7 +218,7 @@ endfunction()
 # 使用者：
 #   target_link_libraries(MyApp PRIVATE Renderer::Impl)
 #   自动获得 include/renderer 路径，也能间接获得 EngineCore 的头文件
-function(add_internal_module name)
+function(add_internal_library name)
     set(options "")
     set(oneValueArgs TYPE ALIAS)
     set(multiValueArgs SOURCES INCLUDES PRIVATE_INCLUDES
@@ -233,12 +233,12 @@ function(add_internal_module name)
     # 创建库
     if(ARG_TYPE STREQUAL "INTERFACE")
         if(ARG_SOURCES)
-            message(FATAL_ERROR "add_internal_module: INTERFACE library ${name} cannot have SOURCES")
+            message(FATAL_ERROR "add_internal_library: INTERFACE library ${name} cannot have SOURCES")
         endif()
         add_library(${name} INTERFACE)
     else()
         if(NOT ARG_SOURCES)
-            message(FATAL_ERROR "add_internal_module: non-INTERFACE library ${name} requires SOURCES")
+            message(FATAL_ERROR "add_internal_library: non-INTERFACE library ${name} requires SOURCES")
         endif()
         add_library(${name} ${ARG_TYPE} ${ARG_SOURCES})
     endif()
@@ -246,7 +246,7 @@ function(add_internal_module name)
     # 别名
     if(ARG_ALIAS)
         if(TARGET ${ARG_ALIAS})
-            message(FATAL_ERROR "add_internal_module: ALIAS ${ARG_ALIAS} already exists")
+            message(FATAL_ERROR "add_internal_library: ALIAS ${ARG_ALIAS} already exists")
         endif()
         add_library(${ARG_ALIAS} ALIAS ${name})
     endif()
@@ -269,7 +269,7 @@ function(add_internal_module name)
     # 2. PRIVATE 头文件路径（仅用于编译本目标的源文件）
     if(ARG_PRIVATE_INCLUDES)
         if(ARG_TYPE STREQUAL "INTERFACE")
-            message(WARNING "add_internal_module: INTERFACE library ${name} cannot have PRIVATE_INCLUDES, ignored")
+            message(WARNING "add_internal_library: INTERFACE library ${name} cannot have PRIVATE_INCLUDES, ignored")
         else()
             # 转换为绝对路径（避免相对路径问题）
             set(abs_private_includes "")
@@ -294,7 +294,7 @@ function(add_internal_module name)
 
     if(ARG_PRIVATE_DEPENDENCY)
         if(ARG_TYPE STREQUAL "INTERFACE")
-            message(FATAL_ERROR "add_internal_module: INTERFACE library ${name} cannot have PRIVATE_DEPENDENCY")
+            message(FATAL_ERROR "add_internal_library: INTERFACE library ${name} cannot have PRIVATE_DEPENDENCY")
         endif()
         target_link_libraries(${name} PRIVATE ${ARG_PRIVATE_DEPENDENCY})
     endif()
@@ -318,6 +318,149 @@ function(add_internal_module name)
     endif()
 
     set_property(GLOBAL APPEND PROPERTY INTERNAL_MODULES_LIST ${name})
+endfunction()
+
+# 判断某个头文件目录是否命中 EXCLUDED_HEADER_DIRS 屏蔽列表.
+#   - 支持按“目录名”(最后一级)匹配, 也支持按“相对模块根目录的路径”匹配;
+#   - 会沿父目录逐级向上回溯, 因此屏蔽 "internal" 时, "internal/deep" 也会被屏蔽;
+#   - 模块根目录本身不参与匹配(它是模块整体, 而不是可屏蔽的内部子目录).
+function(_seed_module_dir_is_excluded result dir module_root exclude_dirs)
+    file(TO_CMAKE_PATH "${dir}" _dir)
+    file(TO_CMAKE_PATH "${module_root}" _root)
+
+    set(_excluded FALSE)
+    set(_cur "${_dir}")
+    while(NOT _cur STREQUAL _root)
+        file(RELATIVE_PATH _rel "${_root}" "${_cur}")
+        get_filename_component(_base "${_cur}" NAME)
+
+        foreach(_entry IN LISTS exclude_dirs)
+            file(TO_CMAKE_PATH "${_entry}" _entry)
+            string(STRIP "${_entry}" _entry)
+            string(REGEX REPLACE "/+$" "" _entry "${_entry}")
+            if(_entry STREQUAL "")
+                continue()
+            endif()
+            if(_rel STREQUAL _entry OR _base STREQUAL _entry)
+                set(_excluded TRUE)
+                break()
+            endif()
+        endforeach()
+
+        if(_excluded)
+            break()
+        endif()
+
+        get_filename_component(_parent "${_cur}" DIRECTORY)
+        if(_parent STREQUAL _cur)
+            break()
+        endif()
+        set(_cur "${_parent}")
+    endwhile()
+
+    set(${result} ${_excluded} PARENT_SCOPE)
+endfunction()
+
+
+# @brief
+#   按模块构建：不区分 includes 与 sources 的构建工具.
+#   与 add_internal_library 行为基本一致, 区别在于无需手动指定 SOURCES / INCLUDES:
+#     1. 自动递归收集当前 CMakeLists 目录下的 .h / .hpp / .cpp 文件;
+#     2. 头文件所在目录默认作为 PUBLIC 头文件路径开放给外部,
+#        通过 EXCLUDED_HEADER_DIRS 屏蔽指定目录(按目录名或相对路径匹配),
+#        被屏蔽目录中的 .h / .hpp 仅作为 PRIVATE 头文件, 不对外暴露;
+#     3. 模块根目录会作为 PRIVATE 头文件路径加入, 便于内部以模块根为基准 include.
+#
+#   add_internal_module(<name>
+#       TYPE                  <STATIC|SHARED|OBJECT|INTERFACE>   # 可选, 默认 STATIC
+#       PUBLIC_DEPENDENCY     <target1> [<target2> ...]          # 对外传递的依赖
+#       PRIVATE_DEPENDENCY    <target1> [<target2> ...]          # 不对外传递的依赖
+#       ALIAS                 <alias_name>                       # 可选, 创建别名目标
+#       EXCLUDED_HEADER_DIRS  <dir1> [<dir2> ...]                # 可选, 屏蔽头文件目录列表(目录名或相对路径)
+#   )
+#
+# @example
+#   add_internal_module(World
+#       PRIVATE_DEPENDENCY   Core::Core
+#       ALIAS                Runtime::World
+#       EXCLUDED_HEADER_DIRS internal detail
+#   )
+#   上述写法会:
+#     - 把当前目录下所有 .cpp 作为 SOURCES;
+#     - 把除 internal/ detail/ 之外的目录作为 PUBLIC 头文件路径;
+#     - 把 internal/ detail/ 以及模块根目录作为 PRIVATE 头文件路径.
+function(add_internal_module name)
+    set(options "")
+    set(oneValueArgs TYPE ALIAS)
+    set(multiValueArgs PUBLIC_DEPENDENCY PRIVATE_DEPENDENCY EXCLUDED_HEADER_DIRS)
+    cmake_parse_arguments(ARG "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+
+    # SOURCES / INCLUDES / PRIVATE_INCLUDES 均由本函数自动推导, 不允许手动传入.
+    if(ARG_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR "add_internal_module: unexpected arguments '${ARG_UNPARSED_ARGUMENTS}'. SOURCES/INCLUDES/PRIVATE_INCLUDES 由本函数自动推导, 请勿手动传入.")
+    endif()
+
+    # 默认类型
+    if(NOT ARG_TYPE)
+        set(ARG_TYPE STATIC)
+    endif()
+
+    # ---------- 1. 自动收集源文件与头文件 ----------
+    file(GLOB_RECURSE _module_sources CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
+    )
+    file(GLOB_RECURSE _module_headers CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/*.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/*.hpp"
+    )
+
+    if(ARG_TYPE STREQUAL "INTERFACE")
+        if(_module_sources)
+            message(FATAL_ERROR "add_internal_module: INTERFACE 模块 ${name} 不能包含 .cpp 文件, 请改用 STATIC 或移除实现文件: ${_module_sources}")
+        endif()
+    elseif(NOT _module_sources)
+        message(FATAL_ERROR "add_internal_module: 在 ${CMAKE_CURRENT_SOURCE_DIR} 下未找到任何 .cpp 文件; 头文件模块请使用 TYPE INTERFACE")
+    endif()
+
+    # ---------- 2. 根据头文件位置推导 include 目录 ----------
+    set(_public_includes "")
+    set(_private_includes "")
+    foreach(_header IN LISTS _module_headers)
+        get_filename_component(_header_dir "${_header}" DIRECTORY)
+        _seed_module_dir_is_excluded(_excluded "${_header_dir}" "${CMAKE_CURRENT_SOURCE_DIR}" "${ARG_EXCLUDED_HEADER_DIRS}")
+        if(_excluded)
+            list(APPEND _private_includes "${_header_dir}")
+        else()
+            list(APPEND _public_includes "${_header_dir}")
+        endif()
+    endforeach()
+
+    list(REMOVE_DUPLICATES _public_includes)
+    list(REMOVE_DUPLICATES _private_includes)
+
+    # 模块根目录作为 PRIVATE include, 便于内部以模块根为基准 include (如 #include "internal/foo.hpp")
+    if(NOT ARG_TYPE STREQUAL "INTERFACE")
+        list(APPEND _private_includes "${CMAKE_CURRENT_SOURCE_DIR}")
+        list(REMOVE_DUPLICATES _private_includes)
+    endif()
+
+    # INTERFACE 库不能携带 SOURCES 与 PRIVATE_INCLUDES
+    if(ARG_TYPE STREQUAL "INTERFACE")
+        set(_module_sources "")
+        set(_module_headers "")
+        set(_private_includes "")
+    endif()
+
+    # ---------- 3. 委托给 add_internal_library 复用统一逻辑 ----------
+    add_internal_library(${name}
+        TYPE                ${ARG_TYPE}
+        SOURCES             ${_module_sources} ${_module_headers}
+        INCLUDES            ${_public_includes}
+        PRIVATE_INCLUDES    ${_private_includes}
+        PUBLIC_DEPENDENCY   ${ARG_PUBLIC_DEPENDENCY}
+        PRIVATE_DEPENDENCY  ${ARG_PRIVATE_DEPENDENCY}
+        ALIAS               ${ARG_ALIAS}
+    )
 endfunction()
 
 macro(remove_c_flag flag)
