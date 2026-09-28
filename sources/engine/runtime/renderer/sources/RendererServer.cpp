@@ -37,6 +37,19 @@ struct RendererServer::Implementation
 	bool SurfaceRecoveryRequired { false };
 	std::optional<double> LastGPUFrameTimeNanoseconds;
 
+	// 渲染世界与 UI 渲染器(Renderer 持有的高层状态).
+	RenderWorld RenderWorld;
+	UIRenderer UIRenderer;
+
+	/**
+	 * @brief 一帧录制回调: 接收命令列表、交换链图像/视图、尺寸与图像是否已初始化.
+	 * 由 renderFrame(FrameRecorder) 与 renderFrameGraph(FrameGraphSetup) 复用同一
+	 * Acquire → Record → Submit → Present → Retire 帧边界.
+	 */
+	using RecordFn = std::function<void(rhi::RCommandList&, const std::shared_ptr<rhi::RImage>&,
+		const std::shared_ptr<rhi::RImageView>&, uint32_t, uint32_t, bool)>;
+	RendererServer::EFrameStatus renderFrameImpl(const RecordFn& Record);
+
 	void collectTimestamp(FrameContext& Frame)
 	{
 		if (!Frame.TimestampPending || !Frame.TimestampQueries) return;
@@ -121,6 +134,122 @@ struct RendererServer::Implementation
 		return true;
 	}
 };
+
+RendererServer::EFrameStatus RendererServer::Implementation::renderFrameImpl(const RecordFn& Record)
+{
+	if (!Device || !Swapchain)
+		throw std::logic_error("Renderer must be initialized before rendering a frame.");
+	if (Device->getStatus() != rhi::EDeviceStatus::Ready)
+		return RendererServer::EFrameStatus::DeviceLost;
+	if (SurfaceRecoveryRequired ||
+		Swapchain->getStatus() == rhi::ESwapchainStatus::SurfaceLost)
+	{
+		SurfaceRecoveryRequired = true;
+		return RendererServer::EFrameStatus::SurfaceLost;
+	}
+	Device->collectDeferredReleases();
+	if (Width == 0 || Height == 0)
+		return RendererServer::EFrameStatus::Skipped;
+
+	auto& frame = Frames[FrameIndex];
+	if (frame.CompletionValue != 0)
+	{
+		if (!FrameTimeline->wait(frame.CompletionValue))
+			return Device->getStatus() == rhi::EDeviceStatus::Ready
+				? RendererServer::EFrameStatus::Skipped
+				: RendererServer::EFrameStatus::DeviceLost;
+		GraphicsQueue->poll();
+		Device->collectDeferredReleases();
+		collectTimestamp(frame);
+		frame.Commands->reset();
+	}
+
+	const rhi::AcquireResult acquired = Swapchain->acquireNextImage(frame.ImageAvailable);
+	if (acquired.Status == rhi::EAcquireStatus::OutOfDate)
+	{
+		recreate(Width, Height);
+		return RendererServer::EFrameStatus::SwapchainRecreated;
+	}
+	if (acquired.Status == rhi::EAcquireStatus::DeviceLost)
+		return RendererServer::EFrameStatus::DeviceLost;
+	if (acquired.Status == rhi::EAcquireStatus::SurfaceLost)
+	{
+		SurfaceRecoveryRequired = true;
+		return RendererServer::EFrameStatus::SurfaceLost;
+	}
+	if (acquired.Status == rhi::EAcquireStatus::NotReady)
+		return RendererServer::EFrameStatus::Skipped;
+
+	const auto& image = Swapchain->getImage(acquired.ImageIndex);
+	const auto& view = Swapchain->getImageView(acquired.ImageIndex);
+	frame.Commands->begin();
+	if (frame.TimestampQueries)
+	{
+		frame.Commands->resetQueries(frame.TimestampQueries, 0, 2);
+		frame.Commands->writeTimestamp(frame.TimestampQueries, 0);
+	}
+
+	// 录制(单渲染作用域回调 或 RDG 多 Pass), 由调用方提供.
+	Record(*frame.Commands, image, view, Width, Height, ImageInitialized[acquired.ImageIndex]);
+
+	if (frame.TimestampQueries)
+		frame.Commands->writeTimestamp(frame.TimestampQueries, 1);
+	frame.Commands->end();
+
+	const uint64_t completion_value = NextTimelineValue++;
+	const auto& render_finished = RenderFinishedSemaphores[acquired.ImageIndex];
+	const std::array waits { rhi::SemaphoreSubmitInfo { frame.ImageAvailable, 0 } };
+	const std::array signals {
+		rhi::SemaphoreSubmitInfo { render_finished, 0 },
+		rhi::SemaphoreSubmitInfo { FrameTimeline, completion_value }
+	};
+	const std::array commands { frame.Commands };
+	try
+	{
+		GraphicsQueue->submit({
+			.CommandLists = commands,
+			.WaitSemaphores = waits,
+			.SignalSemaphores = signals
+		});
+	}
+	catch (...)
+	{
+		if (Device->getStatus() != rhi::EDeviceStatus::Ready)
+			return RendererServer::EFrameStatus::DeviceLost;
+		throw;
+	}
+	frame.CompletionValue = completion_value;
+	frame.TimestampPending = frame.TimestampQueries != nullptr;
+	ImageInitialized[acquired.ImageIndex] = true;
+
+	const std::array present_waits { render_finished };
+	const auto present_status = GraphicsQueue->present({
+		.Swapchain = Swapchain,
+		.ImageIndex = acquired.ImageIndex,
+		.Generation = acquired.Generation,
+		.WaitSemaphores = present_waits
+	});
+	FrameIndex = (FrameIndex + 1) % Implementation::FramesInFlight;
+	if (present_status == rhi::EPresentStatus::DeviceLost)
+		return RendererServer::EFrameStatus::DeviceLost;
+	if (present_status == rhi::EPresentStatus::OutOfDate ||
+		present_status == rhi::EPresentStatus::Suboptimal)
+	{
+		recreate(Width, Height);
+		return RendererServer::EFrameStatus::SwapchainRecreated;
+	}
+	if (present_status == rhi::EPresentStatus::SurfaceLost)
+	{
+		SurfaceRecoveryRequired = true;
+		return RendererServer::EFrameStatus::SurfaceLost;
+	}
+	if (acquired.Status == rhi::EAcquireStatus::Suboptimal)
+	{
+		recreate(Width, Height);
+		return RendererServer::EFrameStatus::SwapchainRecreated;
+	}
+	return RendererServer::EFrameStatus::Rendered;
+}
 
 namespace
 {
@@ -386,145 +515,103 @@ void RendererServer::runBindGroupSmokeTest()
 
 RendererServer::EFrameStatus RendererServer::renderFrame(const FrameRecorder& Recorder)
 {
-	if (!Impl || !Impl->Device || !Impl->Swapchain)
+	if (!Impl)
 		throw std::logic_error("Renderer must be initialized before rendering a frame.");
-	if (Impl->Device->getStatus() != rhi::EDeviceStatus::Ready)
-		return EFrameStatus::DeviceLost;
-	if (Impl->SurfaceRecoveryRequired ||
-		Impl->Swapchain->getStatus() == rhi::ESwapchainStatus::SurfaceLost)
-	{
-		Impl->SurfaceRecoveryRequired = true;
-		return EFrameStatus::SurfaceLost;
-	}
-	Impl->Device->collectDeferredReleases();
-	if (Impl->Width == 0 || Impl->Height == 0)
-		return EFrameStatus::Skipped;
+	return Impl->renderFrameImpl([&](rhi::RCommandList& Commands,
+		const std::shared_ptr<rhi::RImage>& Image,
+		const std::shared_ptr<rhi::RImageView>& View,
+		uint32_t Width, uint32_t Height, bool ImageInitialized) {
+		// 单渲染作用域历史路径: 手动 barrier + 清屏 + 用户回调.
+		const rhi::ImageBarrier begin_barrier {
+			.Image = Image,
+			.Before = ImageInitialized
+				? rhi::EResourceState::Present
+				: rhi::EResourceState::Undefined,
+			.After = rhi::EResourceState::RenderTarget
+		};
+		Commands.imageBarriers(std::span(&begin_barrier, 1));
 
-	auto& frame = Impl->Frames[Impl->FrameIndex];
-	if (frame.CompletionValue != 0)
-	{
-		if (!Impl->FrameTimeline->wait(frame.CompletionValue))
-			return Impl->Device->getStatus() == rhi::EDeviceStatus::Ready
-				? EFrameStatus::Skipped : EFrameStatus::DeviceLost;
-		Impl->GraphicsQueue->poll();
-		Impl->Device->collectDeferredReleases();
-		Impl->collectTimestamp(frame);
-		frame.Commands->reset();
-	}
+		const rhi::ColorAttachment color {
+			.View = View,
+			.LoadOp = rhi::ELoadOp::Clear,
+			.StoreOp = rhi::EStoreOp::Store,
+			.ClearValue = {
+				.Type = rhi::EClearColorType::Float,
+				.Float32 = { 0.025f, 0.035f, 0.055f, 1.0f }
+			}
+		};
+		const rhi::RenderingInfo rendering {
+			.Area = { 0, 0, Width, Height },
+			.ColorAttachments = std::span(&color, 1)
+		};
+		Commands.beginRendering(rendering);
+		if (Recorder)
+			Recorder(Commands, View, Width, Height);
+		Commands.endRendering();
 
-	const rhi::AcquireResult acquired = Impl->Swapchain->acquireNextImage(frame.ImageAvailable);
-	if (acquired.Status == rhi::EAcquireStatus::OutOfDate)
-	{
-		Impl->recreate(Impl->Width, Impl->Height);
-		return EFrameStatus::SwapchainRecreated;
-	}
-	if (acquired.Status == rhi::EAcquireStatus::DeviceLost)
-		return EFrameStatus::DeviceLost;
-	if (acquired.Status == rhi::EAcquireStatus::SurfaceLost)
-	{
-		Impl->SurfaceRecoveryRequired = true;
-		return EFrameStatus::SurfaceLost;
-	}
-	if (acquired.Status == rhi::EAcquireStatus::NotReady)
-		return EFrameStatus::Skipped;
-
-	const auto& image = Impl->Swapchain->getImage(acquired.ImageIndex);
-	const auto& view = Impl->Swapchain->getImageView(acquired.ImageIndex);
-	frame.Commands->begin();
-	if (frame.TimestampQueries)
-	{
-		frame.Commands->resetQueries(frame.TimestampQueries, 0, 2);
-		frame.Commands->writeTimestamp(frame.TimestampQueries, 0);
-	}
-	const rhi::ImageBarrier begin_barrier {
-		.Image = image,
-		.Before = Impl->ImageInitialized[acquired.ImageIndex]
-			? rhi::EResourceState::Present
-			: rhi::EResourceState::Undefined,
-		.After = rhi::EResourceState::RenderTarget
-	};
-	frame.Commands->imageBarriers(std::span(&begin_barrier, 1));
-
-	const rhi::ColorAttachment color {
-		.View = view,
-		.LoadOp = rhi::ELoadOp::Clear,
-		.StoreOp = rhi::EStoreOp::Store,
-		.ClearValue = {
-			.Type = rhi::EClearColorType::Float,
-			.Float32 = { 0.025f, 0.035f, 0.055f, 1.0f }
-		}
-	};
-	const rhi::RenderingInfo rendering {
-		.Area = { 0, 0, Impl->Width, Impl->Height },
-		.ColorAttachments = std::span(&color, 1)
-	};
-	frame.Commands->beginRendering(rendering);
-	if (Recorder)
-		Recorder(*frame.Commands, view, Impl->Width, Impl->Height);
-	frame.Commands->endRendering();
-	if (frame.TimestampQueries)
-		frame.Commands->writeTimestamp(frame.TimestampQueries, 1);
-	const rhi::ImageBarrier present_barrier {
-		.Image = image,
-		.Before = rhi::EResourceState::RenderTarget,
-		.After = rhi::EResourceState::Present
-	};
-	frame.Commands->imageBarriers(std::span(&present_barrier, 1));
-	frame.Commands->end();
-
-	const uint64_t completion_value = Impl->NextTimelineValue++;
-	const auto& render_finished = Impl->RenderFinishedSemaphores[acquired.ImageIndex];
-	const std::array waits { rhi::SemaphoreSubmitInfo { frame.ImageAvailable, 0 } };
-	const std::array signals {
-		rhi::SemaphoreSubmitInfo { render_finished, 0 },
-		rhi::SemaphoreSubmitInfo { Impl->FrameTimeline, completion_value }
-	};
-	const std::array commands { frame.Commands };
-	try
-	{
-		Impl->GraphicsQueue->submit({
-			.CommandLists = commands,
-			.WaitSemaphores = waits,
-			.SignalSemaphores = signals
-		});
-	}
-	catch (...)
-	{
-		if (Impl->Device->getStatus() != rhi::EDeviceStatus::Ready)
-			return EFrameStatus::DeviceLost;
-		throw;
-	}
-	frame.CompletionValue = completion_value;
-	frame.TimestampPending = frame.TimestampQueries != nullptr;
-	Impl->ImageInitialized[acquired.ImageIndex] = true;
-
-	const std::array present_waits { render_finished };
-	const auto present_status = Impl->GraphicsQueue->present({
-		.Swapchain = Impl->Swapchain,
-		.ImageIndex = acquired.ImageIndex,
-		.Generation = acquired.Generation,
-		.WaitSemaphores = present_waits
+		const rhi::ImageBarrier present_barrier {
+			.Image = Image,
+			.Before = rhi::EResourceState::RenderTarget,
+			.After = rhi::EResourceState::Present
+		};
+		Commands.imageBarriers(std::span(&present_barrier, 1));
 	});
-	Impl->FrameIndex = (Impl->FrameIndex + 1) % Implementation::FramesInFlight;
-	if (present_status == rhi::EPresentStatus::DeviceLost)
-		return EFrameStatus::DeviceLost;
-	if (present_status == rhi::EPresentStatus::OutOfDate ||
-		present_status == rhi::EPresentStatus::Suboptimal)
-	{
-		Impl->recreate(Impl->Width, Impl->Height);
-		return EFrameStatus::SwapchainRecreated;
-	}
-	if (present_status == rhi::EPresentStatus::SurfaceLost)
-	{
-		Impl->SurfaceRecoveryRequired = true;
-		return EFrameStatus::SurfaceLost;
-	}
-	if (acquired.Status == rhi::EAcquireStatus::Suboptimal)
-	{
-		Impl->recreate(Impl->Width, Impl->Height);
-		return EFrameStatus::SwapchainRecreated;
-	}
-	return EFrameStatus::Rendered;
+}
+
+RendererServer::EFrameStatus RendererServer::renderFrameGraph(const FrameGraphSetup& Setup)
+{
+	if (!Impl || !Impl->Device)
+		throw std::logic_error("Renderer must be initialized before rendering a frame.");
+	return Impl->renderFrameImpl([&](rhi::RCommandList& Commands,
+		const std::shared_ptr<rhi::RImage>& Image,
+		const std::shared_ptr<rhi::RImageView>& View,
+		uint32_t Width, uint32_t Height, bool ImageInitialized) {
+		// RDG 多 Pass 路径: 交换链图像作为 backbuffer 被图托管.
+		RDGBuilder builder(*Impl->Device);
+		const RDGResourceId backbuffer = builder.importImage(Image, View, "Backbuffer",
+			ImageInitialized ? rhi::EResourceState::Present : rhi::EResourceState::Undefined);
+
+		if (Setup)
+		{
+			// 应用用 SceneRenderer 编排子渲染器(3D 各阶段 + UI)向同一 RDG 声明 Pass.
+			Setup(builder, backbuffer);
+		}
+		else
+		{
+			// 无回调: 退化为一次清屏 Pass.
+			builder.addGraphicsPass("Clear",
+				[&](RDGPassBuilder& PassBuilder) {
+					PassBuilder.renderTarget(backbuffer, rhi::ELoadOp::Clear,
+						rhi::EStoreOp::Store,
+						{ .Type = rhi::EClearColorType::Float,
+						  .Float32 = { 0.025f, 0.035f, 0.055f, 1.0f } });
+				},
+				[](RDGExecuteContext&) {});
+		}
+
+		builder.compile();
+		builder.execute(Commands);
+
+		// 交换链出口: 最后一个 Pass 已把 backbuffer 写到 RenderTarget, 这里统一转 Present.
+		const rhi::ImageBarrier present_barrier {
+			.Image = Image,
+			.Before = rhi::EResourceState::RenderTarget,
+			.After = rhi::EResourceState::Present
+		};
+		Commands.imageBarriers(std::span(&present_barrier, 1));
+	});
+}
+
+RenderWorld& RendererServer::getRenderWorld() noexcept
+{
+	static RenderWorld Fallback;
+	return Impl ? Impl->RenderWorld : Fallback;
+}
+
+UIRenderer& RendererServer::getUIRenderer() noexcept
+{
+	static UIRenderer Fallback;
+	return Impl ? Impl->UIRenderer : Fallback;
 }
 
 void RendererServer::resize(uint32_t Width, uint32_t Height)
