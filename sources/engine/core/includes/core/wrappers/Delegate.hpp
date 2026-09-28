@@ -119,6 +119,88 @@ private:
 		const void* TypeTag = nullptr;
     };
 
+    template <typename Callable>
+    static consteval bool callableCompatible()
+    {
+        using callable_type = std::decay_t<Callable>;
+
+        if constexpr (IsNoexcept)
+        {
+            return std::is_nothrow_invocable_r_v<RetType, callable_type&, Args...>;
+        }
+        else
+        {
+            return std::is_invocable_r_v<RetType, callable_type&, Args...>;
+        }
+    }
+
+    template <auto Callable>
+    static consteval bool staticCallableCompatible()
+    {
+        if constexpr (IsNoexcept)
+        {
+            return std::is_nothrow_invocable_r_v<RetType, decltype(Callable), Args...>;
+        }
+        else
+        {
+            return std::is_invocable_r_v<RetType, decltype(Callable), Args...>;
+        }
+    }
+
+    template <auto Method, typename ClassType>
+    static consteval bool rawMethodCompatible()
+    {
+        if constexpr (!std::is_member_function_pointer_v<decltype(Method)>)
+        {
+            return false;
+        }
+        else if constexpr (IsNoexcept)
+        {
+            return std::is_nothrow_invocable_r_v<
+                RetType,
+                decltype(Method),
+                ClassType*,
+                Args...
+            >;
+        }
+        else
+        {
+            return std::is_invocable_r_v<
+                RetType,
+                decltype(Method),
+                ClassType*,
+                Args...
+            >;
+        }
+    }
+
+    template <auto Method, typename ClassType>
+    static consteval bool sharedMethodCompatible()
+    {
+        if constexpr (!std::is_member_function_pointer_v<decltype(Method)>)
+        {
+            return false;
+        }
+        else if constexpr (IsNoexcept)
+        {
+            return std::is_nothrow_invocable_r_v<
+                RetType,
+                decltype(Method),
+                ClassType*,
+                Args...
+            >;
+        }
+        else
+        {
+            return std::is_invocable_r_v<
+                RetType,
+                decltype(Method),
+                ClassType*,
+                Args...
+            >;
+        }
+    }
+
 public:
     DelegateStorage() noexcept = default;
     DelegateStorage(std::nullptr_t) noexcept
@@ -128,7 +210,7 @@ public:
     template <typename Callable>
         requires (
             !std::same_as<std::remove_cvref_t<Callable>, self_type>
-            && callableCompatible<Callable>()
+            && self_type::callableCompatible<Callable>()
             && (!IsCopyable || std::copy_constructible<std::decay_t<Callable>>)
             && std::move_constructible<std::decay_t<Callable>>
         )
@@ -288,7 +370,7 @@ private:
 public:
     template <typename Callable>
         requires (
-            callableCompatible<Callable>()
+            self_type::callableCompatible<Callable>()
             && (!IsCopyable|| std::copy_constructible<std::decay_t<Callable>>)
             && std::move_constructible<std::decay_t<Callable>>
         )
@@ -313,7 +395,7 @@ public:
     }
 
     template <auto Callable>
-        requires (staticCallableCompatible<Callable>())
+        requires (self_type::staticCallableCompatible<Callable>())
     void bindStatic() noexcept
     {
         reset();
@@ -374,7 +456,7 @@ public:
         );
     }
     template <auto Method, typename ClassType>
-        requires (rawMethodCompatible<Method, ClassType>())
+        requires (self_type::rawMethodCompatible<Method, ClassType>())
     void bindRaw(ClassType* Instance)
     {
         if (Instance == nullptr)
@@ -391,7 +473,7 @@ public:
     }
 
     template <auto Method, typename ClassType>
-        requires (rawMethodCompatible<Method, ClassType>())
+        requires (self_type::rawMethodCompatible<Method, ClassType>())
     void bindRaw(ClassType& Instance) noexcept
     {
         reset();
@@ -400,7 +482,7 @@ public:
     }
 
     template <auto Method, typename ClassType>
-        requires (sharedMethodCompatible<Method, ClassType>())
+        requires (self_type::sharedMethodCompatible<Method, ClassType>())
     void bindShared(std::shared_ptr<ClassType> Instance)
     {
         if (!Instance)
@@ -421,7 +503,7 @@ public:
     template <auto Method, typename ClassType>
         requires (
             std::is_void_v<RetType>
-            && sharedMethodCompatible<Method, ClassType>()
+            && self_type::sharedMethodCompatible<Method, ClassType>()
         )
     void bindWeak(std::weak_ptr<ClassType> Instance)
     {
@@ -440,7 +522,7 @@ public:
     template <auto Method, typename ClassType, typename ExpiredCallable>
         requires (
             !std::is_void_v<RetType>
-            && sharedMethodCompatible<Method, ClassType>()
+            && self_type::sharedMethodCompatible<Method, ClassType>()
         )
     void bindWeakOr(std::weak_ptr<ClassType> Instance, ExpiredCallable&& OnExpired)
     {
@@ -497,88 +579,6 @@ public:
 		return static_cast<const target_type*>(Object);
 	}
 private:
-    template <typename Callable>
-    static consteval bool callableCompatible()
-    {
-        using callable_type = std::decay_t<Callable>;
-
-        if constexpr (IsNoexcept)
-        {
-            return std::is_nothrow_invocable_r_v<RetType, callable_type&, Args...>;
-        }
-        else
-        {
-            return std::is_invocable_r_v<RetType, callable_type&, Args...>;
-        }
-    }
-
-    template <auto Callable>
-    static consteval bool staticCallableCompatible()
-    {
-        if constexpr (IsNoexcept)
-        {
-            return std::is_nothrow_invocable_r_v<RetType, decltype(Callable), Args...>;
-        }
-        else
-        {
-            return std::is_invocable_r_v<RetType, decltype(Callable), Args...>;
-        }
-    }
-
-    template <auto Method, typename ClassType>
-    static consteval bool rawMethodCompatible()
-    {
-        if constexpr (!std::is_member_function_pointer_v<decltype(Method)>)
-        {
-            return false;
-        }
-        else if constexpr (IsNoexcept)
-        {
-            return std::is_nothrow_invocable_r_v<
-                RetType,
-                decltype(Method),
-                ClassType*,
-                Args...
-            >;
-        }
-        else
-        {
-            return std::is_invocable_r_v<
-                RetType,
-                decltype(Method),
-                ClassType*,
-                Args...
-            >;
-        }
-    }
-
-    template <auto Method, typename ClassType>
-    static consteval bool sharedMethodCompatible()
-    {
-        if constexpr (!std::is_member_function_pointer_v<decltype(Method)>)
-        {
-            return false;
-        }
-        else if constexpr (IsNoexcept)
-        {
-            return std::is_nothrow_invocable_r_v<
-                RetType,
-                decltype(Method),
-                ClassType*,
-                Args...
-            >;
-        }
-        else
-        {
-            return std::is_invocable_r_v<
-                RetType,
-                decltype(Method),
-                ClassType*,
-                Args...
-            >;
-        }
-    }
-
     template <typename CallableType>
     static consteval bool fitsInline()
     {
@@ -692,7 +692,7 @@ private:
                 {
                     return nullptr;
                 },
-			.TypeTag = getTypeTag<CallableType>()
+			.TypeTag = getTypeTag<decltype(CallableType)>()
         };
 
         return std::addressof(table);
@@ -721,7 +721,7 @@ private:
                 {
                     return const_cast<void*>(Source);
                 },
-			.TypeTag = getTypeTag<Method>()
+			.TypeTag = getTypeTag<decltype(Method)>()
         };
 
         return std::addressof(table);
@@ -882,6 +882,52 @@ private:
     using self_type = DelegateRefStorage<RetType, IsNoexcept, Args...>;
     using invoker_type = InvokerPointer<RetType, IsNoexcept, Args...>;
 
+    template <typename Callable>
+    static consteval bool callableCompatible()
+    {
+        using CallableType =
+            std::remove_reference_t<Callable>;
+
+        if constexpr (IsNoexcept)
+        {
+            return std::is_nothrow_invocable_r_v<RetType, CallableType&, Args...>;
+        }
+        else
+        {
+            return std::is_invocable_r_v< RetType, CallableType&, Args...>;
+        }
+    }
+
+    template <auto Callable>
+    static consteval bool staticCallableCompatible()
+    {
+        if constexpr (IsNoexcept)
+        {
+            return std::is_nothrow_invocable_r_v<RetType, decltype(Callable), Args...>;
+        }
+        else
+        {
+            return std::is_invocable_r_v<RetType, decltype(Callable), Args...>;
+        }
+    }
+
+    template <auto Method, typename ClassType>
+    static consteval bool rawMethodCompatible()
+    {
+        if constexpr (!std::is_member_function_pointer_v<decltype(Method)>)
+        {
+            return false;
+        }
+        else if constexpr (IsNoexcept)
+        {
+            return std::is_nothrow_invocable_r_v<RetType, decltype(Method), ClassType*, Args...>;
+        }
+        else
+        {
+            return std::is_invocable_r_v<RetType, decltype(Method), ClassType*, Args...>;
+        }
+    }
+
 public:
     constexpr DelegateRefStorage() noexcept = default;
 
@@ -906,7 +952,7 @@ public:
             !std::same_as<std::remove_cvref_t<Callable>, self_type>
             && std::is_lvalue_reference_v<Callable&&>
             && std::is_object_v<std::remove_reference_t<Callable>>
-            && callableCompatible<Callable>()
+            && self_type::callableCompatible<Callable>()
         )
     constexpr DelegateRefStorage(Callable&& InCallable) noexcept
     {
@@ -938,7 +984,7 @@ public:
     }
 
     template <auto Callable>
-        requires (staticCallableCompatible<Callable>())
+        requires (self_type::staticCallableCompatible<Callable>())
     [[nodiscard]]
     static consteval DelegateRefStorage bindStatic() noexcept
     {
@@ -953,7 +999,7 @@ public:
     }
 
     template <auto Method, typename ClassType>
-        requires (rawMethodCompatible<Method, ClassType>())
+        requires (self_type::rawMethodCompatible<Method, ClassType>())
     [[nodiscard]]
     static constexpr DelegateRefStorage bindRaw(ClassType& Instance) noexcept
     {
@@ -1030,52 +1076,6 @@ private:
         : ObjectRawPtr(InObject),
           Invoker(InInvoker)
     {
-    }
-
-    template <typename Callable>
-    static consteval bool callableCompatible()
-    {
-        using CallableType =
-            std::remove_reference_t<Callable>;
-
-        if constexpr (IsNoexcept)
-        {
-            return std::is_nothrow_invocable_r_v<RetType, CallableType&, Args...>;
-        }
-        else
-        {
-            return std::is_invocable_r_v< RetType, CallableType&, Args...>;
-        }
-    }
-
-    template <auto Callable>
-    static consteval bool staticCallableCompatible()
-    {
-        if constexpr (IsNoexcept)
-        {
-            return std::is_nothrow_invocable_r_v<RetType, decltype(Callable), Args...>;
-        }
-        else
-        {
-            return std::is_invocable_r_v<RetType, decltype(Callable), Args...>;
-        }
-    }
-
-    template <auto Method, typename ClassType>
-    static consteval bool rawMethodCompatible()
-    {
-        if constexpr (!std::is_member_function_pointer_v<decltype(Method)>)
-        {
-            return false;
-        }
-        else if constexpr (IsNoexcept)
-        {
-            return std::is_nothrow_invocable_r_v<RetType, decltype(Method), ClassType*, Args...>;
-        }
-        else
-        {
-            return std::is_invocable_r_v<RetType, decltype(Method), ClassType*, Args...>;
-        }
     }
 
     [[noreturn]]
@@ -1300,7 +1300,7 @@ public:
             throw;
         }
 
-        entry.Active = true;
+        entry.State = SlotState::Active;
         ++ActiveCount;
 
         return makeHandle(index, entry.Generation);
@@ -1650,7 +1650,7 @@ private:
         Slot& entry = Slots[SlotIndex];
 
         entry.Callback.reset();
-        entry.Active = false;
+        entry.State = SlotState::Free;
         entry.NextFree = FreeHead;
 
         FreeHead = SlotIndex;
@@ -1660,7 +1660,7 @@ private:
     {
         Slot& entry = Slots[SlotIndex];
 
-        entry.Active = false;
+        entry.State = SlotState::Retired;
 
         // generation 回绕后不再重用该 Slot，彻底避免非常旧的
         if (entry.Generation == std::numeric_limits<std::uint32_t>::max())
@@ -1695,8 +1695,15 @@ private:
 
             if (entry.Generation != 0)
             {
+                // 可复用的槽位回到空闲链表.
+                entry.State = SlotState::Free;
                 entry.NextFree = FreeHead;
                 FreeHead = index;
+            }
+            else
+            {
+                // Generation 回绕归零的槽位永久耗尽, 不再复用.
+                entry.State = SlotState::Exhausted;
             }
         }
     }
