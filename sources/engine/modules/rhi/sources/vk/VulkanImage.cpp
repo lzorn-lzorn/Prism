@@ -50,8 +50,42 @@ std::shared_ptr<VulkanImage> VulkanImage::create(
 std::shared_ptr<VulkanImage> VulkanImage::createUnbound(VulkanDevice& Device, const Descriptor_t& Desc)
 {
 	validateDescriptor(Desc);
-	auto image = Device.getVkDevice().createImageUnique(makeCreateInfo(Desc));
+	auto image = Device.getVkDevice().createImageUnique(makeCreateInfo(Desc, false));
 	return std::shared_ptr<VulkanImage>(new VulkanImage(Device, Desc, std::move(image)));
+}
+
+std::shared_ptr<VulkanImage> VulkanImage::createUnboundAliasing(
+	VulkanDevice& Device,
+	const Descriptor_t& Desc)
+{
+	validateDescriptor(Desc);
+	// VK_IMAGE_CREATE_ALIAS_BIT: 允许该 Image 与其它 Image 复用同一段显存.
+	auto image = Device.getVkDevice().createImageUnique(makeCreateInfo(Desc, true));
+	return std::shared_ptr<VulkanImage>(new VulkanImage(Device, Desc, std::move(image)));
+}
+
+MemoryRequirements VulkanImage::getMemoryRequirements() const
+{
+	if (isExternal() || !std::get<vk::UniqueImage>(Image))
+		throw std::logic_error("Vulkan image is invalid for memory requirements.");
+	vk::MemoryDedicatedRequirements dedicated_requirements;
+	vk::MemoryRequirements2 requirements2;
+	requirements2.pNext = &dedicated_requirements;
+	const vk::ImageMemoryRequirementsInfo2 requirements_info(std::get<vk::UniqueImage>(Image).get());
+	Device->getVkDevice().getImageMemoryRequirements2(&requirements_info, &requirements2);
+	const vk::MemoryRequirements& vk_requirements = requirements2.memoryRequirements;
+	return MemoryRequirements {
+		.Size = vk_requirements.size,
+		.Alignment = vk_requirements.alignment,
+		.MemoryTypeBits = vk_requirements.memoryTypeBits,
+		.PrefersDedicatedAllocation = dedicated_requirements.prefersDedicatedAllocation == VK_TRUE,
+		.RequiresDedicatedAllocation = dedicated_requirements.requiresDedicatedAllocation == VK_TRUE
+	};
+}
+
+void VulkanImage::bindPlacedMemory(std::shared_ptr<DeviceMemory> InMemory)
+{
+	Memory = std::move(InMemory);
 }
 
 std::shared_ptr<VulkanImage> VulkanImage::wrapExternal(
@@ -189,10 +223,13 @@ void VulkanImage::validateDescriptor(const Descriptor_t& Desc)
 	}
 }
 
-vk::ImageCreateInfo VulkanImage::makeCreateInfo(const Descriptor_t& Desc)
+vk::ImageCreateInfo VulkanImage::makeCreateInfo(const Descriptor_t& Desc, bool EnableAliasing)
 {
+	auto flags = getImageCreateFlags(Desc.Dimension);
+	if (EnableAliasing)
+		flags |= vk::ImageCreateFlagBits::eAlias;
 	return vk::ImageCreateInfo()
-		.setFlags(getImageCreateFlags(Desc.Dimension))
+		.setFlags(flags)
 		.setImageType(toVk(Desc.Dimension))
 		.setFormat(toVk(Desc.Format))
 		.setExtent(vk::Extent3D(Desc.Width, Desc.Height, Desc.Depth))

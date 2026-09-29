@@ -1,5 +1,6 @@
 #include "VulkanDeviceMemory.hpp"
 #include "VulkanDevice.hpp"
+#include "VulkanMemoryHeap.hpp"
 #include "VulkanRHI.hpp"
 
 #include <algorithm>
@@ -640,4 +641,15 @@ void VulkanDeviceMemoryAllocator::freeMemory(std::shared_ptr<DeviceMemory> Memor
 	}
     Device->freeMemory(std::move(Memory));
 }
+
+void VulkanHeapSubAllocation::release()
+{
+	std::shared_ptr<VulkanTransientHeap> heap = std::move(Heap);
+	if (heap && Size != 0)
+		heap->release(Offset, Size);
+	Size = 0;
+	Offset = 0;
+	OwnershipState = DeviceMemory::EState::InValid;
 }
+
+} // namespace rhi

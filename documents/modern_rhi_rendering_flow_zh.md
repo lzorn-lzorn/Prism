@@ -441,6 +441,13 @@ Render Pass 只消费 Draw Packet，不访问 ECS 或资源加载器，从而允
 
 ## 9. RenderGraph 扩展设计
 
+> 实现状态：RenderGraph 主干已落地为 `renderer/rdg/RDGBuilder`（由
+> `RendererServer::renderFrameGraph()` 驱动），权威说明见
+> [rdg_render_data_incremental_zh.md](rdg_render_data_incremental_zh.md)。
+> 本节的拓扑排序 / 生命周期 / 别名等**图算法**由 `renderer::rdg` 提供实现与验证
+> （见 [rdg_design_zh.md](rdg_design_zh.md)），尚未收敛进 `RDGBuilder`。
+> 下面保留最初的设计约束。
+
 当前 `RendererServer::renderFrame()` 已稳定完整的 Swapchain 帧边界. 多 Pass 2D/3D 下一层应引入 RenderGraph，而不是继续把所有逻辑堆入 RendererServer. 
 
 建议最小接口：
@@ -454,13 +461,29 @@ Render Pass 只消费 Draw Packet，不访问 ECS 或资源加载器，从而允
 
 RenderGraph 必须生成现有 `GlobalBarrier/BufferBarrier/ImageBarrier`，不能绕过 RHI 直接生成 Vulkan Barrier. 
 
-### 不应一开始实现的优化
+### 已实现（`renderer/rdg`）
+
+- `importTexture/importBuffer`、`createTexture/createBuffer`、`keepAlive` 导出标记；
+- `addPass`（lambda）与 `beginPass`（链式门面）两种声明写法；
+- 编译期：RAW/WAR/WAW 依赖、Kahn 拓扑排序、Pass 裁剪、生命周期分析；
+- 显存别名：按堆（RT/DS/Buffer/UAV）划分显存槽位，槽位内按生命周期复用；
+- 屏障：状态挂在显存槽位上，别名复用点自动插入 `Undefined` 转换；
+- RHI 扩展：`RTransientHeap` + `createPlacedBuffer/createPlacedImage`，
+  让别名真正落到设备显存；
+- 验证：`SeedRDGTests`（无 GPU，136 项断言）与 `SeedRDGGpuTests`（真实设备，43 项断言）.
+
+### 仍未实现
 
 - 自动 Pass 合并；
-- 复杂 Alias Heap；
 - 多线程 Secondary Recording；
-- 跨队列自动调度；
-- Ray Tracing Pass. 
+- 跨队列自动调度与队列族所有权转移；
+- Ray Tracing Pass；
+- 子资源（mip / layer）粒度的状态跟踪.
+
+### 不应一开始实现的优化
+
+- 复杂 Alias Heap；
+- 跨队列自动调度. 
 
 先保证单队列拓扑, 状态跟踪和 transient 生命周期正确，再逐项能力门控. 
 
@@ -715,7 +738,13 @@ HDR10_ST2084/ExtendedSRGBLinear 的受支持 pair；`VK_EXT_hdr_metadata` 可用
 |---|---|---|
 | Queue/Fence/Binary/Timeline, 提交引用退休 | 已实现 | 缺少覆盖多队列竞态的 GPU CI |
 | Deferred release | 已实现 | API 由调用方提供正确“最后使用”Timeline 点 |
-| 页式 best-fit/coalescing allocator | 已实现 | 无显存 budget/defrag/alias heap；Image 现代分配覆盖仍需持续审计 |
+| 页式 best-fit/coalescing allocator | 已实现 | 无显存 budget/defrag；Image 现代分配覆盖仍需持续审计 |
+| Transient heap + placed resource | 已实现 (Vulkan) | 别名堆不自动收缩；无跨帧显存预算策略 |
+| RDG 主干 (`RDGBuilder` + `renderFrameGraph`) | 已实现 | 按声明顺序执行；无拓扑排序/别名/裁剪(见其 v1 边界) |
+| RDG 算法辅助 (`renderer::rdg`) | 已实现 + 已验证 | 拓扑排序/裁剪/生命周期/显存别名；**尚未收敛进 `RDGBuilder`** |
+| 子渲染器编排 (`SceneRenderer` + `IRenderPass`) | 骨架 | 附件与依赖声明完整；`Execute` 内实际绘制待 `MaterialSystem` 解析 `DrawPacket` |
+| 渲染交换格式 (`DrawPacket` / `UIQuad` / `EChangeFlags`) | 已实现 (纯头) | 增量意图已定义，Renderer 侧消费策略待实现 |
+| 2D batch | 骨架 | `UIRenderer` 合批已定义；顶点上传与 2D 管线待接 |
 | BDA | 已实现, 能力门控 | 地址生命周期由调用方遵守 |
 | EDS/动态 VertexInput | 已实现, 能力门控 | EDS3 仅 feature 报告，无公共专属 Setter；Viewport/Scissor count 仍固定为 1 的 Pipeline 模型 |
 | Secondary dynamic rendering inheritance | 已实现 | 无多线程性能/设备矩阵集成测试 |
@@ -723,7 +752,6 @@ HDR10_ST2084/ExtendedSRGBLinear 的受支持 pair；`VK_EXT_hdr_metadata` 可用
 | AS/RT Pipeline/SBT dispatch | 已实现, 能力门控 | 无 SBT Builder, AS compaction/copy/serialization, GPU RT 测试 |
 | HDR capability/metadata | 已实现, 能力门控 | 无 tone mapping, 显示器协商 UX, HDR GPU/显示测试 |
 | WSI recovery classification | 已实现 | 公共初始化仍是一窗口一 Surface；DeviceLost 不透明恢复 |
-| 2D batch, 完整 3D RenderGraph, transient alias | 合同/设计 | 尚未成为完整 Renderer 产品路径 |
 | D3D12/Metal/OpenGL 后端 | 占位 | 当前唯一可用后端是 Vulkan 1.3 |
 | `RTexture` 组合纹理(Image+默认 View+默认 Sampler) | 已实现 | 仅为便捷封装，不引入新 GPU 原语；独立视图/多采样配置应直接用 RImage+RImageView+RSampler |
 

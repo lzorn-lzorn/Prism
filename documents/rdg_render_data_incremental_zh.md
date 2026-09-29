@@ -15,6 +15,14 @@
 >
 > 另见 `sources/engine/modules/generic_application/includes/generic_application/widget/RenderTree.hpp`
 > (控件树 `RenderCommand` 扩展了纹理/文字).
+>
+> **图算法辅助设施**: `includes/rdg/RDG.hpp` + `sources/rdg/RDGGraph.cpp` /
+> `RDGPlan.cpp`（命名空间 `renderer::rdg`）提供了 `RDGBuilder` v1 边界内尚未具备的
+> 拓扑排序、Pass 裁剪、生命周期分析与显存别名（含 RHI 侧 transient heap /
+> placed resource 扩展），并配有 `SeedRDGTests`（CPU）与 `SeedRDGGpuTests`（真实设备）
+> 两组验证。它**不是**第二套帧录制路径——帧编排与录制一律以本文的 `RDGBuilder` 为准；
+> 后续应把其算法收敛进 `RDGBuilder::compile()`。设计说明见
+> [rdg_design_zh.md](rdg_design_zh.md)。
 
 ---
 

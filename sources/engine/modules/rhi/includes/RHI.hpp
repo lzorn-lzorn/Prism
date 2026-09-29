@@ -1070,6 +1070,115 @@ public:
 	virtual void freeMemory(std::shared_ptr<DeviceMemory> Memory) = 0;
 };
 
+/** @brief Describes a large device-memory backing store used for transient suballocation. */
+struct MemoryHeapDescriptor
+{
+	/** @brief 预估需要的字节数; 驱动可向上取整到自身页大小. */
+	DeviceSizeType  Size { 0 };
+	/** @brief 堆内子分配需要满足的最小对齐. */
+	DeviceSizeType  Alignment { 1 };
+	/** @brief 允许使用的内存类型位(通常来自资源的 MemoryRequirements). */
+	uint32_t        MemoryTypeBits { 0 };
+	/** @brief 必须满足的物理内存属性. */
+	EMemoryProperty RequiredProperties { EMemoryProperty_t::DeviceLocal };
+	/** @brief 优先选择的物理内存属性. */
+	EMemoryProperty PreferredProperties {};
+	/** @brief 诊断名称. */
+	std::string     DebugName;
+};
+
+/**
+ * @brief Reports whether a heap can serve one resource's memory requirements.
+ */
+[[nodiscard]] inline bool isHeapCompatible(
+	const MemoryHeapDescriptor& Heap,
+	const MemoryRequirements& Requirements) noexcept
+{
+	return Requirements.Size <= Heap.Size && Requirements.Alignment <= Heap.Alignment &&
+		(Requirements.MemoryTypeBits & Heap.MemoryTypeBits) != 0;
+}
+
+/**
+ * @brief 查询一个 Buffer 描述的显存需求, 但不真的创建资源.
+ *
+ * 显存别名需要在创建堆之前就知道"这个资源能用哪些内存类型",
+ * 因此该查询必须独立于资源创建存在.
+ */
+struct BufferRequirementsRequest
+{
+	rhi::DeviceSizeType  Size { 0 };
+	rhi::EBufferUsage    Usage {};
+	rhi::EMemoryUsage    MemoryUsage { rhi::EMemoryUsage::Auto };
+	rhi::EMemoryProperty MemoryProperty { rhi::EMemoryProperty_t::DeviceLocal };
+	rhi::EMemoryProperty PreferredMemoryProperty {};
+	bool                 DedicatedAllocation { false };
+};
+
+/** @brief 查询一个 Image 描述的显存需求, 但不真的创建资源. */
+struct ImageRequirementsRequest
+{
+	rhi::EFormat         Format { rhi::EFormat::Undefined };
+	rhi::EImageDimension Dimension { rhi::EImageDimension::Texture2D };
+	uint32_t             Width { 1 };
+	uint32_t             Height { 1 };
+	uint32_t             Depth { 1 };
+	uint32_t             MipLevels { 1 };
+	uint32_t             ArrayLayers { 1 };
+	rhi::ESharingMode    SharingMode { rhi::ESharingMode::Exclusive };
+	rhi::EImageUsage     Usage {};
+	rhi::ESampleCount    SampleCount { rhi::ESampleCount::Count1 };
+	rhi::EMemoryProperty MemoryProperty { rhi::EMemoryProperty_t::DeviceLocal };
+};
+
+/**
+ * @brief 一段可被多个"时间上不重叠"的资源复用的设备显存.
+ *
+ * 这是显存别名(aliasing)的基础设施:
+ *
+ *      auto Heap = Device->createTransientHeap({ .Size = 32MB, .MemoryTypeBits = Bits });
+ *      auto A = Device->createPlacedImage(ImageDesc, Heap, 0);
+ *      auto B = Device->createPlacedImage(OtherDesc, Heap, 0);   // 与 A 复用同一段显存
+ *
+ * 调用方必须保证 A 与 B 的 GPU 使用期不重叠, 并在复用点上插入
+ * Before=Undefined 的布局转换. 堆的生命周期必须覆盖其上所有资源.
+ */
+class RTransientHeap
+{
+public:
+	virtual ~RTransientHeap() = default;
+	RTransientHeap(const RTransientHeap&) = delete;
+	RTransientHeap& operator=(const RTransientHeap&) = delete;
+
+	/** @brief 返回所属设备. @return 创建设备. */
+	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
+	/** @brief 返回不可变描述. @return 描述. */
+	[[nodiscard]] virtual const MemoryHeapDescriptor& getDescriptor() const noexcept = 0;
+	/** @brief 返回底层对象是否可用. @return 可用时为 true. */
+	[[nodiscard]] virtual bool isValid() const noexcept = 0;
+	/** @brief 返回堆的字节容量. @return 容量. */
+	[[nodiscard]] virtual DeviceSizeType getSize() const noexcept = 0;
+
+	/**
+	 * @brief 在堆内切出一段区间.
+	 * @param Size 需要的字节数
+	 * @param Alignment 需要的对齐; 必须不超过堆描述里的 Alignment
+	 * @return 堆内偏移; 放不下返回 std::nullopt
+	 * @note 返回的区间由调用方通过 releaseSuballocation() 归还.
+	 */
+	[[nodiscard]] virtual std::optional<DeviceSizeType> suballocate(
+		DeviceSizeType Size,
+		DeviceSizeType Alignment) = 0;
+
+	/** @brief 归还一段之前由 suballocate() 切出的区间. */
+	virtual void releaseSuballocation(DeviceSizeType Offset, DeviceSizeType Size) = 0;
+
+	/** @brief 返回非 owning 后端句柄. @return 不可用时为 nullptr. */
+	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
+
+protected:
+	RTransientHeap() = default;
+};
+
 /**
  * @brief 跨后端 Buffer 资源. 
  *
@@ -2646,6 +2755,77 @@ public:
      * @return Resource, or nullptr on invalid/unsupported/out-of-memory/device-lost. 
      */
 	virtual std::shared_ptr<RImage> createImage(const RImage::Descriptor_t& Desc) = 0;
+
+	/**
+     * @brief 创建可用于瞬态子分配的大块显存.
+     * @param Desc 大小/对齐/内存类型要求.
+     * @return 堆对象; 后端不支持显存别名时返回 nullptr, 调用方必须回退到逐资源创建.
+     */
+	[[nodiscard]] virtual std::shared_ptr<RTransientHeap> createTransientHeap(
+		const MemoryHeapDescriptor& Desc)
+	{
+		(void)Desc;
+		return {};
+	}
+
+	/**
+     * @brief 查询 Buffer 描述对应的显存需求(不创建资源).
+     * @param Desc Buffer 描述.
+     * @return 需求; 后端不支持该查询时返回 std::nullopt.
+     * @note 显存别名必须在创建堆之前就知道"资源能用哪些内存类型", 因此该查询独立于创建.
+     */
+	[[nodiscard]] virtual std::optional<MemoryRequirements> getBufferMemoryRequirements(
+		const BufferRequirementsRequest& Desc)
+	{
+		(void)Desc;
+		return std::nullopt;
+	}
+
+	/**
+     * @brief 查询 Image 描述对应的显存需求(不创建资源).
+     * @param Desc Image 描述.
+     * @return 需求; 后端不支持该查询时返回 std::nullopt.
+     */
+	[[nodiscard]] virtual std::optional<MemoryRequirements> getImageMemoryRequirements(
+		const ImageRequirementsRequest& Desc)
+	{
+		(void)Desc;
+		return std::nullopt;
+	}
+
+	/**
+     * @brief 在既有显存区间上就地创建 Buffer(placed resource).
+     * @param Desc 不可变 Buffer 描述.
+     * @param Heap 承载显存的堆.
+     * @param Offset 堆内字节偏移, 必须满足 Buffer 的对齐要求.
+     * @return Buffer; 不支持 placed resource 或偏移非法时返回 nullptr, 调用方必须回退.
+     * @note 同一段显存可被多个 Buffer 复用, 但任意时刻只能有一个处于使用状态.
+     */
+	[[nodiscard]] virtual std::shared_ptr<RBuffer> createPlacedBuffer(
+		const RBuffer::Descriptor_t& Desc,
+		const std::shared_ptr<RTransientHeap>& Heap,
+		DeviceSizeType Offset)
+	{
+		(void)Desc; (void)Heap; (void)Offset;
+		return {};
+	}
+
+	/**
+     * @brief 在既有显存区间上就地创建 Image(placed resource).
+     * @param Desc 不可变 Image 描述.
+     * @param Heap 承载显存的堆.
+     * @param Offset 堆内字节偏移, 必须满足 Image 的对齐要求.
+     * @return Image; 不支持 placed resource 或偏移非法时返回 nullptr, 调用方必须回退.
+     * @note 复用同一段显存的 Image 之间必须插入 Before=Undefined 的布局转换.
+     */
+	[[nodiscard]] virtual std::shared_ptr<RImage> createPlacedImage(
+		const RImage::Descriptor_t& Desc,
+		const std::shared_ptr<RTransientHeap>& Heap,
+		DeviceSizeType Offset)
+	{
+		(void)Desc; (void)Heap; (void)Offset;
+		return {};
+	}
 	
     /** 
      * @brief Creates an image subresource view. 

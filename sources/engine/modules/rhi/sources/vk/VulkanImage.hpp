@@ -26,12 +26,28 @@ public:
 	[[nodiscard]] static std::shared_ptr<VulkanImage> createUnbound(
 		VulkanDevice& Device,
 		const Descriptor_t& Desc);
+	/**
+	 * @brief 创建未绑定显存且带 VK_IMAGE_CREATE_ALIAS_BIT 的 Image.
+	 * @note 复用同一段显存的 placed resource 必须使用该入口.
+	 */
+	[[nodiscard]] static std::shared_ptr<VulkanImage> createUnboundAliasing(
+		VulkanDevice& Device,
+		const Descriptor_t& Desc);
 	[[nodiscard]] static std::shared_ptr<VulkanImage> wrapExternal(
 		VulkanDevice& Device,
 		const Descriptor_t& Desc,
 		vk::Image Image);
 
 	void allocateAndBindMemory(DeviceMemoryAllocator* Allocator = nullptr);
+
+	/** @brief 查询驱动给出的显存需求(size / alignment / memoryTypeBits). */
+	[[nodiscard]] MemoryRequirements getMemoryRequirements() const;
+
+	/**
+	 * @brief 记录 placed resource 所绑定的显存.
+	 * @note 必须在 Device::bindImageMemory 之后调用; 该对象只保持引用, 不负责释放堆.
+	 */
+	void bindPlacedMemory(std::shared_ptr<DeviceMemory> InMemory);
 
 	[[nodiscard]] RDevice& getDevice() const noexcept override;
 	[[nodiscard]] bool isValid() const noexcept override { return static_cast<bool>(getVkImage()); }
@@ -50,7 +66,9 @@ private:
 	VulkanImage(VulkanDevice& Device, const Descriptor_t& Desc, vk::Image ExternalImage);
 
 	static void validateDescriptor(const Descriptor_t& Desc);
-	[[nodiscard]] static vk::ImageCreateInfo makeCreateInfo(const Descriptor_t& Desc);
+	[[nodiscard]] static vk::ImageCreateInfo makeCreateInfo(
+		const Descriptor_t& Desc,
+		bool EnableAliasing);
 
 	VulkanDevice* Device = nullptr;
 	std::shared_ptr<DeviceMemory> Memory;

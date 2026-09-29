@@ -7,6 +7,7 @@
 #include "VulkanDeviceMemory.hpp"
 #include "VulkanImageView.hpp"
 #include "VulkanImage.hpp"
+#include "VulkanMemoryHeap.hpp"
 #include "VulkanPipeline.hpp"
 #include "VulkanRayTracing.hpp"
 #include "VulkanSampler.hpp"
@@ -113,6 +114,108 @@ std::shared_ptr<RImage> VulkanDevice::createImage(const RImage::Descriptor_t& De
 {
 	requireReady();
 	return VulkanImage::create(*this, Desc);
+}
+
+std::shared_ptr<RTransientHeap> VulkanDevice::createTransientHeap(
+	const MemoryHeapDescriptor& Desc)
+{
+	requireReady();
+	return VulkanTransientHeap::create(*this, Desc);
+}
+
+std::optional<MemoryRequirements> VulkanDevice::getBufferMemoryRequirements(
+	const BufferRequirementsRequest& Desc)
+{
+	requireReady();
+	RBuffer::Descriptor_t BufferDesc;
+	BufferDesc.Size = Desc.Size;
+	BufferDesc.Usage = Desc.Usage;
+	BufferDesc.MemoryUsage = Desc.MemoryUsage;
+	BufferDesc.MemoryProperty = Desc.MemoryProperty;
+	BufferDesc.PreferredMemoryProperty = Desc.PreferredMemoryProperty;
+	BufferDesc.DedicatedAllocation = Desc.DedicatedAllocation;
+
+	auto buffer = VulkanBuffer::createUnbound(*this, BufferDesc);
+	if (!buffer)
+		return std::nullopt;
+	return buffer->getMemoryRequirements();
+}
+
+std::optional<MemoryRequirements> VulkanDevice::getImageMemoryRequirements(
+	const ImageRequirementsRequest& Desc)
+{
+	requireReady();
+	RImage::Descriptor_t ImageDesc;
+	ImageDesc.Format = Desc.Format;
+	ImageDesc.Dimension = Desc.Dimension;
+	ImageDesc.Width = Desc.Width;
+	ImageDesc.Height = Desc.Height;
+	ImageDesc.Depth = Desc.Depth;
+	ImageDesc.MipLevels = Desc.MipLevels;
+	ImageDesc.ArrayLayers = Desc.ArrayLayers;
+	ImageDesc.SharingMode = Desc.SharingMode;
+	ImageDesc.Usage = Desc.Usage;
+	ImageDesc.SampleCount = Desc.SampleCount;
+	ImageDesc.MemoryProperty = Desc.MemoryProperty;
+
+	// 用带别名标志的路径查询: 别名会改变驱动给出的显存需求估算.
+	auto image = VulkanImage::createUnboundAliasing(*this, ImageDesc);
+	if (!image)
+		return std::nullopt;
+	return image->getMemoryRequirements();
+}
+
+std::shared_ptr<RBuffer> VulkanDevice::createPlacedBuffer(
+	const RBuffer::Descriptor_t& Desc,
+	const std::shared_ptr<RTransientHeap>& Heap,
+	DeviceSizeType Offset)
+{
+	requireReady();
+	auto heap = std::dynamic_pointer_cast<VulkanTransientHeap>(Heap);
+	if (!heap || !heap->isValid())
+		return {};
+
+	const auto buffer = VulkanBuffer::createUnbound(*this, Desc);
+	if (!buffer)
+		return {};
+
+	const auto requirements = buffer->getMemoryRequirements();
+	if (Offset % std::max<DeviceSizeType>(1, requirements.Alignment) != 0 ||
+		Offset + requirements.Size > heap->getSize() ||
+		(requirements.MemoryTypeBits & (1u << heap->getMemoryTypeIndex())) == 0)
+		return {};
+
+	getVkDevice().bindBufferMemory(buffer->getVkBuffer(), heap->getVkDeviceMemory(), Offset);
+	buffer->bindPlacedMemory(
+		std::make_shared<VulkanHeapSubAllocation>(heap, Offset, requirements.Size));
+	return buffer;
+}
+
+std::shared_ptr<RImage> VulkanDevice::createPlacedImage(
+	const RImage::Descriptor_t& Desc,
+	const std::shared_ptr<RTransientHeap>& Heap,
+	DeviceSizeType Offset)
+{
+	requireReady();
+	auto heap = std::dynamic_pointer_cast<VulkanTransientHeap>(Heap);
+	if (!heap || !heap->isValid())
+		return {};
+
+	// 复用同一段显存的所有 Image 都必须带 VK_IMAGE_CREATE_ALIAS_BIT.
+	const auto image = VulkanImage::createUnboundAliasing(*this, Desc);
+	if (!image)
+		return {};
+
+	const auto requirements = image->getMemoryRequirements();
+	if (Offset % std::max<DeviceSizeType>(1, requirements.Alignment) != 0 ||
+		Offset + requirements.Size > heap->getSize() ||
+		(requirements.MemoryTypeBits & (1u << heap->getMemoryTypeIndex())) == 0)
+		return {};
+
+	getVkDevice().bindImageMemory(image->getVkImage(), heap->getVkDeviceMemory(), Offset);
+	image->bindPlacedMemory(
+		std::make_shared<VulkanHeapSubAllocation>(heap, Offset, requirements.Size));
+	return image;
 }
 
 std::shared_ptr<RImageView> VulkanDevice::createImageView(

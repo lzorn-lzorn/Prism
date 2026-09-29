@@ -11,6 +11,7 @@ namespace rhi
 
 class VulkanDevice;
 class VulkanMemoryBlock;
+class VulkanTransientHeap;
 
 /** @brief A buffer allocation backed by a device-owned best-fit memory page. */
 class VulkanMemoryAllocation final : public DeviceMemory
@@ -180,6 +181,51 @@ public:
 	[[nodiscard]] VulkanDevice* getDevice() const noexcept { return Device; }
 private:
 	VulkanDevice* Device = nullptr;
+};
+
+/**
+ * @brief placed resource 持有的显存视图.
+ *
+ * 真正的 VkDeviceMemory 由 VulkanTransientHeap 拥有, 本对象只是让
+ * RBuffer / RImage 能通过 DeviceMemory 接口报告"我绑在哪段显存上",
+ * 并在 release() 时把区间归还给堆的空闲表.
+ */
+class VulkanHeapSubAllocation final : public DeviceMemory
+{
+public:
+	VulkanHeapSubAllocation(
+		std::shared_ptr<VulkanTransientHeap> InHeap,
+		DeviceSizeType InOffset,
+		DeviceSizeType InSize) noexcept
+		: Heap(std::move(InHeap)), Offset(InOffset), Size(InSize)
+	{
+		OwnershipState = EState::ReadOnly;
+	}
+
+	void* map(DeviceSizeType, DeviceSizeType) override
+	{
+		throw std::logic_error("Placed resource heaps are not host mappable.");
+	}
+	void unmap() override {}
+	void flush(DeviceSizeType, DeviceSizeType) override {}
+	void invalidate(DeviceSizeType, DeviceSizeType) override {}
+	void release() override;
+	[[nodiscard]] MemoryRequirements getMemoryRequirements() const override
+	{
+		return MemoryRequirements { .Size = Size, .Alignment = 1, .MemoryTypeBits = 0 };
+	}
+	[[nodiscard]] EMemoryProperty getMemoryProperty() const override
+	{
+		return EMemoryProperty(EMemoryProperty_t::DeviceLocal);
+	}
+
+	[[nodiscard]] DeviceSizeType getOffset() const noexcept { return Offset; }
+	[[nodiscard]] const std::shared_ptr<VulkanTransientHeap>& getHeap() const noexcept { return Heap; }
+
+private:
+	std::shared_ptr<VulkanTransientHeap> Heap;
+	DeviceSizeType                       Offset { 0 };
+	DeviceSizeType                       Size { 0 };
 };
 	
 } // namespace rhi

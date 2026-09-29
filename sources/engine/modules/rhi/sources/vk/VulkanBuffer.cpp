@@ -10,17 +10,10 @@
 namespace rhi
 {
 
-VulkanBuffer::VulkanBuffer(VulkanDevice& InDevice, RBuffer::Descriptor_t Desc, std::shared_ptr<DeviceMemory> InMemory, vk::UniqueBuffer InBuffer)
-	: Device(&InDevice)
-	, Descriptor(std::move(Desc))
-	, Memory(std::move(InMemory))
-	, Buffer(std::move(InBuffer))
+namespace
 {
-}
-
-std::shared_ptr<VulkanBuffer> VulkanBuffer::create(
-	VulkanDevice& Device,
-	const RBuffer::Descriptor_t& Desc)
+/** @brief 校验 Buffer 描述; 所有创建路径共用, 避免 placed 路径漏检. */
+void validateBufferDescriptor(VulkanDevice& Device, const RBuffer::Descriptor_t& Desc)
 {
 	if (Desc.Size == 0)
 		throw std::invalid_argument("Vulkan buffer size must be non-zero.");
@@ -55,6 +48,57 @@ std::shared_ptr<VulkanBuffer> VulkanBuffer::create(
 	if (Desc.Usage.has(EBufferUsage_t::ShaderBindingTable) &&
 		!Device.getFeatures().RayTracingPipeline)
 		throw std::invalid_argument("Vulkan shader-binding-table usage is not enabled.");
+}
+} // namespace
+
+VulkanBuffer::VulkanBuffer(VulkanDevice& InDevice, RBuffer::Descriptor_t Desc, std::shared_ptr<DeviceMemory> InMemory, vk::UniqueBuffer InBuffer)
+	: Device(&InDevice)
+	, Descriptor(std::move(Desc))
+	, Memory(std::move(InMemory))
+	, Buffer(std::move(InBuffer))
+{
+}
+
+std::shared_ptr<VulkanBuffer> VulkanBuffer::createUnbound(
+	VulkanDevice& Device,
+	const Descriptor_t& Desc)
+{
+	validateBufferDescriptor(Device, Desc);
+	auto buffer = Device.getVkDevice().createBufferUnique(vk::BufferCreateInfo(
+		{}, Desc.Size, toVk(Desc.Usage), vk::SharingMode::eExclusive));
+	return std::shared_ptr<VulkanBuffer>(new VulkanBuffer(Device, Desc, {}, std::move(buffer)));
+}
+
+MemoryRequirements VulkanBuffer::getMemoryRequirements() const
+{
+	if (!Buffer)
+		throw std::logic_error("Vulkan buffer is invalid.");
+	vk::MemoryDedicatedRequirements dedicated_requirements;
+	vk::MemoryRequirements2 vk_requirements;
+	vk_requirements.pNext = &dedicated_requirements;
+	const vk::BufferMemoryRequirementsInfo2 requirements_info(Buffer.get());
+	Device->getVkDevice().getBufferMemoryRequirements2(&requirements_info, &vk_requirements);
+	return MemoryRequirements {
+		.Size = vk_requirements.memoryRequirements.size,
+		.Alignment = vk_requirements.memoryRequirements.alignment,
+		.MemoryTypeBits = vk_requirements.memoryRequirements.memoryTypeBits,
+		.PrefersDedicatedAllocation = dedicated_requirements.prefersDedicatedAllocation == VK_TRUE ||
+			Descriptor.DedicatedAllocation,
+		.RequiresDedicatedAllocation = dedicated_requirements.requiresDedicatedAllocation == VK_TRUE
+	};
+}
+
+void VulkanBuffer::bindPlacedMemory(std::shared_ptr<DeviceMemory> InMemory)
+{
+	Memory = std::move(InMemory);
+	OwnsAllocation = false;
+}
+
+std::shared_ptr<VulkanBuffer> VulkanBuffer::create(
+	VulkanDevice& Device,
+	const RBuffer::Descriptor_t& Desc)
+{
+	validateBufferDescriptor(Device, Desc);
 
 	auto buffer = Device.getVkDevice().createBufferUnique(vk::BufferCreateInfo(
 		{}, Desc.Size, toVk(Desc.Usage), vk::SharingMode::eExclusive));
@@ -70,6 +114,13 @@ std::shared_ptr<VulkanBuffer> VulkanBuffer::create(
 		.PrefersDedicatedAllocation = dedicated_requirements.prefersDedicatedAllocation == VK_TRUE || Desc.DedicatedAllocation,
 		.RequiresDedicatedAllocation = dedicated_requirements.requiresDedicatedAllocation == VK_TRUE
 	};
+	const bool memory_usage_is_host_visible = Desc.MemoryUsage == EMemoryUsage::CPUToGPU ||
+		Desc.MemoryUsage == EMemoryUsage::GPUToCPU || Desc.MemoryUsage == EMemoryUsage::CPUOnly;
+	const bool requires_device_address =
+		Desc.Usage.has(EBufferUsage_t::DeviceAddress) ||
+		Desc.Usage.has(EBufferUsage_t::AccelerationStructureBuildInput) ||
+		Desc.Usage.has(EBufferUsage_t::AccelerationStructureStorage) ||
+		Desc.Usage.has(EBufferUsage_t::ShaderBindingTable);
 	auto required_properties = Desc.MemoryProperty;
 	// RBuffer::Descriptor_t defaults to GPU-local memory. An explicit CPU allocation intent
 	// replaces that default unless the caller supplied additional required properties.

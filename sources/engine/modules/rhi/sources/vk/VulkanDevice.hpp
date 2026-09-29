@@ -72,6 +72,20 @@ public:
 public:
     std::shared_ptr<RBuffer> createBuffer(const RBuffer::Descriptor_t& Desc) override;
     std::shared_ptr<RImage> createImage(const RImage::Descriptor_t& Desc) override;
+    [[nodiscard]] std::shared_ptr<RTransientHeap> createTransientHeap(
+        const MemoryHeapDescriptor& Desc) override;
+    [[nodiscard]] std::optional<MemoryRequirements> getBufferMemoryRequirements(
+        const BufferRequirementsRequest& Desc) override;
+    [[nodiscard]] std::optional<MemoryRequirements> getImageMemoryRequirements(
+        const ImageRequirementsRequest& Desc) override;
+    [[nodiscard]] std::shared_ptr<RBuffer> createPlacedBuffer(
+        const RBuffer::Descriptor_t& Desc,
+        const std::shared_ptr<RTransientHeap>& Heap,
+        DeviceSizeType Offset) override;
+    [[nodiscard]] std::shared_ptr<RImage> createPlacedImage(
+        const RImage::Descriptor_t& Desc,
+        const std::shared_ptr<RTransientHeap>& Heap,
+        DeviceSizeType Offset) override;
     std::shared_ptr<RImageView> createImageView(const RImageView::Descriptor_t& Desc) override;
     std::shared_ptr<RSampler> createSampler(const RSampler::Descriptor_t& Desc = {}) override;
     std::shared_ptr<RShader> createShader(const ShaderDescriptor& Desc) override;
