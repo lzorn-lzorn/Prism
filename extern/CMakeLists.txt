@@ -13,8 +13,8 @@
 # )
 
 add_subdirectory(SDL)
-add_subdirectory(json) 
-add_subdirectory(tomlplusplus)
+# add_subdirectory(json) 
+# add_subdirectory(tomlplusplus)
 
 set(SPIRV_REFLECT_EXECUTABLE OFF) # 禁止构建 SPIRV-Reflect 的 examples
 set(SPIRV_REFLECT_STATIC_LIB ON)  # Renderer 私有使用反射实现
