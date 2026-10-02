@@ -1,5 +1,6 @@
 #pragma once
 
+#include <material/Material.hpp>
 #include <RHI.hpp>
 
 #include <core/math/Color.hpp>
@@ -95,6 +96,9 @@ DEFINE_ENUM_OPERATOR(EChangeFlags_t);
 struct DrawPacket
 {
 	using SortKey = uint64_t;
+
+	/** 顶点工厂句柄: 决定顶点语义/顶点着色器变体. */
+	::renderer::VertexFactoryHandle VertexFactory;
 
 	/** 可执行管线(不可变, 由 PipelineManager 缓存). */
 	std::shared_ptr<rhi::RPipeline> Pipeline;
@@ -224,7 +228,7 @@ struct RigidBodyRenderData
 {
 	std::shared_ptr<rhi::RBuffer> VertexBuffer;
 	std::shared_ptr<rhi::RBuffer> IndexBuffer;
-	rhi::VertexInputState VertexInput;
+	::renderer::VertexFactoryHandle VertexFactory;
 	rhi::EIndexFormat IndexFormat { rhi::EIndexFormat::UInt32 };
 	uint32_t IndexCount { 0 };
 

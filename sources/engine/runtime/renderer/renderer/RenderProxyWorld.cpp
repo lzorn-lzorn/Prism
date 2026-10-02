@@ -198,10 +198,13 @@ void RenderProxyWorld::buildSubmission(RenderFrameSubmission& Out, EChangeFlags 
 			{
 				if (Value.Header.Kind == ERenderProxyKind::RigidBodyMesh && Value.Mesh)
 				{
+					if (!Value.Mesh->VertexFactory.isValid())
+						return;
+
 					RigidBodyRenderData Rigid;
 					Rigid.VertexBuffer = Value.Mesh->VertexBuffer;
 					Rigid.IndexBuffer = Value.Mesh->IndexBuffer;
-					Rigid.VertexInput = Value.Mesh->VertexInput;
+					Rigid.VertexFactory = Value.Mesh->VertexFactory;
 					Rigid.IndexFormat = Value.Mesh->IndexFormat;
 					Rigid.IndexCount = Value.Mesh->IndexCount;
 					Rigid.MaterialId = Value.Header.MaterialId;

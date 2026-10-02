@@ -48,7 +48,7 @@ struct StaticMesh
 {
 	std::shared_ptr<rhi::RBuffer> VertexBuffer;
 	std::shared_ptr<rhi::RBuffer> IndexBuffer;
-	rhi::VertexInputState VertexInput;
+	::renderer::VertexFactoryHandle VertexFactory;
 	rhi::EIndexFormat IndexFormat { rhi::EIndexFormat::UInt32 };
 	uint32_t IndexCount { 0 };
 
