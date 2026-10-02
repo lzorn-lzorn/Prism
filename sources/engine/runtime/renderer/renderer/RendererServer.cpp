@@ -38,8 +38,9 @@ struct RendererServer::Implementation
 	std::optional<double> LastGPUFrameTimeNanoseconds;
 
 	// 渲染世界与 UI 渲染器(Renderer 持有的高层状态).
-	RenderWorld RenderWorld;
+	RenderProxyWorld ProxyWorld;
 	UIRenderer UIRenderer;
+	RenderFrameSubmission LastSubmission;
 
 	/**
 	 * @brief 一帧录制回调: 接收命令列表、交换链图像/视图、尺寸与图像是否已初始化.
@@ -602,16 +603,34 @@ RendererServer::EFrameStatus RendererServer::renderFrameGraph(const FrameGraphSe
 	});
 }
 
-RenderWorld& RendererServer::getRenderWorld() noexcept
+RenderProxyWorld& RendererServer::getRenderProxyWorld() noexcept
 {
-	static RenderWorld Fallback;
-	return Impl ? Impl->RenderWorld : Fallback;
+	static RenderProxyWorld Fallback;
+	return Impl ? Impl->ProxyWorld : Fallback;
 }
 
 UIRenderer& RendererServer::getUIRenderer() noexcept
 {
 	static UIRenderer Fallback;
 	return Impl ? Impl->UIRenderer : Fallback;
+}
+
+const RenderFrameSubmission& RendererServer::buildRenderSubmission()
+{
+	static RenderFrameSubmission Fallback;
+	if (!Impl)
+		return Fallback;
+
+	const EChangeFlags world_changes = Impl->ProxyWorld.consumeChangeFlags();
+	const EChangeFlags ui_changes = Impl->UIRenderer.consumeChangeFlags();
+	Impl->ProxyWorld.buildSubmission(Impl->LastSubmission, world_changes, ui_changes);
+	return Impl->LastSubmission;
+}
+
+const RenderFrameSubmission& RendererServer::getLastRenderSubmission() const noexcept
+{
+	static RenderFrameSubmission Fallback;
+	return Impl ? Impl->LastSubmission : Fallback;
 }
 
 void RendererServer::resize(uint32_t Width, uint32_t Height)

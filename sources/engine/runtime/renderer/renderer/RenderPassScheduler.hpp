@@ -7,11 +7,12 @@
 
 /**
  * ============================================================================
- *  runtime::renderer - 场景渲染器(编排器)与细粒度子渲染器
+ *  runtime::renderer - 场景渲染器(PassScheduler)与细粒度子渲染器
  * ============================================================================
  *
  *  [定位]
- *  SceneRenderer 对应 UE 的 FDeferredShadingSceneRenderer: 它不亲自画任何东西, 而是
+ *  SceneRenderer 是一层 PassScheduler(对应 UE 的 FDeferredShadingSceneRenderer):
+ *  它不亲自画任何东西, 而是
  *  按固定顺序驱动一组 IRenderPass 子渲染器, 让它们向**同一个** RDGBuilder 声明 Pass,
  *  最终由 RendererServer::renderFrameGraph 一次 compile()+execute() 完成整帧.
  *  这样 3D 各阶段与 UI 虽然实现不同, 但最后合并进同一张图、同一条命令流.
@@ -34,15 +35,15 @@ namespace runtime::renderer
 {
 
 /**
- * @brief 场景渲染器: 驱动一组子渲染器向同一 RDG 声明 Pass.
+ * @brief 场景渲染器(PassScheduler): 驱动一组子渲染器向同一 RDG 声明 Pass.
  */
-class SceneRenderer
+class RenderPassScheduler
 {
 public:
-	SceneRenderer() = default;
+	RenderPassScheduler() = default;
 
-	SceneRenderer(const SceneRenderer&) = delete;
-	SceneRenderer& operator=(const SceneRenderer&) = delete;
+	RenderPassScheduler(const RenderPassScheduler&) = delete;
+	RenderPassScheduler& operator=(const RenderPassScheduler&) = delete;
 
 	/** @brief 注册一个子渲染器(按添加顺序执行). */
 	void addPass(std::unique_ptr<IRenderPass> Pass);
@@ -64,6 +65,9 @@ public:
 private:
 	std::vector<std::unique_ptr<IRenderPass>> Passes;
 };
+
+/** @brief 向后兼容别名: 新代码请优先使用 RenderPassScheduler. */
+using SceneRenderer = RenderPassScheduler;
 
 // ============================================================================
 //  具体子渲染器(架构骨架, Execute 待 MaterialSystem/2D 管线接入后填充)

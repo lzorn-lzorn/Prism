@@ -1,7 +1,7 @@
 #pragma once
 
 #include <rdg/RDGBuilder.hpp>
-#include <renderer/RenderWorld.hpp>
+#include <renderer/RenderProxyWorld.hpp>
 #include <renderer/UIRenderer.hpp>
 
 #include <core/math/Matrix.hpp>
@@ -29,7 +29,7 @@
  *  UI 与 3D 即使内部实现不同, 最后也合并进同一张图、同一条命令流.
  *
  *  [依赖方向]
- *  IRenderPass / SceneRenderer -> RenderWorld + UIRenderer + RDGBuilder -> RHI
+ *  IRenderPass / SceneRenderer(PassScheduler) -> RenderProxyWorld + UIRenderer + RDGBuilder -> RHI
  * ============================================================================
  */
 namespace runtime::renderer
@@ -69,9 +69,13 @@ struct RenderFrameResources
  */
 struct RenderContext
 {
-	const RenderWorld& World;
+	const RenderProxyWorld& ProxyWorld;
 	const RenderView& View;
 	const UIRenderer& UI;
+	/**
+	 * @brief World 预处理后的帧交换包(可为空, 由调用方控制是否启用统一提交流).
+	 */
+	const RenderFrameSubmission* Submission { nullptr };
 	/** 最终输出目标(由 RendererServer::renderFrameGraph 导入的交换链图). */
 	RDGResourceId Backbuffer { InvalidRDGResourceId };
 	/** 共享 transient 句柄(可变, 子渲染器按需填充/读取). */

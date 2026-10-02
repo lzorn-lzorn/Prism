@@ -1,4 +1,4 @@
-#include <renderer/SceneRenderer.hpp>
+#include <renderer/RenderPassScheduler.hpp>
 
 namespace runtime::renderer
 {
@@ -7,18 +7,18 @@ namespace runtime::renderer
 //  SceneRenderer(编排器)
 // ============================================================================
 
-void SceneRenderer::addPass(std::unique_ptr<IRenderPass> Pass)
+void RenderPassScheduler::addPass(std::unique_ptr<IRenderPass> Pass)
 {
 	if (Pass)
 		Passes.push_back(std::move(Pass));
 }
 
-void SceneRenderer::clear()
+void RenderPassScheduler::clear()
 {
 	Passes.clear();
 }
 
-void SceneRenderer::build(RDGBuilder& Builder, const RenderContext& BaseContext)
+void RenderPassScheduler::build(RDGBuilder& Builder, const RenderContext& BaseContext)
 {
 	// 复制上下文(引用成员指向同一对象), 让子渲染器可通过 FrameResources 填充/读取共享句柄.
 	RenderContext Context = BaseContext;
@@ -95,8 +95,8 @@ void OpaqueRenderPass::addPasses(RDGBuilder& Builder, const RenderContext& Conte
 					rhi::EStoreOp::Store);
 		},
 		[&Context](RDGExecuteContext& ExecuteContext) {
-			// TODO: 遍历 Context.World.collectVisible() 的不透明区间,
-			//       经 MaterialSystem 解析为 DrawPacket 后逐个 drawIndexed.
+			// TODO: 优先消费 Context.Submission->OpaqueDraws;
+			//       无 Submission 时回退到 Context.ProxyWorld.collectVisible() 路径.
 			(void)ExecuteContext;
 		});
 }
@@ -108,7 +108,8 @@ void TransparentRenderPass::addPasses(RDGBuilder& Builder, const RenderContext& 
 			PassBuilder.renderTarget(Context.Backbuffer, rhi::ELoadOp::Load, rhi::EStoreOp::Store);
 		},
 		[](RDGExecuteContext&) {
-			// TODO: 按深度从后向前绘制半透明代理(读深度, 不写深度).
+			// TODO: 消费 Context.Submission->TransparentDraws,
+			//       或回退到透明代理排序路径(读深度, 不写深度).
 		});
 }
 

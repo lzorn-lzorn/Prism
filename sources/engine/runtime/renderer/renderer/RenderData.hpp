@@ -3,10 +3,12 @@
 #include <RHI.hpp>
 
 #include <core/math/Color.hpp>
+#include <core/math/Matrix.hpp>
 #include <core/math/Vector.hpp>
 #include <core/wrappers/Flag.hpp>
 
 #include <cstdint>
+#include <array>
 #include <memory>
 #include <vector>
 
@@ -127,6 +129,152 @@ struct DrawPacket
 
 /** @brief 有序的绘制包列表, 通常按 SortKey 稳定排序后交给 RenderPass 消费. */
 using DrawList = std::vector<DrawPacket>;
+
+// ============================================================================
+//  2.1 World -> Renderer 帧交换格式: 环境与仿真数据
+// ============================================================================
+
+/** @brief 光源类型. */
+enum class ELightType : uint8_t
+{
+	Directional,
+	Point,
+	Spot,
+};
+
+/** @brief 光源的渲染侧快照(与游戏逻辑对象解耦). */
+struct LightData
+{
+	ELightType Type { ELightType::Directional };
+	float Intensity { 1.0f };
+	float Range { 0.0f };
+	float SpotInnerCos { 0.9f };
+	float SpotOuterCos { 0.8f };
+
+	core::Vec3f PositionWS { 0.0f, 0.0f, 0.0f };
+	core::Vec3f DirectionWS { 0.0f, -1.0f, 0.0f };
+	core::LinearColor4D Color { 1.0f, 1.0f, 1.0f, 1.0f };
+
+	bool CastShadow { false };
+	uint32_t ShadowSlice { 0 };
+};
+
+using LightList = std::vector<LightData>;
+
+/** @brief 流体/水体渲染快照: 仿真纹理 + 绘制参数. */
+struct FluidSurfaceData
+{
+	std::shared_ptr<rhi::RImageView> HeightField;
+	std::shared_ptr<rhi::RImageView> NormalField;
+	std::shared_ptr<rhi::RImageView> FlowField;
+
+	std::shared_ptr<rhi::RBuffer> VertexBuffer;
+	std::shared_ptr<rhi::RBuffer> IndexBuffer;
+	uint32_t IndexCount { 0 };
+	uint32_t MaterialId { 0 };
+
+	float GridWorldSize { 1.0f };
+	float FoamThreshold { 0.6f };
+	float RefractionStrength { 0.02f };
+};
+
+using FluidList = std::vector<FluidSurfaceData>;
+
+/** @brief 气体/体积介质渲染快照. */
+struct GasVolumeData
+{
+	core::Vec3f BoundsMinWS { 0.0f, 0.0f, 0.0f };
+	core::Vec3f BoundsMaxWS { 0.0f, 0.0f, 0.0f };
+
+	std::shared_ptr<rhi::RImageView> Density3D;
+	std::shared_ptr<rhi::RImageView> Temperature3D;
+	std::shared_ptr<rhi::RImageView> Velocity3D;
+
+	float Scattering { 0.04f };
+	float Absorption { 0.01f };
+	float AnisotropyG { 0.2f };
+	uint32_t StepCount { 64 };
+};
+
+using GasVolumeList = std::vector<GasVolumeData>;
+
+/** @brief 地形 Patch 渲染快照(按块管理 LOD 与材质). */
+struct TerrainPatchData
+{
+	core::Matrix4x4 LocalToWorld {};
+	uint32_t LodLevel { 0 };
+	core::Vec2f PatchSizeMeters { 64.0f, 64.0f };
+
+	std::shared_ptr<rhi::RBuffer> VertexBuffer;
+	std::shared_ptr<rhi::RBuffer> IndexBuffer;
+	uint32_t IndexCount { 0 };
+
+	std::shared_ptr<rhi::RImageView> HeightMap;
+	std::shared_ptr<rhi::RImageView> NormalMap;
+	std::shared_ptr<rhi::RImageView> SplatMap;
+	std::array<std::shared_ptr<rhi::RImageView>, 4> LayerAlbedo {};
+
+	uint32_t MaterialId { 0 };
+};
+
+using TerrainPatchList = std::vector<TerrainPatchData>;
+
+/** @brief 刚体渲染快照: 当前/上一帧变换用于运动矢量与 TAA. */
+struct RigidBodyRenderData
+{
+	std::shared_ptr<rhi::RBuffer> VertexBuffer;
+	std::shared_ptr<rhi::RBuffer> IndexBuffer;
+	rhi::VertexInputState VertexInput;
+	rhi::EIndexFormat IndexFormat { rhi::EIndexFormat::UInt32 };
+	uint32_t IndexCount { 0 };
+
+	uint32_t MaterialId { 0 };
+	core::Matrix4x4 CurrentLocalToWorld {};
+	core::Matrix4x4 PreviousLocalToWorld {};
+	core::Vec3f LinearVelocityWS { 0.0f, 0.0f, 0.0f };
+	core::Vec3f AngularVelocityWS { 0.0f, 0.0f, 0.0f };
+	bool Sleeping { false };
+	bool Transparent { false };
+	uint32_t StableOrder { 0 };
+};
+
+using RigidBodyList = std::vector<RigidBodyRenderData>;
+
+/**
+ * @brief World 在帧边界提交给 Renderer 的统一交换包.
+ *
+ * DrawLists 是 RenderProxy 预处理后可直接录制命令的几何队列;
+ * 其余列表是光照/体积/仿真系统的参数快照.
+ */
+struct RenderFrameSubmission
+{
+	DrawList ShadowDraws;
+	DrawList OpaqueDraws;
+	DrawList TransparentDraws;
+
+	LightList Lights;
+	FluidList Fluids;
+	GasVolumeList Gases;
+	TerrainPatchList Terrains;
+	RigidBodyList RigidBodies;
+
+	EChangeFlags WorldChanges {};
+	EChangeFlags UIChanges {};
+
+	void clear() noexcept
+	{
+		ShadowDraws.clear();
+		OpaqueDraws.clear();
+		TransparentDraws.clear();
+		Lights.clear();
+		Fluids.clear();
+		Gases.clear();
+		Terrains.clear();
+		RigidBodies.clear();
+		WorldChanges = EChangeFlags_t::None;
+		UIChanges = EChangeFlags_t::None;
+	}
+};
 
 // ============================================================================
 //  3. 2D/UI 渲染交换格式: UIQuad / UIRenderBatch

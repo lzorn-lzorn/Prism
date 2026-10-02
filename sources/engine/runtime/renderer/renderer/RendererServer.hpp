@@ -4,7 +4,7 @@
 
 #include <rdg/RDGBuilder.hpp>
 #include <renderer/RenderData.hpp>
-#include <renderer/RenderWorld.hpp>
+#include <renderer/RenderProxyWorld.hpp>
 #include <renderer/UIRenderer.hpp>
 
 #include <memory>
@@ -81,11 +81,25 @@ public:
 	/** @brief Retains an object until all renderer submissions made so far have completed. */
 	[[nodiscard]] bool deferRelease(std::shared_ptr<void> Resource);
 
-	/** @brief 渲染世界(持有 RenderProxy 与变化意图), 供应用/Game Framework 填充. */
-	[[nodiscard]] RenderWorld& getRenderWorld() noexcept;
+	/** @brief 渲染代理世界数据容器(持有 RenderProxy 与变化意图), 供应用/Game Framework 填充. */
+	[[nodiscard]] RenderProxyWorld& getRenderProxyWorld() noexcept;
+
+	/** @brief 兼容旧接口; 新代码请改用 getRenderProxyWorld(). */
+	[[nodiscard]] RenderProxyWorld& getRenderWorld() noexcept { return getRenderProxyWorld(); }
 
 	/** @brief UI 渲染器(控件树 -> 合批), 供应用提交控件树. */
 	[[nodiscard]] UIRenderer& getUIRenderer() noexcept;
+
+	/**
+	 * @brief 构建并缓存一份 World -> Renderer 的统一帧交换包.
+	 *
+	 * 默认会读取并清零 RenderWorld/UIRenderer 的变化意图, 然后把分类代理预处理成
+	 * RenderFrameSubmission, 供 SceneRenderer 各 Pass 消费.
+	 */
+	[[nodiscard]] const RenderFrameSubmission& buildRenderSubmission();
+
+	/** @brief 最近一次 buildRenderSubmission() 的结果快照. */
+	[[nodiscard]] const RenderFrameSubmission& getLastRenderSubmission() const noexcept;
 
 	/**
 	 * @brief Exercises reflection, automatic resource resolution and descriptor binding.
