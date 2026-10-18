@@ -1,4 +1,4 @@
-#include "VulkanBindGroup.hpp"
+﻿#include "VulkanBindGroup.hpp"
 
 #include "VulkanBuffer.hpp"
 #include "VulkanDevice.hpp"
@@ -47,11 +47,11 @@ bool isBufferDescriptor(EDescriptorType Type)
 
 void validateBufferUsage(const RBuffer::Descriptor_t& Desc, EDescriptorType Type)
 {
-	if (Type == EDescriptorType::UniformBuffer && !Desc.Usage.has(EBufferUsage_t::Uniform))
+	if (Type == EDescriptorType::UniformBuffer && !Desc.Usage.has(EBufferUsage::Uniform))
 		throw std::invalid_argument("Uniform-buffer binding requires Uniform buffer usage.");
 	if ((Type == EDescriptorType::ReadOnlyStorageBuffer ||
 		Type == EDescriptorType::ReadWriteStorageBuffer) &&
-		!Desc.Usage.has(EBufferUsage_t::Storage))
+		!Desc.Usage.has(EBufferUsage::Storage))
 	{
 		throw std::invalid_argument("Storage-buffer binding requires Storage buffer usage.");
 	}
@@ -294,8 +294,8 @@ VulkanBindGroup::VulkanBindGroup(
 				throw std::invalid_argument("Texel-buffer descriptor requires a valid buffer and format.");
 			const auto& buffer_desc = buffer->getDescriptor();
 			const auto required_usage = layout_entry.Type == EDescriptorType::UniformTexelBuffer
-				? EBufferUsage_t::UniformTexel
-				: EBufferUsage_t::StorageTexel;
+				? EBufferUsage::UniformTexel
+				: EBufferUsage::StorageTexel;
 			if (!buffer_desc.Usage.has(required_usage))
 				throw std::invalid_argument("Texel-buffer binding has incompatible buffer usage.");
 			if (binding->Offset >= buffer_desc.Size ||

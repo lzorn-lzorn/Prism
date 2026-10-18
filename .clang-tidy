@@ -1,0 +1,145 @@
+# ============================================================================
+# 基于 documents/devnotes.md 命名规范生成的 clang-tidy 配置
+#
+# 规范 -> readability-identifier-naming 映射:
+#   类型 / TypeTrait / Concept      : 大驼峰 (CamelCase)
+#   接口类                            : 抽象类 + I- 前缀 (AbstractClass)
+#   枚举                              : E- 前缀; 枚举值大驼峰
+#   函数 / 成员函数 / lambda         : 小驼峰 (camelBack)
+#   函数形参 / 局部变量 / 成员变量     : 下划线 (lower_case)
+#   全局常量 / 枚举值                : 大驼峰 (无前缀)
+#   全局变量                          : 大驼峰 + G- 前缀
+#   命名空间                          : 单小写单词 (lower_case)
+#   例外                              : 标准库兼容别名(见 IgnoredRegexp)
+#
+# 用法:
+#   clang-tidy -p build <file.cpp>
+#   或: clang-tidy --extra-arg-before=--driver-mode=cl -p build <file.cpp>
+#   (本项目 compile_commands.json 使用 clang-cl, 需 --driver-mode=cl)
+#
+# 注意: 当前源码(Editor/PrismCore 迁移代码)的成员/形参仍是 PascalCase,
+#       尚未按此规范重命名; 启用本检查会先报告大量告警, 属预期现象.
+# ============================================================================
+
+Checks: '-*,readability-identifier-naming'
+
+CheckOptions:
+  # --------------------------------------------------------------------------
+  # 类型 / TypeTrait / Concept: 大驼峰
+  # --------------------------------------------------------------------------
+  - key:   readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key:   readability-identifier-naming.StructCase
+    value: CamelCase
+  - key:   readability-identifier-naming.UnionCase
+    value: CamelCase
+  - key:   readability-identifier-naming.EnumCase
+    value: CamelCase
+  - key:   readability-identifier-naming.TypeAliasCase
+    value: CamelCase
+  - key:   readability-identifier-naming.TypedefCase
+    value: CamelCase
+  - key:   readability-identifier-naming.ConceptCase
+    value: CamelCase
+  - key:   readability-identifier-naming.TemplateParameterCase
+    value: CamelCase
+  - key:   readability-identifier-naming.ValueTemplateParameterCase
+    value: CamelCase
+  - key:   readability-identifier-naming.TemplateTemplateParameterCase
+    value: CamelCase
+
+  # --------------------------------------------------------------------------
+  # 接口类(抽象类) I- 前缀
+  # --------------------------------------------------------------------------
+  - key:   readability-identifier-naming.AbstractClassCase
+    value: CamelCase
+  - key:   readability-identifier-naming.AbstractClassPrefix
+    value: I
+
+  # --------------------------------------------------------------------------
+  # 枚举 E- 前缀; 枚举值大驼峰
+  # --------------------------------------------------------------------------
+  - key:   readability-identifier-naming.EnumPrefix
+    value: E
+  - key:   readability-identifier-naming.EnumConstantCase
+    value: CamelCase
+
+  # --------------------------------------------------------------------------
+  # 函数 / 成员函数 / lambda: 小驼峰
+  # --------------------------------------------------------------------------
+  - key:   readability-identifier-naming.FunctionCase
+    value: camelBack
+  - key:   readability-identifier-naming.MethodCase
+    value: camelBack
+  - key:   readability-identifier-naming.VirtualMethodCase
+    value: camelBack
+  - key:   readability-identifier-naming.ConstexprFunctionCase
+    value: camelBack
+  - key:   readability-identifier-naming.GlobalFunctionCase
+    value: camelBack
+
+  # --------------------------------------------------------------------------
+  # 函数形参 / 局部变量 / 成员变量: 下划线命名
+  # --------------------------------------------------------------------------
+  - key:   readability-identifier-naming.MemberCase
+    value: lower_case
+  - key:   readability-identifier-naming.PrivateMemberCase
+    value: lower_case
+  - key:   readability-identifier-naming.ProtectedMemberCase
+    value: lower_case
+  - key:   readability-identifier-naming.PublicMemberCase
+    value: lower_case
+  - key:   readability-identifier-naming.ParameterCase
+    value: lower_case
+  - key:   readability-identifier-naming.PointerParameterCase
+    value: lower_case
+  - key:   readability-identifier-naming.ParameterPackCase
+    value: lower_case
+  - key:   readability-identifier-naming.LocalVariableCase
+    value: lower_case
+  - key:   readability-identifier-naming.LocalPointerCase
+    value: lower_case
+  - key:   readability-identifier-naming.VariableCase
+    value: lower_case
+
+  # --------------------------------------------------------------------------
+  # 全局: 大驼峰; 全局变量 G- 前缀
+  # --------------------------------------------------------------------------
+  - key:   readability-identifier-naming.GlobalConstantCase
+    value: CamelCase
+  - key:   readability-identifier-naming.GlobalVariableCase
+    value: CamelCase
+  - key:   readability-identifier-naming.GlobalVariablePrefix
+    value: G
+  - key:   readability-identifier-naming.GlobalPointerCase
+    value: CamelCase
+  - key:   readability-identifier-naming.GlobalPointerPrefix
+    value: G
+
+  # --------------------------------------------------------------------------
+  # 常量(const/constexpr/static 成员): 大驼峰
+  # --------------------------------------------------------------------------
+  - key:   readability-identifier-naming.ConstantCase
+    value: CamelCase
+  - key:   readability-identifier-naming.ConstexprVariableCase
+    value: CamelCase
+  - key:   readability-identifier-naming.ClassConstantCase
+    value: CamelCase
+  - key:   readability-identifier-naming.StaticConstantCase
+    value: CamelCase
+  - key:   readability-identifier-naming.LocalConstantCase
+    value: lower_case
+
+  # --------------------------------------------------------------------------
+  # 命名空间: 单小写单词
+  # --------------------------------------------------------------------------
+  - key:   readability-identifier-naming.NamespaceCase
+    value: lower_case
+  - key:   readability-identifier-naming.InlineNamespaceCase
+    value: lower_case
+
+  # --------------------------------------------------------------------------
+  # 忽略: 标准库兼容别名 (devnotes 明确豁免)
+  # --------------------------------------------------------------------------
+  - key:   readability-identifier-naming.IgnoredRegexp
+    value: '^(value_type|size_type|difference_type|pointer|const_pointer|reference|const_reference|iterator|const_iterator|reverse_iterator|key_type|mapped_type|key_compare|value_compare|hasher|allocator_type|first_type|second_type)$'

@@ -5,7 +5,6 @@
 #include <vector>
 #include <memory>
 
-#include <renderer/RenderThread.hpp>
 #include <RTCommon.hpp>
 
 namespace runtime
@@ -59,7 +58,6 @@ private:
 	std::atomic<bool> ShouldQuit { false };
 	bool IsFirstFrame { true };
 
-	std::unique_ptr<runtime::RenderThread> RenderThread;
 	
 };
 }

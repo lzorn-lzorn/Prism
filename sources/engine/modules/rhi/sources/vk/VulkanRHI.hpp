@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <memory>
 #include <stdexcept>
@@ -77,22 +77,22 @@ inline auto toVk(EShaderStage Stage) -> vk::ShaderStageFlags
 	return result;
 }
 }
-inline auto toVk(EBufferUsage Usage) -> vk::BufferUsageFlags
+inline auto toVk(EBufferUsageFlags Usage) -> vk::BufferUsageFlags
 {
 	vk::BufferUsageFlags flags = vk::BufferUsageFlags();
-	if (Usage.has(EBufferUsage_t::Vertex)) flags |= vk::BufferUsageFlags::BitsType::eVertexBuffer;
-	if (Usage.has(EBufferUsage_t::Index)) flags |= vk::BufferUsageFlags::BitsType::eIndexBuffer;
-	if (Usage.has(EBufferUsage_t::Uniform)) flags |= vk::BufferUsageFlags::BitsType::eUniformBuffer;
-	if (Usage.has(EBufferUsage_t::Storage)) flags |= vk::BufferUsageFlags::BitsType::eStorageBuffer;
-	if (Usage.has(EBufferUsage_t::Indirect)) flags |= vk::BufferUsageFlags::BitsType::eIndirectBuffer;
-	if (Usage.has(EBufferUsage_t::TransferSrc)) flags |= vk::BufferUsageFlags::BitsType::eTransferSrc;
-	if (Usage.has(EBufferUsage_t::TransferDst)) flags |= vk::BufferUsageFlags::BitsType::eTransferDst;
-	if (Usage.has(EBufferUsage_t::UniformTexel)) flags |= vk::BufferUsageFlags::BitsType::eUniformTexelBuffer;
-	if (Usage.has(EBufferUsage_t::StorageTexel)) flags |= vk::BufferUsageFlags::BitsType::eStorageTexelBuffer;
-	if (Usage.has(EBufferUsage_t::DeviceAddress)) flags |= vk::BufferUsageFlags::BitsType::eShaderDeviceAddress;
-	if (Usage.has(EBufferUsage_t::AccelerationStructureBuildInput)) flags |= vk::BufferUsageFlags::BitsType::eAccelerationStructureBuildInputReadOnlyKHR;
-	if (Usage.has(EBufferUsage_t::AccelerationStructureStorage)) flags |= vk::BufferUsageFlags::BitsType::eAccelerationStructureStorageKHR;
-	if (Usage.has(EBufferUsage_t::ShaderBindingTable)) flags |= vk::BufferUsageFlags::BitsType::eShaderBindingTableKHR;
+	if (Usage.has(EBufferUsage::Vertex)) flags |= vk::BufferUsageFlags::BitsType::eVertexBuffer;
+	if (Usage.has(EBufferUsage::Index)) flags |= vk::BufferUsageFlags::BitsType::eIndexBuffer;
+	if (Usage.has(EBufferUsage::Uniform)) flags |= vk::BufferUsageFlags::BitsType::eUniformBuffer;
+	if (Usage.has(EBufferUsage::Storage)) flags |= vk::BufferUsageFlags::BitsType::eStorageBuffer;
+	if (Usage.has(EBufferUsage::Indirect)) flags |= vk::BufferUsageFlags::BitsType::eIndirectBuffer;
+	if (Usage.has(EBufferUsage::TransferSrc)) flags |= vk::BufferUsageFlags::BitsType::eTransferSrc;
+	if (Usage.has(EBufferUsage::TransferDst)) flags |= vk::BufferUsageFlags::BitsType::eTransferDst;
+	if (Usage.has(EBufferUsage::UniformTexel)) flags |= vk::BufferUsageFlags::BitsType::eUniformTexelBuffer;
+	if (Usage.has(EBufferUsage::StorageTexel)) flags |= vk::BufferUsageFlags::BitsType::eStorageTexelBuffer;
+	if (Usage.has(EBufferUsage::DeviceAddress)) flags |= vk::BufferUsageFlags::BitsType::eShaderDeviceAddress;
+	if (Usage.has(EBufferUsage::AccelerationStructureBuildInput)) flags |= vk::BufferUsageFlags::BitsType::eAccelerationStructureBuildInputReadOnlyKHR;
+	if (Usage.has(EBufferUsage::AccelerationStructureStorage)) flags |= vk::BufferUsageFlags::BitsType::eAccelerationStructureStorageKHR;
+	if (Usage.has(EBufferUsage::ShaderBindingTable)) flags |= vk::BufferUsageFlags::BitsType::eShaderBindingTableKHR;
 	return flags;
 }
 
@@ -359,23 +359,23 @@ inline auto toVk(ESharingMode Mode) -> vk::SharingMode
 		: vk::SharingMode::eExclusive;
 }
 
-inline auto toVk(EMemoryProperty Properties) -> vk::MemoryPropertyFlags
+inline auto toVk(EMemoryPropertyFlags Properties) -> vk::MemoryPropertyFlags
 {
     vk::MemoryPropertyFlags Flags = {};
 
-    if (Properties.has(EMemoryProperty_t::DeviceLocal))
+    if (Properties.has(EMemoryProperty::DeviceLocal))
         Flags |= vk::MemoryPropertyFlagBits::eDeviceLocal;
     
-    if (Properties.has(EMemoryProperty_t::HostVisible))
+    if (Properties.has(EMemoryProperty::HostVisible))
         Flags |= vk::MemoryPropertyFlagBits::eHostVisible;
     
-    if (Properties.has(EMemoryProperty_t::HostCoherent))
+    if (Properties.has(EMemoryProperty::HostCoherent))
         Flags |= vk::MemoryPropertyFlagBits::eHostCoherent;
     
-    if (Properties.has(EMemoryProperty_t::HostCached))
+    if (Properties.has(EMemoryProperty::HostCached))
         Flags |= vk::MemoryPropertyFlagBits::eHostCached;
     
-    if (Properties.has(EMemoryProperty_t::LazilyAllocated))
+    if (Properties.has(EMemoryProperty::LazilyAllocated))
         Flags |= vk::MemoryPropertyFlagBits::eLazilyAllocated;
 
     return Flags;

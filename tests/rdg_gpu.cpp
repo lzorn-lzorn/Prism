@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ============================================================================
  *  tests/rdg_gpu.cpp
  * ============================================================================
@@ -57,21 +57,22 @@ class SdlTestWindow final : public ui::IGenericWindow
 public:
 	explicit SdlTestWindow(SDL_Window* InWindow) : Window(InWindow) {}
 
-	[[nodiscard]] ui::WindowId_t getWindowId() override { return 0; }
-	void show() override {}
-	void close() override {}
-	void minimize() override {}
-	void maximize() override {}
-	void setTitle(const std::string&) override {}
-	void setPosition(int32_t, int32_t) override {}
-	void setSize(int32_t, int32_t) override {}
-	void setWindowType(ui::EWindowType) override {}
-	[[nodiscard]] ui::UIVector getPosition() override { return {}; }
-	[[nodiscard]] ui::UIVector getSize() override { return {}; }
-	[[nodiscard]] int32_t getWidth() override { return 64; }
-	[[nodiscard]] int32_t getHeight() override { return 64; }
-	[[nodiscard]] ui::EWindowType getWindowType() override { return ui::EWindowType::Windowed; }
+	[[nodiscard]] ui::WindowId getId() const noexcept override { return 0; }
+	[[nodiscard]] ui::UISize getSize() const override { return {64, 64}; }
+	[[nodiscard]] ui::UISize getPixelSize() const override { return {64, 64}; }
+	[[nodiscard]] ui::Rect getSafeArea() const override { return {0, 0, 64, 64}; }
+	[[nodiscard]] float getDisplayScale() const override { return 1.0f; }
 	[[nodiscard]] void* getNativeHandle() const noexcept override { return Window; }
+	void setTitle(const std::string&) override {}
+	void setSize(ui::UISize) override {}
+	void setResizable(bool) override {}
+	void show() override {}
+	void hide() override {}
+	void setFullscreen(bool) override {}
+	void setRelativeMouse(bool) override {}
+	void startTextInput() override {}
+	void stopTextInput() override {}
+	void setTextInputArea(ui::Rect, int) override {}
 
 private:
 	SDL_Window* Window { nullptr };
@@ -85,8 +86,8 @@ void testRhiPlacedResources(rhi::RDevice& Device)
 {
 	rhi::RBuffer::Descriptor_t buffer_desc;
 	buffer_desc.Size = 4096;
-	buffer_desc.Usage = rhi::EBufferUsage(rhi::EBufferUsage_t::Storage) |
-		rhi::EBufferUsage_t::TransferDst;
+	buffer_desc.Usage = rhi::EBufferUsageFlags(rhi::EBufferUsage::Storage) |
+		rhi::EBufferUsage::TransferDst;
 	buffer_desc.MemoryUsage = rhi::EMemoryUsage::GPUOnly;
 	buffer_desc.DebugName = "PlacedProbeBuffer";
 
@@ -100,7 +101,7 @@ void testRhiPlacedResources(rhi::RDevice& Device)
 	heap_desc.Size = 256 * 1024;
 	heap_desc.Alignment = DefaultResourceAlignment;
 	heap_desc.MemoryTypeBits = 0xFFFFFFFFu;
-	heap_desc.RequiredProperties = rhi::EMemoryProperty(rhi::EMemoryProperty_t::DeviceLocal);
+	heap_desc.RequiredProperties = rhi::EMemoryPropertyFlags(rhi::EMemoryProperty::DeviceLocal);
 	heap_desc.DebugName = "PlacedProbeHeap";
 
 	auto heap = Device.createTransientHeap(heap_desc);
@@ -210,8 +211,8 @@ void testFrameGraphOnDevice(rhi::RDevice& Device)
 	{
 		Storage = B.createBuffer("Storage", {
 			.Size = 64 * 1024,
-			.Usage = rhi::EBufferUsage(rhi::EBufferUsage_t::Storage) |
-				rhi::EBufferUsage_t::TransferDst
+			.Usage = rhi::EBufferUsageFlags(rhi::EBufferUsage::Storage) |
+				rhi::EBufferUsage::TransferDst
 		});
 		B.read(Medium, EResourceState::PixelShaderResource);
 		B.readWrite(Storage, EResourceState::UnorderedAccess);

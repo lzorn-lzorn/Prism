@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <RHI.hpp>
 #include <list>
 #include <memory>
@@ -27,7 +27,7 @@ public:
 	void invalidate(DeviceSizeType Offset, DeviceSizeType Size) override;
 	void release() override;
 	[[nodiscard]] MemoryRequirements getMemoryRequirements() const override { return Requirements; }
-	[[nodiscard]] EMemoryProperty getMemoryProperty() const override { return Info.Properties; }
+	[[nodiscard]] EMemoryPropertyFlags getMemoryProperty() const override { return Info.Properties; }
 	[[nodiscard]] std::optional<MemoryAllocationInfo> getAllocationInfo() const override { return Info; }
 	[[nodiscard]] vk::DeviceMemory getVkDeviceMemory() const noexcept;
 
@@ -84,7 +84,7 @@ public:
 	VulkanDeviceMemory() 
 		: VkDeviceMemory(VK_NULL_HANDLE)
 		, Requirements({})
-		, Property(EMemoryProperty::enum_type::None)
+		, Property(EMemoryPropertyFlags::enum_type::None)
 		, OwnerDevice(nullptr)
 	{}
 	~VulkanDeviceMemory() override = default;
@@ -93,7 +93,7 @@ public:
 
 	VulkanDeviceMemory(VulkanDeviceMemory&&);
 	VulkanDeviceMemory& operator=(VulkanDeviceMemory&&);
-	VulkanDeviceMemory(MemoryRequirements InRequirements, EMemoryProperty InProperty)
+	VulkanDeviceMemory(MemoryRequirements InRequirements, EMemoryPropertyFlags InProperty)
 		: Requirements(InRequirements), Property(InProperty) {}
 
 	void* map(DeviceSizeType Offset = 0, DeviceSizeType Size = 0) override;
@@ -108,14 +108,14 @@ public:
 	vk::DeviceMemory getVkDeviceMemory() const { return VkDeviceMemory; } 
 	vk::DeviceMemory getVkDeviceMemory() { return VkDeviceMemory; } 
 	MemoryRequirements getMemoryRequirements() const override;
-	EMemoryProperty getMemoryProperty() const override;
+	EMemoryPropertyFlags getMemoryProperty() const override;
 	
 private:
 	void reset();
 	MemoryRequirements Requirements;
 	vk::DeviceMemory VkDeviceMemory { VK_NULL_HANDLE };	
 	vk::Device OwnerDevice { VK_NULL_HANDLE };
-	EMemoryProperty Property;
+	EMemoryPropertyFlags Property;
 	
 };
 
@@ -174,7 +174,7 @@ public:
 
 	// note: 从池中分配一个 VulkanDeviceMemory, 
 	// note: 在 GPU 上分配一段显存, 将其与 VulkanDeviceMemory 绑定, 并设置内部的对应的所有权字段
-	std::shared_ptr<DeviceMemory> allocateMemory(MemoryRequirements Requirements, EMemoryProperty Property) override;
+	std::shared_ptr<DeviceMemory> allocateMemory(MemoryRequirements Requirements, EMemoryPropertyFlags Property) override;
 	void freeMemory(std::shared_ptr<DeviceMemory> Memory) override;
 
 	void setDevice(VulkanDevice* InDevice) noexcept { Device = InDevice; }
@@ -214,9 +214,9 @@ public:
 	{
 		return MemoryRequirements { .Size = Size, .Alignment = 1, .MemoryTypeBits = 0 };
 	}
-	[[nodiscard]] EMemoryProperty getMemoryProperty() const override
+	[[nodiscard]] EMemoryPropertyFlags getMemoryProperty() const override
 	{
-		return EMemoryProperty(EMemoryProperty_t::DeviceLocal);
+		return EMemoryPropertyFlags(EMemoryProperty::DeviceLocal);
 	}
 
 	[[nodiscard]] DeviceSizeType getOffset() const noexcept { return Offset; }

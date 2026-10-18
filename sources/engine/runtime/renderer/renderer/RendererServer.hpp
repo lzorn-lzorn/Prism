@@ -5,7 +5,6 @@
 #include <rdg/RDGBuilder.hpp>
 #include <renderer/RenderData.hpp>
 #include <renderer/RenderProxyWorld.hpp>
-#include <renderer/UIRenderer.hpp>
 
 #include <memory>
 #include <functional>
@@ -88,7 +87,6 @@ public:
 	[[nodiscard]] RenderProxyWorld& getRenderWorld() noexcept { return getRenderProxyWorld(); }
 
 	/** @brief UI 渲染器(控件树 -> 合批), 供应用提交控件树. */
-	[[nodiscard]] UIRenderer& getUIRenderer() noexcept;
 
 	/**
 	 * @brief 构建并缓存一份 World -> Renderer 的统一帧交换包.

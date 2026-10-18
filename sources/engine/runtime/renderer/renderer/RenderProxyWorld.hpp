@@ -2,8 +2,8 @@
 
 #include <renderer/RenderData.hpp>
 
-#include <core/math/Matrix.hpp>
-#include <core/math/Vector.hpp>
+#include <infra/math/Matrix.hpp>
+#include <infra/math/Vector.hpp>
 
 #include <cstdint>
 #include <variant>
@@ -53,7 +53,7 @@ struct StaticMesh
 	uint32_t IndexCount { 0 };
 
 	/** 包围球中心(世界空间), 供剔除使用. */
-	core::Vec3f BoundsCenter { 0.0f, 0.0f, 0.0f };
+	infra::Vec3f BoundsCenter { 0.0f, 0.0f, 0.0f };
 	/** 包围球半径. */
 	float BoundsRadius { 0.0f };
 };
@@ -76,8 +76,8 @@ struct RenderProxyHeader
 	uint64_t EntityId { 0 };
 	ERenderProxyKind Kind { ERenderProxyKind::OpaqueMesh };
 	uint32_t MaterialId { 0 };
-	core::Matrix4x4 LocalToWorld {};
-	core::Vec3f BoundsCenterWS { 0.0f, 0.0f, 0.0f };
+	infra::Matrix4x4 LocalToWorld {};
+	infra::Vec3f BoundsCenterWS { 0.0f, 0.0f, 0.0f };
 	float BoundsRadius { 0.0f };
 	uint32_t StableOrder { 0 };
 };
@@ -88,9 +88,9 @@ struct MeshRenderProxy
 	RenderProxyHeader Header;
 	std::shared_ptr<StaticMesh> Mesh;
 	bool CastShadow { true };
-	core::Matrix4x4 PreviousLocalToWorld {};
-	core::Vec3f LinearVelocityWS { 0.0f, 0.0f, 0.0f };
-	core::Vec3f AngularVelocityWS { 0.0f, 0.0f, 0.0f };
+	infra::Matrix4x4 PreviousLocalToWorld {};
+	infra::Vec3f LinearVelocityWS { 0.0f, 0.0f, 0.0f };
+	infra::Vec3f AngularVelocityWS { 0.0f, 0.0f, 0.0f };
 	bool Sleeping { false };
 };
 
@@ -163,7 +163,7 @@ public:
 	void removeProxy(uint32_t Index);
 
 	/** @brief 更新代理变换. 置 Transform 变化标志. */
-	void updateTransform(uint32_t Index, const core::Matrix4x4& LocalToWorld);
+	void updateTransform(uint32_t Index, const infra::Matrix4x4& LocalToWorld);
 
 	/** @brief 更新代理材质引用. 置 Material 变化标志. */
 	void updateMaterial(uint32_t Index, uint32_t MaterialId);

@@ -19,9 +19,9 @@
 #include <utility>
 #include <vector>
 
-#include "core/containers/Buffer.hpp"
-#include "core/wrappers/Flag.hpp"
-#include "core/common/AtomicShared.hpp"
+#include "infra/containers/Buffer.hpp"
+#include "infra/wrappers/Flag.hpp"
+#include "infra/common/AtomicShared.hpp"
 
 namespace runtime
 {
@@ -37,7 +37,7 @@ enum class LogDestination_t : std::uint8_t
 	All = (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3),
 };
 
-using LogDestination = core::Flags<LogDestination_t>;
+using LogDestination = infra::Flags<LogDestination_t>;
 
 [[nodiscard]]
 constexpr bool hasDestination(LogDestination Value, LogDestination Test) noexcept
@@ -365,11 +365,11 @@ private:
 	void flushSerializedBuffer() noexcept;
 	void closeLogFile() noexcept;
 
-	core::RingBuffer<Message, std::allocator<Message>, core::ERingBufferPolicy::MPSC> MessageQueue;
+	infra::RingBuffer<Message, std::allocator<Message>, infra::ERingBufferPolicy::MPSC> MessageQueue;
 
-    core::AtomicShared<const sink_list_t> SinksSnapshot;
-    core::AtomicShared<const screen_sink_t> ScreenSinkSnapshot;
-    core::AtomicShared<const editor_console_sink_t> EditorConsoleSinkSnapshot;
+    infra::AtomicShared<const sink_list_t> SinksSnapshot;
+    infra::AtomicShared<const screen_sink_t> ScreenSinkSnapshot;
+    infra::AtomicShared<const editor_console_sink_t> EditorConsoleSinkSnapshot;
 // #ifdef __cpp_lib_atomic_shared_ptr
 // 	std::atomic<std::shared_ptr<const sink_list_t>> SinksSnapshot;
 // 	std::atomic<std::shared_ptr<const screen_sink_t>> ScreenSinkSnapshot;

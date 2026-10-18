@@ -1,0 +1,5 @@
+# CLI11 - 头文件命令行解析库(从 Editor 构建缓存 vendor, 原 v2.5.0)
+add_library(CLI11 INTERFACE)
+add_library(CLI11::CLI11 ALIAS CLI11)
+target_include_directories(CLI11 INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_compile_features(CLI11 INTERFACE cxx_std_11)

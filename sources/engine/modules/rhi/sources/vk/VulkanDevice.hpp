@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <memory>
 #include <mutex>
@@ -126,7 +126,7 @@ public:
 	std::shared_ptr<RTexture> createTexture(const RTexture::Descriptor_t& Desc) override;
     std::shared_ptr<DeviceMemory> allocateMemory(
         MemoryRequirements Requirements,
-        EMemoryProperty Property) override;
+        EMemoryPropertyFlags Property) override;
     std::shared_ptr<DeviceMemory> allocateMemory(
         const MemoryAllocationDescriptor& Desc) override;
     void freeMemory(std::shared_ptr<DeviceMemory> Memory) override;

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 /**
  * ============================================================================
@@ -46,9 +46,9 @@
  *  "我要读什么, 我要写什么".
  *
  *
- *  [为什么不用 core::HandleManager]
+ *  [为什么不用 infra::HandleManager]
  *
- *  core::HandleManager 是进程级单例注册表, 内部用 shared_mutex 保护, 面向的是
+ *  infra::HandleManager 是进程级单例注册表, 内部用 shared_mutex 保护, 面向的是
  *  "跨系统长期存在的资源"(材质, 网格, 纹理). RDG 的资源是"帧内瞬态"的:
  *
  *      - 生命周期严格绑定在 RDGGraph 实例上, 不需要进程级注册;
@@ -301,10 +301,10 @@ enum class EResourceKind : uint8_t
 struct BufferDesc
 {
 	rhi::DeviceSizeType  Size { 0 };
-	rhi::EBufferUsage    Usage {};
+	rhi::EBufferUsageFlags    Usage {};
 	rhi::EMemoryUsage    MemoryUsage { rhi::EMemoryUsage::Auto };
-	rhi::EMemoryProperty MemoryProperty { rhi::EMemoryProperty_t::DeviceLocal };
-	rhi::EMemoryProperty PreferredMemoryProperty {};
+	rhi::EMemoryPropertyFlags MemoryProperty { rhi::EMemoryProperty::DeviceLocal };
+	rhi::EMemoryPropertyFlags PreferredMemoryProperty {};
 	float                MemoryPriority { 0.5f };
 	bool                 DedicatedAllocation { false };
 	bool                 PersistentlyMapped { false };
@@ -331,7 +331,7 @@ struct TextureDesc
 	uint32_t             MipLevels { 1 };
 	uint32_t             ArrayLayers { 1 };
 	rhi::ESharingMode    SharingMode { rhi::ESharingMode::Exclusive };
-	rhi::EMemoryProperty MemoryProperty { rhi::EMemoryProperty_t::DeviceLocal };
+	rhi::EMemoryPropertyFlags MemoryProperty { rhi::EMemoryProperty::DeviceLocal };
 	rhi::EImageUsage     Usage {};
 	rhi::ESampleCount    SampleCount { rhi::ESampleCount::Count1 };
 	std::string          Name;

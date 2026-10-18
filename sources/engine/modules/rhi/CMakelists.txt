@@ -141,7 +141,7 @@ add_internal_library(RHI
     SOURCES             ${SOURCES_LIST}
     INCLUDES            "${CMAKE_CURRENT_SOURCE_DIR}/includes"
     PRIVATE_INCLUDES    "${CMAKE_CURRENT_SOURCE_DIR}/sources"
-    PUBLIC_DEPENDENCY   Core::Core Module::GenericApplication
+    PUBLIC_DEPENDENCY   Infra::Infra Generic::Generic
     ALIAS               Module::RHI
 )
 

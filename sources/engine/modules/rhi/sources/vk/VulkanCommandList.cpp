@@ -1,4 +1,4 @@
-#include "VulkanCommandList.hpp"
+﻿#include "VulkanCommandList.hpp"
 
 #include "VulkanBindGroup.hpp"
 #include "VulkanBuffer.hpp"
@@ -1109,7 +1109,7 @@ void VulkanCommandList::bindVertexBuffers(
 	{
 		const auto& buffer = getVulkanBuffer(binding.Buffer);
 		const auto& desc = binding.Buffer->getDescriptor();
-		if (!desc.Usage.has(EBufferUsage_t::Vertex) || binding.Offset >= desc.Size)
+		if (!desc.Usage.has(EBufferUsage::Vertex) || binding.Offset >= desc.Size)
 			throw std::invalid_argument("Vertex binding requires Vertex usage and a valid offset.");
 		buffers.emplace_back(buffer.getVkBuffer());
 		offsets.emplace_back(binding.Offset);
@@ -1126,7 +1126,7 @@ void VulkanCommandList::bindIndexBuffer(
 	requireRecording("bindIndexBuffer");
 	const auto& buffer = getVulkanBuffer(Buffer);
 	const auto& desc = Buffer->getDescriptor();
-	if (!desc.Usage.has(EBufferUsage_t::Index) || Format == EIndexFormat::None || Offset >= desc.Size)
+	if (!desc.Usage.has(EBufferUsage::Index) || Format == EIndexFormat::None || Offset >= desc.Size)
 		throw std::invalid_argument("Index binding requires Index usage, a format, and a valid offset.");
 	CommandBuffer->bindIndexBuffer(buffer.getVkBuffer(), Offset, toVk(Format));
 	RetainedResources.emplace_back(Buffer);
@@ -1141,8 +1141,8 @@ void VulkanCommandList::copyBuffer(
 	requireOutsideRendering("copyBuffer");
 	const auto& source = getVulkanBuffer(Source);
 	const auto& destination = getVulkanBuffer(Destination);
-	if (!Source->getDescriptor().Usage.has(EBufferUsage_t::TransferSrc) ||
-		!Destination->getDescriptor().Usage.has(EBufferUsage_t::TransferDst))
+	if (!Source->getDescriptor().Usage.has(EBufferUsage::TransferSrc) ||
+		!Destination->getDescriptor().Usage.has(EBufferUsage::TransferDst))
 		throw std::invalid_argument("Buffer copy resources require TransferSrc/TransferDst usage.");
 	std::vector<vk::BufferCopy> regions;
 	regions.reserve(Regions.size());
@@ -1169,7 +1169,7 @@ void VulkanCommandList::copyBufferToImage(
 	requireOutsideRendering("copyBufferToImage");
 	const auto& source = getVulkanBuffer(Source);
 	const auto& destination = getVulkanImage(Destination);
-	if (!Source->getDescriptor().Usage.has(EBufferUsage_t::TransferSrc) ||
+	if (!Source->getDescriptor().Usage.has(EBufferUsage::TransferSrc) ||
 		!Destination->getDescriptor().Usage.has(EImageUsage_t::TransferDst))
 		throw std::invalid_argument("Buffer-to-image copy requires TransferSrc/TransferDst usage.");
 	std::vector<vk::BufferImageCopy> regions;
@@ -1196,7 +1196,7 @@ void VulkanCommandList::copyImageToBuffer(
 	const auto& source = getVulkanImage(Source);
 	const auto& destination = getVulkanBuffer(Destination);
 	if (!Source->getDescriptor().Usage.has(EImageUsage_t::TransferSrc) ||
-		!Destination->getDescriptor().Usage.has(EBufferUsage_t::TransferDst))
+		!Destination->getDescriptor().Usage.has(EBufferUsage::TransferDst))
 		throw std::invalid_argument("Image-to-buffer copy requires TransferSrc/TransferDst usage.");
 	std::vector<vk::BufferImageCopy> regions;
 	regions.reserve(Regions.size());
@@ -1291,7 +1291,7 @@ void VulkanCommandList::fillBuffer(
 	requireRecording("fillBuffer");
 	requireOutsideRendering("fillBuffer");
 	const auto& buffer = getVulkanBuffer(Buffer);
-	if (!Buffer->getDescriptor().Usage.has(EBufferUsage_t::TransferDst) || (Offset & 3u) != 0)
+	if (!Buffer->getDescriptor().Usage.has(EBufferUsage::TransferDst) || (Offset & 3u) != 0)
 		throw std::invalid_argument("Buffer fill requires TransferDst usage and a 4-byte aligned offset.");
 	const uint64_t size = clampCopySize(Offset, Size, Buffer->getDescriptor().Size);
 	if ((size & 3u) != 0)
@@ -1382,7 +1382,7 @@ void VulkanCommandList::drawIndirect(
 	requireInsideRendering("drawIndirect");
 	validateGraphicsPipeline();
 	const auto& buffer = getVulkanBuffer(Buffer);
-	if (!Buffer->getDescriptor().Usage.has(EBufferUsage_t::Indirect))
+	if (!Buffer->getDescriptor().Usage.has(EBufferUsage::Indirect))
 		throw std::invalid_argument("Indirect draw requires Indirect buffer usage.");
 	CommandBuffer->drawIndirect(buffer.getVkBuffer(), Offset, DrawCount, Stride);
 	RetainedResources.emplace_back(Buffer);
@@ -1398,7 +1398,7 @@ void VulkanCommandList::drawIndexedIndirect(
 	requireInsideRendering("drawIndexedIndirect");
 	validateGraphicsPipeline();
 	const auto& buffer = getVulkanBuffer(Buffer);
-	if (!Buffer->getDescriptor().Usage.has(EBufferUsage_t::Indirect))
+	if (!Buffer->getDescriptor().Usage.has(EBufferUsage::Indirect))
 		throw std::invalid_argument("Indexed indirect draw requires Indirect buffer usage.");
 	CommandBuffer->drawIndexedIndirect(buffer.getVkBuffer(), Offset, DrawCount, Stride);
 	RetainedResources.emplace_back(Buffer);
@@ -1413,7 +1413,7 @@ void VulkanCommandList::dispatchIndirect(
 	if (!BoundComputePipeline)
 		throw std::logic_error("Indirect dispatch requires a bound compute pipeline.");
 	const auto& buffer = getVulkanBuffer(Buffer);
-	if (!Buffer->getDescriptor().Usage.has(EBufferUsage_t::Indirect))
+	if (!Buffer->getDescriptor().Usage.has(EBufferUsage::Indirect))
 		throw std::invalid_argument("Indirect dispatch requires Indirect buffer usage.");
 	CommandBuffer->dispatchIndirect(buffer.getVkBuffer(), Offset);
 	RetainedResources.emplace_back(Buffer);
@@ -1490,7 +1490,7 @@ bool VulkanCommandList::copyQueryResults(
 		const auto& buffer = getVulkanBuffer(Destination);
 		if (&pool.getDevice() != Device || &buffer.getDevice() != Device ||
 			First >= Pool->getDescriptor().Count || Count > Pool->getDescriptor().Count - First ||
-			!Destination->getDescriptor().Usage.has(EBufferUsage_t::TransferDst) ||
+			!Destination->getDescriptor().Usage.has(EBufferUsage::TransferDst) ||
 			(Pool->getDescriptor().Type == EQueryType::Timestamp &&
 				Flags.has(EQueryResultFlag_t::Partial)) ||
 			(Flags.Value & ~((1u << 4) - 1)) != 0)

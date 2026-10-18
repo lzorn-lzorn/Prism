@@ -11,3 +11,15 @@
 	path = extern/DirectXShaderCompiler
 	url = https://github.com/microsoft/DirectXShaderCompiler.git
 	branch = main
+[submodule "extern/freetype"]
+	path = extern/freetype
+	url = https://gitlab.freedesktop.org/freetype/freetype
+[submodule "extern/harfbuzz"]
+	path = extern/harfbuzz
+	url = https://github.com/harfbuzz/harfbuzz.git
+[submodule "extern/zlib"]
+	path = extern/zlib
+	url = https://github.com/madler/zlib.git
+[submodule "extern/libpng"]
+	path = extern/libpng
+	url = https://github.com/pnggroup/libpng.git

@@ -1,4 +1,4 @@
-#include <rdg/RDGBuilder.hpp>
+﻿#include <rdg/RDGBuilder.hpp>
 
 #include <stdexcept>
 #include <utility>
@@ -376,7 +376,7 @@ void RDGBuilder::ensureAllocated(RDGResource& Resource)
 			.MipLevels = D.MipLevels,
 			.ArrayLayers = D.ArrayLayers,
 			.SharingMode = rhi::ESharingMode::Exclusive,
-			.MemoryProperty = rhi::EMemoryProperty_t::DeviceLocal,
+			.MemoryProperty = rhi::EMemoryProperty::DeviceLocal,
 			.Usage = D.Usage,
 			.SampleCount = D.Samples,
 		};

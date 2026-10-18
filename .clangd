@@ -1,4 +1,4 @@
-CompileFlags:
+﻿CompileFlags:
   CompilationDatabase: build
   Add:
     - -x
@@ -7,6 +7,7 @@ CompileFlags:
     - --target=x86_64-pc-windows-msvc
     - -fms-extensions
     - -fms-compatibility
+
 Index:
   Background: Build
 
@@ -15,4 +16,9 @@ Completion:
   HeaderInsertion: IWYU
 
 Diagnostics:
+  # 命名规范检查: 完整选项见 .clang-tidy, clangd 会自动读取.
+  # 仅启用命名检查, 避免引入无关告警; 需要更多检查时可向 Add 追加.
+  ClangTidy:
+    Add:
+      - readability-identifier-naming
   UnusedIncludes: None

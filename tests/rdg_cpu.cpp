@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ============================================================================
  *  tests/rdg_cpu.cpp
  * ============================================================================
@@ -440,7 +440,7 @@ BufferDesc StorageBufferDesc(std::string Name, uint64_t Size)
 {
 	BufferDesc Desc;
 	Desc.Size = Size;
-	Desc.Usage = rhi::EBufferUsage(rhi::EBufferUsage_t::Storage) | rhi::EBufferUsage_t::TransferDst;
+	Desc.Usage = rhi::EBufferUsageFlags(rhi::EBufferUsage::Storage) | rhi::EBufferUsage::TransferDst;
 	Desc.Name = std::move(Name);
 	return Desc;
 }

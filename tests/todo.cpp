@@ -1,4 +1,4 @@
-#include <RHI.hpp>
+﻿#include <RHI.hpp>
 #include <vk/VulkanWSI.hpp>
 
 #include <cassert>
@@ -11,13 +11,13 @@ using namespace rhi;
 
 constexpr bool flagsContract()
 {
-	EBufferUsage usage(EBufferUsage_t::Vertex);
-	usage = usage | EBufferUsage_t::TransferDst;
-	if (!usage.has(EBufferUsage_t::Vertex) || !usage.has(EBufferUsage_t::TransferDst))
+	EBufferUsageFlags usage(EBufferUsage::Vertex);
+	usage = usage | EBufferUsage::TransferDst;
+	if (!usage.has(EBufferUsage::Vertex) || !usage.has(EBufferUsage::TransferDst))
 		return false;
-	usage.set(EBufferUsage_t::DeviceAddress);
-	usage.clear(EBufferUsage_t::Vertex);
-	return usage.has(EBufferUsage_t::DeviceAddress) && !usage.has(EBufferUsage_t::Vertex) &&
+	usage.set(EBufferUsage::DeviceAddress);
+	usage.clear(EBufferUsage::Vertex);
+	return usage.has(EBufferUsage::DeviceAddress) && !usage.has(EBufferUsage::Vertex) &&
 		static_cast<bool>(usage);
 }
 
@@ -30,9 +30,9 @@ constexpr RenderingSignature colorSignature(EFormat Format)
 }
 
 static_assert(flagsContract());
-static_assert(std::is_same_v<EBufferUsage::enum_type, EBufferUsage_t>);
+static_assert(std::is_same_v<EBufferUsageFlags::enum_type, EBufferUsage>);
 static_assert(std::is_same_v<EPipelineStatistics::underlying, uint32_t>);
-static_assert(static_cast<uint32_t>(EBufferUsage_t::DeviceAddress) == (1u << 9));
+static_assert(static_cast<uint32_t>(EBufferUsage::DeviceAddress) == (1u << 9));
 static_assert(static_cast<uint64_t>(EDynamicState_t::VertexInput) == (1ull << 16));
 static_assert(EAcquireStatus::DeviceLost != EAcquireStatus::SurfaceLost);
 static_assert(EPresentStatus::OutOfDate != EPresentStatus::Suboptimal);
@@ -52,13 +52,13 @@ int main()
 {
 	using namespace rhi;
 
-	EBufferUsage buffer_usage(EBufferUsage_t::Vertex);
-	buffer_usage = buffer_usage | EBufferUsage_t::TransferDst;
-	assert(buffer_usage.has(EBufferUsage_t::Vertex));
-	assert(buffer_usage.has(EBufferUsage_t::TransferDst));
-	assert(!buffer_usage.has(EBufferUsage_t::Index));
-	buffer_usage.set(EBufferUsage_t::DeviceAddress);
-	assert(buffer_usage.has(EBufferUsage_t::DeviceAddress));
+	EBufferUsageFlags buffer_usage(EBufferUsage::Vertex);
+	buffer_usage = buffer_usage | EBufferUsage::TransferDst;
+	assert(buffer_usage.has(EBufferUsage::Vertex));
+	assert(buffer_usage.has(EBufferUsage::TransferDst));
+	assert(!buffer_usage.has(EBufferUsage::Index));
+	buffer_usage.set(EBufferUsage::DeviceAddress);
+	assert(buffer_usage.has(EBufferUsage::DeviceAddress));
 
 	const RBuffer::Descriptor_t modern_buffer;
 	assert(modern_buffer.MemoryUsage == EMemoryUsage::Auto);

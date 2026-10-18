@@ -3,10 +3,10 @@
 #include <material/Material.hpp>
 #include <RHI.hpp>
 
-#include <core/math/Color.hpp>
-#include <core/math/Matrix.hpp>
-#include <core/math/Vector.hpp>
-#include <core/wrappers/Flag.hpp>
+#include <infra/math/Color.hpp>
+#include <infra/math/Matrix.hpp>
+#include <infra/math/Vector.hpp>
+#include <infra/wrappers/Flag.hpp>
 
 #include <cstdint>
 #include <array>
@@ -77,7 +77,7 @@ enum class EChangeFlags_t : uint32_t
 };
 
 /** @brief 可组合的变化标志集合. */
-using EChangeFlags = core::Flags<EChangeFlags_t>;
+using EChangeFlags = infra::Flags<EChangeFlags_t>;
 DEFINE_ENUM_OPERATOR(EChangeFlags_t);
 
 // ============================================================================
@@ -155,9 +155,9 @@ struct LightData
 	float SpotInnerCos { 0.9f };
 	float SpotOuterCos { 0.8f };
 
-	core::Vec3f PositionWS { 0.0f, 0.0f, 0.0f };
-	core::Vec3f DirectionWS { 0.0f, -1.0f, 0.0f };
-	core::LinearColor4D Color { 1.0f, 1.0f, 1.0f, 1.0f };
+	infra::Vec3f PositionWS { 0.0f, 0.0f, 0.0f };
+	infra::Vec3f DirectionWS { 0.0f, -1.0f, 0.0f };
+	infra::LinearColor4D Color { 1.0f, 1.0f, 1.0f, 1.0f };
 
 	bool CastShadow { false };
 	uint32_t ShadowSlice { 0 };
@@ -187,8 +187,8 @@ using FluidList = std::vector<FluidSurfaceData>;
 /** @brief 气体/体积介质渲染快照. */
 struct GasVolumeData
 {
-	core::Vec3f BoundsMinWS { 0.0f, 0.0f, 0.0f };
-	core::Vec3f BoundsMaxWS { 0.0f, 0.0f, 0.0f };
+	infra::Vec3f BoundsMinWS { 0.0f, 0.0f, 0.0f };
+	infra::Vec3f BoundsMaxWS { 0.0f, 0.0f, 0.0f };
 
 	std::shared_ptr<rhi::RImageView> Density3D;
 	std::shared_ptr<rhi::RImageView> Temperature3D;
@@ -205,9 +205,9 @@ using GasVolumeList = std::vector<GasVolumeData>;
 /** @brief 地形 Patch 渲染快照(按块管理 LOD 与材质). */
 struct TerrainPatchData
 {
-	core::Matrix4x4 LocalToWorld {};
+	infra::Matrix4x4 LocalToWorld {};
 	uint32_t LodLevel { 0 };
-	core::Vec2f PatchSizeMeters { 64.0f, 64.0f };
+	infra::Vec2f PatchSizeMeters { 64.0f, 64.0f };
 
 	std::shared_ptr<rhi::RBuffer> VertexBuffer;
 	std::shared_ptr<rhi::RBuffer> IndexBuffer;
@@ -233,52 +233,16 @@ struct RigidBodyRenderData
 	uint32_t IndexCount { 0 };
 
 	uint32_t MaterialId { 0 };
-	core::Matrix4x4 CurrentLocalToWorld {};
-	core::Matrix4x4 PreviousLocalToWorld {};
-	core::Vec3f LinearVelocityWS { 0.0f, 0.0f, 0.0f };
-	core::Vec3f AngularVelocityWS { 0.0f, 0.0f, 0.0f };
+	infra::Matrix4x4 CurrentLocalToWorld {};
+	infra::Matrix4x4 PreviousLocalToWorld {};
+	infra::Vec3f LinearVelocityWS { 0.0f, 0.0f, 0.0f };
+	infra::Vec3f AngularVelocityWS { 0.0f, 0.0f, 0.0f };
 	bool Sleeping { false };
 	bool Transparent { false };
 	uint32_t StableOrder { 0 };
 };
 
 using RigidBodyList = std::vector<RigidBodyRenderData>;
-
-/**
- * @brief World 在帧边界提交给 Renderer 的统一交换包.
- *
- * DrawLists 是 RenderProxy 预处理后可直接录制命令的几何队列;
- * 其余列表是光照/体积/仿真系统的参数快照.
- */
-struct RenderFrameSubmission
-{
-	DrawList ShadowDraws;
-	DrawList OpaqueDraws;
-	DrawList TransparentDraws;
-
-	LightList Lights;
-	FluidList Fluids;
-	GasVolumeList Gases;
-	TerrainPatchList Terrains;
-	RigidBodyList RigidBodies;
-
-	EChangeFlags WorldChanges {};
-	EChangeFlags UIChanges {};
-
-	void clear() noexcept
-	{
-		ShadowDraws.clear();
-		OpaqueDraws.clear();
-		TransparentDraws.clear();
-		Lights.clear();
-		Fluids.clear();
-		Gases.clear();
-		Terrains.clear();
-		RigidBodies.clear();
-		WorldChanges = EChangeFlags_t::None;
-		UIChanges = EChangeFlags_t::None;
-	}
-};
 
 // ============================================================================
 //  3. 2D/UI 渲染交换格式: UIQuad / UIRenderBatch
@@ -297,7 +261,7 @@ enum class EUIQuadFlags_t : uint32_t
 };
 
 /** @brief 可组合的 UI 四边形标志. */
-using EUIQuadFlags = core::Flags<EUIQuadFlags_t>;
+using EUIQuadFlags = infra::Flags<EUIQuadFlags_t>;
 DEFINE_ENUM_OPERATOR(EUIQuadFlags_t);
 
 /**
@@ -309,15 +273,15 @@ DEFINE_ENUM_OPERATOR(EUIQuadFlags_t);
 struct UIQuad
 {
 	/** 屏幕空间包围盒(左上角与右下角). */
-	core::Vec2f Min { 0.0f, 0.0f };
-	core::Vec2f Max { 0.0f, 0.0f };
+	infra::Vec2f Min { 0.0f, 0.0f };
+	infra::Vec2f Max { 0.0f, 0.0f };
 
 	/** 纹理 UV 范围. */
-	core::Vec2f UvMin { 0.0f, 0.0f };
-	core::Vec2f UvMax { 1.0f, 1.0f };
+	infra::Vec2f UvMin { 0.0f, 0.0f };
+	infra::Vec2f UvMax { 1.0f, 1.0f };
 
 	/** 预乘 alpha 颜色(RGB 已乘 A). */
-	core::LinearColor4D Color { 1.0f, 1.0f, 1.0f, 1.0f };
+	infra::LinearColor4D Color { 1.0f, 1.0f, 1.0f, 1.0f };
 
 	/** 纹理索引(指向纹理表/图集); 0 表示纯色填充. */
 	uint32_t TextureIndex { 0 };
@@ -358,7 +322,48 @@ struct UIRenderBatch
 	bool Transparent { true };
 };
 
-/** @brief 有序的 UI 批次列表, 由 UIRenderer 从控件树合批产出. */
+/** @brief 有序的 UI 批次列表, 由 UI 合成模块从控件树合批产出. */
 using UIBatchList = std::vector<UIRenderBatch>;
+
+/**
+ * @brief World 在帧边界提交给 Renderer 的统一交换包.
+ *
+ * DrawLists 是 RenderProxy 预处理后可直接录制命令的几何队列;
+ * 其余列表是光照/体积/仿真系统的参数快照.
+ */
+struct RenderFrameSubmission
+{
+	DrawList ShadowDraws;
+	DrawList OpaqueDraws;
+	DrawList TransparentDraws;
+
+	/** 2D/UI 合批结果(由 UI 合成模块从控件树产出, 供 UIRenderPass 消费). */
+	UIBatchList UIBatches;
+
+	LightList Lights;
+	FluidList Fluids;
+	GasVolumeList Gases;
+	TerrainPatchList Terrains;
+	RigidBodyList RigidBodies;
+
+	EChangeFlags WorldChanges {};
+	EChangeFlags UIChanges {};
+
+	void clear() noexcept
+	{
+		ShadowDraws.clear();
+		OpaqueDraws.clear();
+		TransparentDraws.clear();
+		UIBatches.clear();
+		Lights.clear();
+		Fluids.clear();
+		Gases.clear();
+		Terrains.clear();
+		RigidBodies.clear();
+		WorldChanges = EChangeFlags_t::None;
+		UIChanges = EChangeFlags_t::None;
+	}
+};
+
 
 } // namespace runtime::renderer

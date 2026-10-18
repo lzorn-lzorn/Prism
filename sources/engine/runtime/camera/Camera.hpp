@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include <Core.hpp>
+#include <Infra.hpp>
 namespace runtime
 {
 enum class EProjectionType
@@ -86,10 +86,10 @@ struct CameraParams
 
     // 自定义裁剪
     bool EnableObliqueNearPlane { false };
-    core::Vec4f ObliqueNearPlane;
+    infra::Vec4f ObliqueNearPlane;
 
     // TAA / 时序抖动
-    core::Vec2f ProjectionJitter {0.0f, 0.0f};
+    infra::Vec2f ProjectionJitter {0.0f, 0.0f};
 
     LensParams lens;
 };

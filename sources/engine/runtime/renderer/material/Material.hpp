@@ -1,4 +1,4 @@
-// renderer/MaterialSystem.hpp
+﻿// renderer/MaterialSystem.hpp
 #pragma once
 
 #include <array>
@@ -17,7 +17,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include <core/functions/HandleManager.hpp>
+#include <infra/functions/HandleManager.hpp>
 #include <RHI.hpp>
 
 namespace renderer
@@ -233,14 +233,14 @@ public:
         return true;
     }
 
-    [[nodiscard]] core::HandleIdType getStableId() const noexcept { return StableId; }
-    [[nodiscard]] core::HandleGenerationType getVersion() const noexcept { return Version; }
+    [[nodiscard]] infra::HandleIdType getStableId() const noexcept { return StableId; }
+    [[nodiscard]] infra::HandleGenerationType getVersion() const noexcept { return Version; }
 
 protected:
     explicit VertexFactoryBase(VertexFactoryDescriptor InDescriptor)
         : Descriptor(std::move(InDescriptor)) {}
 
-    void setCacheIdentity(core::HandleIdType InStableId, core::HandleGenerationType InVersion) noexcept
+    void setCacheIdentity(infra::HandleIdType InStableId, infra::HandleGenerationType InVersion) noexcept
     {
         StableId = InStableId;
         Version = InVersion;
@@ -272,8 +272,8 @@ protected:
 
     VertexFactoryDescriptor Descriptor;
     std::array<std::shared_ptr<rhi::RShader>, MaterialPassCount> PassVertexShaders {};
-    core::HandleIdType StableId { core::InvalidHandleId };
-    core::HandleGenerationType Version { core::InvalidHandleGeneration };
+    infra::HandleIdType StableId { infra::InvalidHandleId };
+    infra::HandleGenerationType Version { infra::InvalidHandleGeneration };
 };
 
 class GraphicsVertexFactory final : public VertexFactoryBase
@@ -362,7 +362,7 @@ public:
     [[nodiscard]] uint32_t getMaterialSetIndex() const noexcept { return MaterialSetIndex; }
     [[nodiscard]] uint32_t getUniformBlockSize() const noexcept { return Descriptor.MaterialUniforms.Size; }
     [[nodiscard]] bool     isValid() const noexcept { return PipelineLayout != nullptr && MaterialSetLayout != nullptr; }
-    [[nodiscard]] core::HandleIdType getStableId() const noexcept { return StableId; }
+    [[nodiscard]] infra::HandleIdType getStableId() const noexcept { return StableId; }
     [[nodiscard]] uint32_t getVersion() const noexcept { return Version; }
 
     [[nodiscard]] virtual std::shared_ptr<rhi::RPipeline> createPipeline(
@@ -415,7 +415,7 @@ protected:
     explicit MaterialTemplateBase(MaterialTemplateDescriptor InDescriptor)
         : Descriptor(std::move(InDescriptor)) {}
 
-    void setCacheIdentity(core::HandleIdType InStableId, uint32_t InVersion) noexcept
+    void setCacheIdentity(infra::HandleIdType InStableId, uint32_t InVersion) noexcept
     {
         StableId = InStableId;
         Version = InVersion;
@@ -516,7 +516,7 @@ protected:
 
     std::unordered_map<std::string, uint32_t, TransparentStringHash, std::equal_to<>> ParameterLookup;
     std::unordered_map<std::string, uint32_t, TransparentStringHash, std::equal_to<>> TextureLookup;
-    core::HandleIdType StableId { core::InvalidHandleId };
+    infra::HandleIdType StableId { infra::InvalidHandleId };
     uint32_t Version { 1 };
 
 private:
@@ -708,9 +708,9 @@ private:
     std::unordered_map<uint32_t, rhi::BindGroupResource> TextureBindings;
     std::shared_ptr<rhi::RBindGroup> BindGroup;
     std::unordered_map<std::string, ParameterHandle, TransparentStringHash, std::equal_to<>> CachedParameterHandles;
-    core::HandleIdType CachedParameterTemplateId { core::InvalidHandleId };
+    infra::HandleIdType CachedParameterTemplateId { infra::InvalidHandleId };
     uint32_t CachedParameterTemplateVersion { 0 };
-    core::HandleIdType CachedBindGroupTemplateId { core::InvalidHandleId };
+    infra::HandleIdType CachedBindGroupTemplateId { infra::InvalidHandleId };
     uint32_t CachedBindGroupTemplateVersion { 0 };
 
     bool IsUniformDirty { true };
@@ -1023,10 +1023,10 @@ public:
 
         Buffer = Device.createBuffer({
             .Size               = (rhi::DeviceSizeType)SlotSizeAligned * SlotCount * FramesInFlight,
-            .Usage              = rhi::EBufferUsage_t::Uniform,
+            .Usage              = rhi::EBufferUsage::Uniform,
             .MemoryUsage        = rhi::EMemoryUsage::CPUToGPU,
-            .MemoryProperty     = rhi::EMemoryProperty_t::HostVisible
-                                | rhi::EMemoryProperty_t::HostCoherent,
+            .MemoryProperty     = rhi::EMemoryProperty::HostVisible
+                                | rhi::EMemoryProperty::HostCoherent,
             .PersistentlyMapped = true,
             .DebugName          = "MaterialDynamicUBO"
         });
@@ -1115,20 +1115,20 @@ public:
     using InstanceHandle = MaterialInstanceHandle;
     using VertexFactoryHandleType = VertexFactoryHandle;
 
-    using TemplatePoolType = core::HandlePool<
+    using TemplatePoolType = infra::HandlePool<
         MaterialTemplate, std::shared_ptr<MaterialTemplateBase>>;
-    using InstancePoolType = core::HandlePool<
+    using InstancePoolType = infra::HandlePool<
         MaterialInstance, std::shared_ptr<MaterialInstanceBase>>;
-    using VertexFactoryPoolType = core::HandlePool<
+    using VertexFactoryPoolType = infra::HandlePool<
         VertexFactory, std::shared_ptr<VertexFactoryBase>>;
 
     explicit MaterialSystem(rhi::RDevice& InDevice)
         : Device(InDevice)
-        , TemplatePool(core::HandleManager::self()
+        , TemplatePool(infra::HandleManager::self()
               .getPool<MaterialTemplate, std::shared_ptr<MaterialTemplateBase>>())
-        , InstancePool(core::HandleManager::self()
+        , InstancePool(infra::HandleManager::self()
               .getPool<MaterialInstance, std::shared_ptr<MaterialInstanceBase>>())
-          , VertexFactoryPool(core::HandleManager::self()
+          , VertexFactoryPool(infra::HandleManager::self()
               .getPool<VertexFactory, std::shared_ptr<VertexFactoryBase>>())
     {}
 
@@ -1234,10 +1234,10 @@ private:
 
     struct PipelineCacheKey
     {
-        core::HandleIdType MaterialId { core::InvalidHandleId };
+        infra::HandleIdType MaterialId { infra::InvalidHandleId };
         uint32_t MaterialVersion { 0 };
-        core::HandleIdType VertexFactoryId { core::InvalidHandleId };
-        core::HandleGenerationType VertexFactoryVersion { core::InvalidHandleGeneration };
+        infra::HandleIdType VertexFactoryId { infra::InvalidHandleId };
+        infra::HandleGenerationType VertexFactoryVersion { infra::InvalidHandleGeneration };
         EPassType Pass { EPassType::BasePass };
 
         bool HasRenderingOverride { false };
@@ -1262,7 +1262,7 @@ private:
 
     struct BindGroupCacheKey
     {
-        core::HandleIdType MaterialId { core::InvalidHandleId };
+        infra::HandleIdType MaterialId { infra::InvalidHandleId };
         uint32_t MaterialVersion { 0 };
         const rhi::RBuffer* UniformBuffer { nullptr };
         uint32_t UniformBufferOffset { 0 };
@@ -1288,7 +1288,7 @@ private:
         const std::unordered_map<uint32_t, rhi::BindGroupResource>& TextureBindings,
         uint64_t TextureSetHash);
 
-    void evictTemplateCaches(core::HandleIdType TemplateStableId) noexcept;
+    void evictTemplateCaches(infra::HandleIdType TemplateStableId) noexcept;
     void evictVertexFactoryCaches(VertexFactoryHandleType VertexFactory) noexcept;
 
 private:
@@ -1308,7 +1308,7 @@ private:
         std::shared_ptr<rhi::RBindGroupLayout>              FrameLayout;
         std::vector<std::shared_ptr<rhi::RBindGroupLayout>> ExtraLayouts;
     };
-    std::unordered_map<core::HandleIdType, TemplateLayoutCache> TemplateLayouts;
+    std::unordered_map<infra::HandleIdType, TemplateLayoutCache> TemplateLayouts;
 
     std::unordered_map<PipelineCacheKey, std::shared_ptr<rhi::RPipeline>, PipelineCacheKeyHash> PipelineCache;
     std::unordered_map<BindGroupCacheKey, std::weak_ptr<rhi::RBindGroup>, BindGroupCacheKeyHash> BindGroupCache;

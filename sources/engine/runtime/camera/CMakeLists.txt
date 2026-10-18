@@ -6,7 +6,7 @@
 add_internal_library(Camera
     TYPE                INTERFACE
     INCLUDES            "${CMAKE_CURRENT_SOURCE_DIR}"
-    PUBLIC_DEPENDENCY   Core::Core
+    PUBLIC_DEPENDENCY   Infra::Infra
     ALIAS               Runtime::Camera
 )
 # ALIAS 是内部的, INTERFACE 是外部的

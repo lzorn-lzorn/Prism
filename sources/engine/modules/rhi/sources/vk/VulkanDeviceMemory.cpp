@@ -1,4 +1,4 @@
-#include "VulkanDeviceMemory.hpp"
+﻿#include "VulkanDeviceMemory.hpp"
 #include "VulkanDevice.hpp"
 #include "VulkanMemoryHeap.hpp"
 #include "VulkanRHI.hpp"
@@ -33,14 +33,14 @@ vk::DeviceSize alignUp(vk::DeviceSize Value, vk::DeviceSize Alignment)
     return Value + Alignment - remainder;
 }
 
-EMemoryProperty fromVk(vk::MemoryPropertyFlags Properties)
+EMemoryPropertyFlags fromVk(vk::MemoryPropertyFlags Properties)
 {
-    EMemoryProperty result;
-    if (Properties & vk::MemoryPropertyFlagBits::eDeviceLocal) result.set(EMemoryProperty_t::DeviceLocal);
-    if (Properties & vk::MemoryPropertyFlagBits::eHostVisible) result.set(EMemoryProperty_t::HostVisible);
-    if (Properties & vk::MemoryPropertyFlagBits::eHostCoherent) result.set(EMemoryProperty_t::HostCoherent);
-    if (Properties & vk::MemoryPropertyFlagBits::eHostCached) result.set(EMemoryProperty_t::HostCached);
-    if (Properties & vk::MemoryPropertyFlagBits::eLazilyAllocated) result.set(EMemoryProperty_t::LazilyAllocated);
+    EMemoryPropertyFlags result;
+    if (Properties & vk::MemoryPropertyFlagBits::eDeviceLocal) result.set(EMemoryProperty::DeviceLocal);
+    if (Properties & vk::MemoryPropertyFlagBits::eHostVisible) result.set(EMemoryProperty::HostVisible);
+    if (Properties & vk::MemoryPropertyFlagBits::eHostCoherent) result.set(EMemoryProperty::HostCoherent);
+    if (Properties & vk::MemoryPropertyFlagBits::eHostCached) result.set(EMemoryProperty::HostCached);
+    if (Properties & vk::MemoryPropertyFlagBits::eLazilyAllocated) result.set(EMemoryProperty::LazilyAllocated);
     return result;
 }
 } // namespace
@@ -227,7 +227,7 @@ VulkanMemoryAllocation::~VulkanMemoryAllocation()
 void* VulkanMemoryAllocation::map(DeviceSizeType Offset, DeviceSizeType Size)
 {
     std::scoped_lock lock(MapMutex);
-    if (!Block || !Info.Properties.has(EMemoryProperty_t::HostVisible))
+    if (!Block || !Info.Properties.has(EMemoryProperty::HostVisible))
         throw std::logic_error("Cannot map non-host-visible Vulkan memory.");
     if (IsMapped)
         throw std::logic_error("Vulkan allocation is already mapped.");
@@ -444,7 +444,7 @@ void VulkanDeviceMemory::reset()
 	VkDeviceMemory = VK_NULL_HANDLE;
 	OwnershipState = DeviceMemory::EState::None;
 	Requirements = {};
-	Property = EMemoryProperty::enum_type::None;
+	Property = EMemoryPropertyFlags::enum_type::None;
 	OwnerDevice = vk::Device{ VK_NULL_HANDLE };
 }
 
@@ -515,7 +515,7 @@ MemoryRequirements VulkanDeviceMemory::getMemoryRequirements() const
 {
 	return Requirements;
 }
-EMemoryProperty VulkanDeviceMemory::getMemoryProperty() const
+EMemoryPropertyFlags VulkanDeviceMemory::getMemoryProperty() const
 {
 	return Property;
 }
@@ -624,7 +624,7 @@ void VulkanDeviceMemoryDeleter::operator()(VulkanDeviceMemory* ptr) const
 
 
 
-std::shared_ptr<DeviceMemory> VulkanDeviceMemoryAllocator::allocateMemory(MemoryRequirements Requirements, EMemoryProperty Property)
+std::shared_ptr<DeviceMemory> VulkanDeviceMemoryAllocator::allocateMemory(MemoryRequirements Requirements, EMemoryPropertyFlags Property)
 {
     if (!Device)
 	{

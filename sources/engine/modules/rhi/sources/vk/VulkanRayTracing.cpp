@@ -1,4 +1,4 @@
-#include "VulkanRayTracing.hpp"
+﻿#include "VulkanRayTracing.hpp"
 
 #include "VulkanBuffer.hpp"
 #include "VulkanDevice.hpp"
@@ -62,7 +62,7 @@ VkFormat rayTracingVertexFormat(EVertexFormat Format)
 VulkanBuffer* requireBuffer(
 	const std::shared_ptr<RBuffer>& Buffer,
 	const VulkanDevice& Device,
-	EBufferUsage_t Usage,
+	EBufferUsage Usage,
 	DeviceSizeType Offset)
 {
 	auto* result = dynamic_cast<VulkanBuffer*>(Buffer.get());
@@ -119,13 +119,13 @@ GeometryStorage convertGeometries(
 			if (format == VK_FORMAT_UNDEFINED)
 				throw std::invalid_argument("Triangle vertex format is unsupported for Vulkan ray tracing.");
 			auto* vertices = requireBuffer(triangles->VertexBuffer, Device,
-				EBufferUsage_t::AccelerationStructureBuildInput, triangles->VertexOffset);
+				EBufferUsage::AccelerationStructureBuildInput, triangles->VertexOffset);
 			VkIndexType index_type = VK_INDEX_TYPE_NONE_KHR;
 			VkDeviceAddress index_address = 0;
 			if (triangles->IndexFormat != EIndexFormat::None)
 			{
 				auto* indices = requireBuffer(triangles->IndexBuffer, Device,
-					EBufferUsage_t::AccelerationStructureBuildInput, triangles->IndexOffset);
+					EBufferUsage::AccelerationStructureBuildInput, triangles->IndexOffset);
 				index_type = triangles->IndexFormat == EIndexFormat::UInt16 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
 				index_address = indices->getDeviceAddress() + triangles->IndexOffset;
 				output.Resources.emplace_back(triangles->IndexBuffer);
@@ -134,7 +134,7 @@ GeometryStorage convertGeometries(
 			if (triangles->TransformBuffer)
 			{
 				auto* transform = requireBuffer(triangles->TransformBuffer, Device,
-					EBufferUsage_t::AccelerationStructureBuildInput, triangles->TransformOffset);
+					EBufferUsage::AccelerationStructureBuildInput, triangles->TransformOffset);
 				transform_address = transform->getDeviceAddress() + triangles->TransformOffset;
 				output.Resources.emplace_back(triangles->TransformBuffer);
 			}
@@ -160,7 +160,7 @@ GeometryStorage convertGeometries(
 			if (!aabbs || aabbs->Stride < 24 || aabbs->Stride % 8 != 0)
 				throw std::invalid_argument("AABB geometry stride must be at least 24 and a multiple of 8.");
 			auto* buffer = requireBuffer(aabbs->Buffer, Device,
-				EBufferUsage_t::AccelerationStructureBuildInput, aabbs->Offset);
+				EBufferUsage::AccelerationStructureBuildInput, aabbs->Offset);
 			converted.geometryType = VK_GEOMETRY_TYPE_AABBS_KHR;
 			converted.geometry.aabbs = {
 				.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_AABBS_DATA_KHR,
@@ -177,7 +177,7 @@ GeometryStorage convertGeometries(
 			const auto* instances = std::get_if<AccelerationStructureInstances>(&geometry.Data);
 			if (!instances) throw std::invalid_argument("Instance geometry payload does not match its type.");
 			auto* buffer = requireBuffer(instances->Buffer, Device,
-				EBufferUsage_t::AccelerationStructureBuildInput, instances->Offset);
+				EBufferUsage::AccelerationStructureBuildInput, instances->Offset);
 			converted.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
 			converted.geometry.instances = {
 				.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR,
@@ -246,7 +246,7 @@ VulkanAccelerationStructure::VulkanAccelerationStructure(
 		throw std::invalid_argument("Acceleration-structure type is invalid.");
 	auto* buffer = dynamic_cast<VulkanBuffer*>(Storage.get());
 	if (!buffer || &buffer->getDevice() != Device || !buffer->isValid() ||
-		!Storage->getDescriptor().Usage.has(EBufferUsage_t::AccelerationStructureStorage) ||
+		!Storage->getDescriptor().Usage.has(EBufferUsage::AccelerationStructureStorage) ||
 		Desc.Size == 0 || Desc.Offset % 256 != 0 || Desc.Offset >= Storage->getDescriptor().Size ||
 		Desc.Size > Storage->getDescriptor().Size - Desc.Offset)
 		throw std::invalid_argument("Acceleration-structure storage range is invalid or not 256-byte aligned.");
@@ -350,8 +350,8 @@ bool recordVulkanAccelerationStructureBuilds(
 				(build.Mode == EAccelerationStructureBuildMode::Update &&
 				 !build.Flags.has(EAccelerationStructureBuildFlag_t::AllowUpdate)))
 				return false;
-			auto* scratch = requireBuffer(build.ScratchBuffer, Device, EBufferUsage_t::DeviceAddress, build.ScratchOffset);
-			if (!build.ScratchBuffer->getDescriptor().Usage.has(EBufferUsage_t::Storage) ||
+			auto* scratch = requireBuffer(build.ScratchBuffer, Device, EBufferUsage::DeviceAddress, build.ScratchOffset);
+			if (!build.ScratchBuffer->getDescriptor().Usage.has(EBufferUsage::Storage) ||
 				(scratch->getDeviceAddress() + build.ScratchOffset) %
 					Device.getLimits().MinAccelerationStructureScratchOffsetAlignment != 0)
 				return false;

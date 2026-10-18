@@ -38,6 +38,43 @@ namespace
 	return Kind == ERenderProxyKind::TransparentMesh;
 }
 
+/** @brief 判断代理是否投射阴影(仅网格代理有该语义, 其余默认 false). */
+[[nodiscard]] bool getCastShadow(const RenderProxyVariant& Proxy) noexcept
+{
+	const MeshRenderProxy* Mesh = std::get_if<MeshRenderProxy>(&Proxy);
+	return Mesh && Mesh->CastShadow;
+}
+
+/**
+ * @brief 从几何代理解析出可录制的几何数据填充 DrawPacket.
+ *
+ * 只填几何(顶点/索引缓冲与绘制参数); Pipeline/BindGroups 由 MaterialSystem 后续解析.
+ * 网格与地形共享同一份索引绘制协议, 透明/刚体只是分类不同.
+ */
+void fillDrawPacketGeometry(const RenderProxyVariant& Proxy, DrawPacket& Packet)
+{
+	std::visit([&](const auto& Value) {
+		using ProxyType = std::decay_t<decltype(Value)>;
+		if constexpr (std::is_same_v<ProxyType, MeshRenderProxy>)
+		{
+			if (!Value.Mesh)
+				return;
+			Packet.VertexFactory = Value.Mesh->VertexFactory;
+			Packet.VertexBindings.push_back({ Value.Mesh->VertexBuffer, 0 });
+			Packet.IndexBuffer = Value.Mesh->IndexBuffer;
+			Packet.IndexFormat = Value.Mesh->IndexFormat;
+			Packet.IndexCount = Value.Mesh->IndexCount;
+		}
+		else if constexpr (std::is_same_v<ProxyType, TerrainRenderProxy>)
+		{
+			Packet.VertexBindings.push_back({ Value.Patch.VertexBuffer, 0 });
+			Packet.IndexBuffer = Value.Patch.IndexBuffer;
+			Packet.IndexFormat = rhi::EIndexFormat::UInt32;
+			Packet.IndexCount = Value.Patch.IndexCount;
+		}
+	}, Proxy);
+}
+
 } // namespace
 
 uint32_t RenderProxyWorld::addProxy(RenderProxyVariant InProxy)
@@ -75,13 +112,13 @@ void RenderProxyWorld::removeProxy(uint32_t Index)
 	ChangeFlags.set(EChangeFlags_t::Visibility);
 }
 
-void RenderProxyWorld::updateTransform(uint32_t Index, const core::Matrix4x4& LocalToWorld)
+void RenderProxyWorld::updateTransform(uint32_t Index, const infra::Matrix4x4& LocalToWorld)
 {
 	if (Index >= Proxies.size())
 		return;
 	RenderProxyVariant& Proxy = Proxies[Index];
 	RenderProxyHeader& Header = getHeader(Proxy);
-	const core::Matrix4x4 Previous = Header.LocalToWorld;
+	const infra::Matrix4x4 Previous = Header.LocalToWorld;
 	Header.LocalToWorld = LocalToWorld;
 
 	std::visit([&](auto& Value) {
@@ -165,13 +202,30 @@ void RenderProxyWorld::buildSubmission(RenderFrameSubmission& Out, EChangeFlags 
 	collectVisible(Visible);
 	Out.OpaqueDraws.reserve(Visible.size());
 	Out.TransparentDraws.reserve(Visible.size());
+	Out.ShadowDraws.reserve(Visible.size());
 
+	// 把几何代理解析成可直接录制的 DrawPacket(几何数据), 管线/绑定组由 MaterialSystem 后续填充.
 	for (const VisibleProxy& V : Visible)
 	{
-		if (V.Key & (uint64_t { 1 } << 63))
-			Out.TransparentDraws.emplace_back();
+		const RenderProxyVariant& Proxy = Proxies[V.ProxyIndex];
+		const RenderProxyHeader& Header = getHeader(Proxy);
+
+		DrawPacket Packet;
+		Packet.Key = V.Key;
+		fillDrawPacketGeometry(Proxy, Packet);
+		if (Packet.IndexCount == 0)
+			continue;
+
+		if (isTransparentProxy(Header.Kind))
+		{
+			Out.TransparentDraws.push_back(std::move(Packet));
+		}
 		else
-			Out.OpaqueDraws.emplace_back();
+		{
+			Out.OpaqueDraws.push_back(Packet);
+			if (getCastShadow(Proxy))
+				Out.ShadowDraws.push_back(std::move(Packet));
+		}
 	}
 
 	for (const RenderProxyVariant& Proxy : Proxies)

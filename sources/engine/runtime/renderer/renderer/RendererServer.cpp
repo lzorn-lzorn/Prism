@@ -1,4 +1,4 @@
-#include <renderer/RendererServer.hpp>
+﻿#include <renderer/RendererServer.hpp>
 
 #include <renderer/ShaderBinding.hpp>
 #include <RHIServer.hpp>
@@ -39,7 +39,6 @@ struct RendererServer::Implementation
 
 	// 渲染世界与 UI 渲染器(Renderer 持有的高层状态).
 	RenderProxyWorld ProxyWorld;
-	UIRenderer UIRenderer;
 	RenderFrameSubmission LastSubmission;
 
 	/**
@@ -70,8 +69,8 @@ struct RendererServer::Implementation
 	{
 		Window = InWindow;
 		Device = InDevice;
-		Width = static_cast<uint32_t>(std::max(0, Window->getWidth()));
-		Height = static_cast<uint32_t>(std::max(0, Window->getHeight()));
+		Width = static_cast<uint32_t>(std::max(0, Window->getSize().Width));
+		Height = static_cast<uint32_t>(std::max(0, Window->getSize().Height));
 		GraphicsQueue = Device->getQueue(rhi::ECommandQueueType::Graphics);
 		FrameTimeline = Device->createTimelineSemaphore();
 		for (auto& frame : Frames)
@@ -363,13 +362,13 @@ void RendererServer::runBindGroupSmokeTest()
 		case rhi::EDescriptorType::ReadOnlyStorageBuffer:
 		case rhi::EDescriptorType::ReadWriteStorageBuffer:
 		{
-			rhi::EBufferUsage usage = reflected.Type == rhi::EDescriptorType::UniformBuffer
-				? rhi::EBufferUsage(rhi::EBufferUsage_t::Uniform)
-				: rhi::EBufferUsage(rhi::EBufferUsage_t::Storage);
+			rhi::EBufferUsageFlags usage = reflected.Type == rhi::EDescriptorType::UniformBuffer
+				? rhi::EBufferUsageFlags(rhi::EBufferUsage::Uniform)
+				: rhi::EBufferUsageFlags(rhi::EBufferUsage::Storage);
 			auto buffer = device->createBuffer(rhi::RBuffer::Descriptor_t {
 				.Size = reflected.BlockSize == 0 ? 256u : reflected.BlockSize,
 				.Usage = usage,
-				.MemoryProperty = rhi::EMemoryProperty_t::DeviceLocal,
+				.MemoryProperty = rhi::EMemoryProperty::DeviceLocal,
 				.DebugName = reflected.Name
 			});
 			resources.set(reflected.Id, reflected.Name, rhi::BufferBinding { buffer, 0, 0 });
@@ -389,7 +388,7 @@ void RendererServer::runBindGroupSmokeTest()
 					.MipLevels = 1,
 					.ArrayLayers = 1,
 					.SharingMode = rhi::ESharingMode::Exclusive,
-					.MemoryProperty = rhi::EMemoryProperty_t::DeviceLocal,
+					.MemoryProperty = rhi::EMemoryProperty::DeviceLocal,
 					.Usage = rhi::EImageUsage_t::Sampled,
 					.SampleCount = rhi::ESampleCount::Count1
 				});
@@ -429,7 +428,7 @@ void RendererServer::runBindGroupSmokeTest()
 
 	auto upload_buffer = device->createBuffer(rhi::RBuffer::Descriptor_t {
 		.Size = 256,
-		.Usage = rhi::EBufferUsage_t::TransferSrc,
+		.Usage = rhi::EBufferUsage::TransferSrc,
 		.MemoryUsage = rhi::EMemoryUsage::CPUToGPU,
 		.PersistentlyMapped = true,
 		.DebugName = "AllocatorUploadSmoke"
@@ -443,8 +442,8 @@ void RendererServer::runBindGroupSmokeTest()
 	{
 		auto address_buffer = device->createBuffer(rhi::RBuffer::Descriptor_t {
 			.Size = 256,
-			.Usage = rhi::EBufferUsage(rhi::EBufferUsage_t::Storage) |
-				rhi::EBufferUsage_t::DeviceAddress,
+			.Usage = rhi::EBufferUsageFlags(rhi::EBufferUsage::Storage) |
+				rhi::EBufferUsage::DeviceAddress,
 			.MemoryUsage = rhi::EMemoryUsage::GPUOnly,
 			.DebugName = "BufferDeviceAddressSmoke"
 		});
@@ -468,8 +467,8 @@ void RendererServer::runBindGroupSmokeTest()
 	{
 		auto storage = device->createBuffer(rhi::RBuffer::Descriptor_t {
 			.Size = 256,
-			.Usage = rhi::EBufferUsage(rhi::EBufferUsage_t::AccelerationStructureStorage) |
-				rhi::EBufferUsage_t::DeviceAddress,
+			.Usage = rhi::EBufferUsageFlags(rhi::EBufferUsage::AccelerationStructureStorage) |
+				rhi::EBufferUsage::DeviceAddress,
 			.MemoryUsage = rhi::EMemoryUsage::GPUOnly,
 			.DebugName = "AccelerationStructureStorageSmoke"
 		});
@@ -609,12 +608,6 @@ RenderProxyWorld& RendererServer::getRenderProxyWorld() noexcept
 	return Impl ? Impl->ProxyWorld : Fallback;
 }
 
-UIRenderer& RendererServer::getUIRenderer() noexcept
-{
-	static UIRenderer Fallback;
-	return Impl ? Impl->UIRenderer : Fallback;
-}
-
 const RenderFrameSubmission& RendererServer::buildRenderSubmission()
 {
 	static RenderFrameSubmission Fallback;
@@ -622,7 +615,7 @@ const RenderFrameSubmission& RendererServer::buildRenderSubmission()
 		return Fallback;
 
 	const EChangeFlags world_changes = Impl->ProxyWorld.consumeChangeFlags();
-	const EChangeFlags ui_changes = Impl->UIRenderer.consumeChangeFlags();
+	const EChangeFlags ui_changes = {};
 	Impl->ProxyWorld.buildSubmission(Impl->LastSubmission, world_changes, ui_changes);
 	return Impl->LastSubmission;
 }

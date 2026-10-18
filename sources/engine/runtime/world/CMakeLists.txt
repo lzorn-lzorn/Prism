@@ -1,6 +1,7 @@
-add_internal_module(World
+﻿add_internal_library(World
     TYPE               INTERFACE
-    PUBLIC_DEPENDENCY  Core::Core
+    INCLUDES           "${CMAKE_CURRENT_SOURCE_DIR}/includes"
+    PUBLIC_DEPENDENCY  Infra::Infra
     ALIAS              Runtime::World
 )
 

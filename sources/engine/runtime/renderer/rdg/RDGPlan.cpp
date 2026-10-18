@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ============================================================================
  *  renderer/rdg/RDGPlan.cpp
  * ============================================================================
@@ -120,7 +120,7 @@ namespace
 	// 堆内子分配至少要满足资源计划用的对齐.
 	Desc.Alignment = DefaultResourceAlignment;
 	Desc.MemoryTypeBits = Layout.MemoryTypeBits;
-	Desc.RequiredProperties = rhi::EMemoryProperty(rhi::EMemoryProperty_t::DeviceLocal);
+	Desc.RequiredProperties = rhi::EMemoryPropertyFlags(rhi::EMemoryProperty::DeviceLocal);
 	Desc.DebugName = "RDG_" + std::string(getPoolKindName(Layout.Pool));
 	return Desc;
 }

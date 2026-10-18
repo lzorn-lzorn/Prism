@@ -9,7 +9,7 @@ add_internal_library(PluginManager
     INCLUDES            "${CMAKE_CURRENT_SOURCE_DIR}/includes"
     PRIVATE_INCLUDES    "${CMAKE_CURRENT_SOURCE_DIR}/sources"
                         "${CMAKE_CURRENT_SOURCE_DIR}/includes/plugin_manager"
-    PRIVATE_DEPENDENCY  Core::Core
+    PRIVATE_DEPENDENCY  Infra::Infra
     ALIAS               Runtime::PluginManager
 )
 # ALIAS 是内部的, INTERFACE 是外部的

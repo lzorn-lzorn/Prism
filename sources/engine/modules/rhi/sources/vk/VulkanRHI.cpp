@@ -629,7 +629,7 @@ void VulkanRHI::createLogicalDevice()
         ? supported_vertex_input.vertexInputDynamicState
         : VK_FALSE;
     // VK_KHR_ray_tracing_pipeline requires acceleration_structure and deferred_host_operations.
-    // SPIR-V 1.4, shaderFloatControls, and bufferDeviceAddress are core in the required Vulkan 1.3 API.
+    // SPIR-V 1.4, shaderFloatControls, and bufferDeviceAddress are infra in the required Vulkan 1.3 API.
     const bool enable_acceleration_structure = deferred_host_operations_available &&
         acceleration_structure_extension_available && enabled_vulkan12.bufferDeviceAddress &&
         supported_acceleration_structure.accelerationStructure;

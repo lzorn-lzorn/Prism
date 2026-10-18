@@ -584,7 +584,7 @@ bool MaterialSystem::reloadTemplate(
     NewTmpl->setInstanceRefCount((*Slot)->getInstanceRefCount());
 
     // 3. 失效旧模板缓存，再原地替换 shared_ptr
-    const core::HandleIdType StableId = OldTemplate->getStableId();
+    const infra::HandleIdType StableId = OldTemplate->getStableId();
     const uint32_t NextVersion = OldTemplate->getVersion() + 1;
     evictTemplateCaches(StableId);
     NewTmpl->setCacheIdentity(StableId, NextVersion);
@@ -675,7 +675,7 @@ std::shared_ptr<rhi::RPipeline> MaterialSystem::getOrCreatePipeline(
     const MaterialPipelineRequest& Request)
 {
     MaterialPipelineRequest ResolvedRequest = Request;
-    core::TypedHandle<VertexFactory> ResolvedVFHandle {};
+    infra::TypedHandle<VertexFactory> ResolvedVFHandle {};
     if (Request.VertexFactory.isValid())
     {
         auto VF = getVertexFactoryShared(Request.VertexFactory);
@@ -838,9 +838,9 @@ std::shared_ptr<rhi::RBindGroup> MaterialSystem::getOrCreateMaterialBindGroup(
     return BindGroup;
 }
 
-void MaterialSystem::evictTemplateCaches(core::HandleIdType TemplateStableId) noexcept
+void MaterialSystem::evictTemplateCaches(infra::HandleIdType TemplateStableId) noexcept
 {
-    if (TemplateStableId == core::InvalidHandleId) return;
+    if (TemplateStableId == infra::InvalidHandleId) return;
 
     {
         std::lock_guard Lock(PipelineCacheMutex);

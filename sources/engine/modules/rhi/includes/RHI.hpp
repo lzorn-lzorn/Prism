@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <array>
 #include <cstddef>
@@ -11,9 +11,9 @@
 #include <string_view>
 #include <variant>
 #include <vector>
-#include <core/wrappers/Flag.hpp>
-#include <core/math/MathCommon.hpp>
-#include <generic_application/window/GenericWindow.hpp>
+#include <infra/wrappers/Flag.hpp>
+#include <infra/math/MathCommon.hpp>
+#include <IGenericWindow.hpp>
 
 namespace rhi
 {
@@ -178,7 +178,7 @@ enum class EFormat : uint32_t
 
 
 /** @brief Bit values describing required or preferred physical memory properties. */
-enum class EMemoryProperty_t : uint8_t
+enum class EMemoryProperty : uint8_t
 {
     None           = 0,
     DeviceLocal    = 1 << 0,  // 位于 GPU 显存, 访问最快
@@ -189,8 +189,8 @@ enum class EMemoryProperty_t : uint8_t
 };
 
 /** @brief Composable set of physical memory properties. */
-using EMemoryProperty = core::Flags<EMemoryProperty_t>;
-DEFINE_ENUM_OPERATOR(EMemoryProperty_t);
+using EMemoryPropertyFlags = infra::Flags<EMemoryProperty>;
+DEFINE_ENUM_OPERATOR(EMemoryProperty);
 
 /** @brief High-level allocation intent used to rank otherwise valid memory types. */
 enum class EMemoryUsage : uint8_t
@@ -202,7 +202,7 @@ enum class EMemoryUsage : uint8_t
 	CPUOnly
 };
 /** @brief Bit values describing all legal uses declared when a buffer is created. */
-enum class EBufferUsage_t : uint32_t
+enum class EBufferUsage : uint32_t
 {
 	None        = 0,
 	Vertex      = 1 << 0,
@@ -221,8 +221,8 @@ enum class EBufferUsage_t : uint32_t
 };
 
 /** @brief Composable set of buffer usage capabilities. */
-using EBufferUsage = core::Flags<EBufferUsage_t>;
-DEFINE_ENUM_OPERATOR(EBufferUsage_t);
+using EBufferUsageFlags = infra::Flags<EBufferUsage>;
+DEFINE_ENUM_OPERATOR(EBufferUsage);
 /** @brief Selects the intended CPU access direction for a mapped buffer. */
 enum class EBufferMapMode : uint8_t
 {
@@ -246,7 +246,7 @@ enum class EImageUsage_t : uint32_t
 };
 
 /** @brief Composable set of image usage capabilities. */
-using EImageUsage = core::Flags<EImageUsage_t>;
+using EImageUsage = infra::Flags<EImageUsage_t>;
 DEFINE_ENUM_OPERATOR(EImageUsage_t);
 
 /** @brief Defines image dimensionality and array/cube interpretation. */
@@ -303,7 +303,7 @@ enum class EShaderStage_t : uint32_t
 };
 
 /** @brief Composable visibility mask of shader stages. */
-using EShaderStage = core::Flags<EShaderStage_t>;
+using EShaderStage = infra::Flags<EShaderStage_t>;
 DEFINE_ENUM_OPERATOR(EShaderStage_t);
 
 /** @brief Describes the presentation surface transform applied by the compositor. */
@@ -385,7 +385,7 @@ enum class EPipelineStatistic_t : uint32_t
 };
 
 /** @brief Composable pipeline counter mask; result words follow ascending bit order. */
-using EPipelineStatistics = core::Flags<EPipelineStatistic_t>;
+using EPipelineStatistics = infra::Flags<EPipelineStatistic_t>;
 DEFINE_ENUM_OPERATOR(EPipelineStatistic_t);
 
 /** @brief Bit values controlling query result width, waiting, availability, and partial results. */
@@ -399,7 +399,7 @@ enum class EQueryResultFlag_t : uint8_t
 };
 
 /** @brief Composable query readback/copy policy flags. */
-using EQueryResultFlags = core::Flags<EQueryResultFlag_t>;
+using EQueryResultFlags = infra::Flags<EQueryResultFlag_t>;
 DEFINE_ENUM_OPERATOR(EQueryResultFlag_t);
 
 /** @brief Converts timestamp ticks to nanoseconds. @param TickDelta Raw tick delta masked to the device's valid timestamp bits. @param TimestampPeriodNanoseconds Nanoseconds represented by one tick from DeviceLimits. @return Converted duration, or zero when the period is non-positive. */
@@ -437,7 +437,7 @@ enum class EPipelineCompileFlag_t : uint32_t
 };
 
 /** @brief Composable pipeline compilation policy flags. */
-using EPipelineCompileFlags = core::Flags<EPipelineCompileFlag_t>;
+using EPipelineCompileFlags = infra::Flags<EPipelineCompileFlag_t>;
 DEFINE_ENUM_OPERATOR(EPipelineCompileFlag_t);
 
 /** @brief Defines how an attachment obtains its value at rendering start. */
@@ -535,7 +535,7 @@ enum class EDescriptorBindingFlag_t : uint8_t
 };
 
 /** @brief Composable descriptor binding behavior flags. */
-using EDescriptorBindingFlags = core::Flags<EDescriptorBindingFlag_t>;
+using EDescriptorBindingFlags = infra::Flags<EDescriptorBindingFlag_t>;
 DEFINE_ENUM_OPERATOR(EDescriptorBindingFlag_t);
 
 /** @brief Declares the image layout/usage expected by a descriptor. */
@@ -670,7 +670,7 @@ enum class EDynamicState_t : uint64_t
 };
 
 /** @brief Composable set of pipeline states supplied during command recording. */
-using EDynamicStates = core::Flags<EDynamicState_t>;
+using EDynamicStates = infra::Flags<EDynamicState_t>;
 
 
 /** @brief Bit values selecting writable render-target color channels. */
@@ -685,7 +685,7 @@ enum class EColorWriteMask_t : uint8_t
 };
 
 /** @brief Composable render-target channel write mask. */
-using EColorWriteMask = core::Flags<EColorWriteMask_t>;
+using EColorWriteMask = infra::Flags<EColorWriteMask_t>;
 DEFINE_ENUM_OPERATOR(EColorWriteMask_t);
 
 /** @brief Enumerates supported rasterization sample counts. */
@@ -755,7 +755,7 @@ enum class EFormatFeature_t : uint32_t
 };
 
 /** @brief Composable format operation capability mask. */
-using EFormatFeatures = core::Flags<EFormatFeature_t>;
+using EFormatFeatures = infra::Flags<EFormatFeature_t>;
 DEFINE_ENUM_OPERATOR(EFormatFeature_t);
 
 /** @brief Forward declaration of the buffer resource wrapper. */ class RBuffer;
@@ -944,8 +944,8 @@ struct MemoryAllocationDescriptor
 {
 	MemoryRequirements Requirements {};
 	EMemoryUsage Usage { EMemoryUsage::Auto };
-	EMemoryProperty RequiredProperties {};
-	EMemoryProperty PreferredProperties {};
+	EMemoryPropertyFlags RequiredProperties {};
+	EMemoryPropertyFlags PreferredProperties {};
 	float Priority { 0.5f };
 	bool PersistentlyMapped { false };
 	std::string DebugName;
@@ -957,7 +957,7 @@ struct MemoryAllocationInfo
 	DeviceSizeType Size { 0 };
 	DeviceSizeType Offset { 0 };
 	uint32_t MemoryTypeIndex { 0 };
-	EMemoryProperty Properties {};
+	EMemoryPropertyFlags Properties {};
 	bool Dedicated { false };
 	bool PersistentlyMapped { false };
 };
@@ -1028,7 +1028,7 @@ public:
      * @brief 返回实际内存属性.  
      * @return 可见性、一致性及局部性标志.  
      */
-	virtual EMemoryProperty getMemoryProperty() const = 0;
+	virtual EMemoryPropertyFlags getMemoryProperty() const = 0;
 	
     /** 
      * @brief Returns modern allocation metadata when exposed by the backend. 
@@ -1061,7 +1061,7 @@ public:
      * @param Property 必需属性 
      * @return 分配对象, 失败时为空或抛出异常.  
      */
-	virtual std::shared_ptr<DeviceMemory> allocateMemory(MemoryRequirements Requirements, EMemoryProperty Property) = 0;
+	virtual std::shared_ptr<DeviceMemory> allocateMemory(MemoryRequirements Requirements, EMemoryPropertyFlags Property) = 0;
 
 	/** 
      * @brief 归还不再被 GPU 使用的分配 
@@ -1080,9 +1080,9 @@ struct MemoryHeapDescriptor
 	/** @brief 允许使用的内存类型位(通常来自资源的 MemoryRequirements). */
 	uint32_t        MemoryTypeBits { 0 };
 	/** @brief 必须满足的物理内存属性. */
-	EMemoryProperty RequiredProperties { EMemoryProperty_t::DeviceLocal };
+	EMemoryPropertyFlags RequiredProperties { EMemoryProperty::DeviceLocal };
 	/** @brief 优先选择的物理内存属性. */
-	EMemoryProperty PreferredProperties {};
+	EMemoryPropertyFlags PreferredProperties {};
 	/** @brief 诊断名称. */
 	std::string     DebugName;
 };
@@ -1107,10 +1107,10 @@ struct MemoryHeapDescriptor
 struct BufferRequirementsRequest
 {
 	rhi::DeviceSizeType  Size { 0 };
-	rhi::EBufferUsage    Usage {};
+	rhi::EBufferUsageFlags    Usage {};
 	rhi::EMemoryUsage    MemoryUsage { rhi::EMemoryUsage::Auto };
-	rhi::EMemoryProperty MemoryProperty { rhi::EMemoryProperty_t::DeviceLocal };
-	rhi::EMemoryProperty PreferredMemoryProperty {};
+	rhi::EMemoryPropertyFlags MemoryProperty { rhi::EMemoryProperty::DeviceLocal };
+	rhi::EMemoryPropertyFlags PreferredMemoryProperty {};
 	bool                 DedicatedAllocation { false };
 };
 
@@ -1127,7 +1127,7 @@ struct ImageRequirementsRequest
 	rhi::ESharingMode    SharingMode { rhi::ESharingMode::Exclusive };
 	rhi::EImageUsage     Usage {};
 	rhi::ESampleCount    SampleCount { rhi::ESampleCount::Count1 };
-	rhi::EMemoryProperty MemoryProperty { rhi::EMemoryProperty_t::DeviceLocal };
+	rhi::EMemoryPropertyFlags MemoryProperty { rhi::EMemoryProperty::DeviceLocal };
 };
 
 /**
@@ -1191,10 +1191,10 @@ public:
     struct Descriptor_t
     {
         DeviceSizeType Size { 0 };
-        EBufferUsage Usage {};
+        EBufferUsageFlags Usage {};
         EMemoryUsage MemoryUsage { EMemoryUsage::Auto };
-        EMemoryProperty MemoryProperty { EMemoryProperty_t::DeviceLocal };
-        EMemoryProperty PreferredMemoryProperty {};
+        EMemoryPropertyFlags MemoryProperty { EMemoryProperty::DeviceLocal };
+        EMemoryPropertyFlags PreferredMemoryProperty {};
         float MemoryPriority { 0.5f };
         bool DedicatedAllocation { false };
         bool PersistentlyMapped { false };
@@ -1380,7 +1380,7 @@ public:
 		uint32_t MipLevels { 1 };
 		uint32_t ArrayLayers { 1 };
 		ESharingMode SharingMode { ESharingMode::Exclusive };
-		EMemoryProperty MemoryProperty { EMemoryProperty_t::DeviceLocal };
+		EMemoryPropertyFlags MemoryProperty { EMemoryProperty::DeviceLocal };
 		EImageUsage Usage {};
 		ESampleCount SampleCount { ESampleCount::Count1 };
 	};
@@ -1845,7 +1845,7 @@ enum class EAccelerationStructureGeometryFlag_t : uint8_t
 };
 
 /** @brief Composable per-geometry ray interaction flags. */
-using EAccelerationStructureGeometryFlags = core::Flags<EAccelerationStructureGeometryFlag_t>;
+using EAccelerationStructureGeometryFlags = infra::Flags<EAccelerationStructureGeometryFlag_t>;
 
 /** @brief Bit values controlling acceleration-structure build performance and mutability. */
 enum class EAccelerationStructureBuildFlag_t : uint8_t
@@ -1859,7 +1859,7 @@ enum class EAccelerationStructureBuildFlag_t : uint8_t
 };
 
 /** @brief Composable acceleration-structure build policy flags. */
-using EAccelerationStructureBuildFlags = core::Flags<EAccelerationStructureBuildFlag_t>;
+using EAccelerationStructureBuildFlags = infra::Flags<EAccelerationStructureBuildFlag_t>;
 DEFINE_ENUM_OPERATOR(EAccelerationStructureBuildFlag_t);
 
 /** @brief Triangle vertex/index/transform buffers used to build bottom-level geometry. */
@@ -2995,7 +2995,7 @@ public:
      */
 	virtual std::shared_ptr<DeviceMemory> allocateMemory(
 		MemoryRequirements Requirements,
-		EMemoryProperty Property) = 0;
+		EMemoryPropertyFlags Property) = 0;
 	/** 
      * @brief Allocates memory with required/preferred properties and modern metadata. 
      * @param Desc Allocation constraints and policy. 

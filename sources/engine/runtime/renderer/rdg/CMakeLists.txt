@@ -1,7 +1,7 @@
 add_internal_module(RendererRDG
     TYPE               STATIC
     PUBLIC_DEPENDENCY  Module::RHI
-    PRIVATE_DEPENDENCY Core::Core
+    PRIVATE_DEPENDENCY Infra::Infra
     ALIAS              Runtime::RendererRDG
 )
 

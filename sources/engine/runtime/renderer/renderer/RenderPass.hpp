@@ -2,10 +2,9 @@
 
 #include <rdg/RDGBuilder.hpp>
 #include <renderer/RenderProxyWorld.hpp>
-#include <renderer/UIRenderer.hpp>
 
-#include <core/math/Matrix.hpp>
-#include <core/math/Vector.hpp>
+#include <infra/math/Matrix.hpp>
+#include <infra/math/Vector.hpp>
 
 #include <cstdint>
 
@@ -42,10 +41,10 @@ namespace runtime::renderer
  */
 struct RenderView
 {
-	core::Matrix4x4 View {};
-	core::Matrix4x4 Projection {};
-	core::Matrix4x4 ViewProjection {};
-	core::Vec3f CameraPosition { 0.0f, 0.0f, 0.0f };
+	infra::Matrix4x4 View {};
+	infra::Matrix4x4 Projection {};
+	infra::Matrix4x4 ViewProjection {};
+	infra::Vec3f CameraPosition { 0.0f, 0.0f, 0.0f };
 };
 
 /**
@@ -71,7 +70,6 @@ struct RenderContext
 {
 	const RenderProxyWorld& ProxyWorld;
 	const RenderView& View;
-	const UIRenderer& UI;
 	/**
 	 * @brief World 预处理后的帧交换包(可为空, 由调用方控制是否启用统一提交流).
 	 */

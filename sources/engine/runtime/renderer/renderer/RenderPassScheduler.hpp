@@ -26,9 +26,10 @@
  *    UIRenderPass            2D/UI 合成
  *
  *  [当前状态(v1)]
- *  各子渲染器的 addPasses 已声明正确的 Pass 结构与附件/读写依赖(架构骨架),
- *  但 Execute 内的实际绘制留空 —— 需要 MaterialSystem 完成 Primitive -> DrawPacket
- *  的管线/绑定组解析, 以及 UIRenderer 批次的顶点上传与 2D 管线后填充.
+ *  - 3D Pass(阴影/深度/不透明/半透明)已实现 DrawPacket 的绑定与索引绘制录制;
+ *  - 2D/UI Pass 已绑定批次管线, 完整绘制还需 Unit Quad 顶点/索引缓冲 + instance 上传;
+ *  - 后处理 Pass 需要全屏三角形管线(待接入).
+ *  所有 DrawPacket 的 Pipeline/BindGroups 由 MaterialSystem 解析后填充.
  * ============================================================================
  */
 namespace runtime::renderer

@@ -1,4 +1,4 @@
-#include "VulkanBuffer.hpp"
+﻿#include "VulkanBuffer.hpp"
 
 #include "VulkanDevice.hpp"
 #include "VulkanDeviceMemory.hpp"
@@ -19,33 +19,33 @@ void validateBufferDescriptor(VulkanDevice& Device, const RBuffer::Descriptor_t&
 		throw std::invalid_argument("Vulkan buffer size must be non-zero.");
 	if (toVk(Desc.Usage) == vk::BufferUsageFlags{})
 		throw std::invalid_argument("Vulkan buffer usage must not be empty.");
-	if (Desc.MemoryProperty.has(EMemoryProperty_t::HostCoherent) &&
-		!Desc.MemoryProperty.has(EMemoryProperty_t::HostVisible))
+	if (Desc.MemoryProperty.has(EMemoryProperty::HostCoherent) &&
+		!Desc.MemoryProperty.has(EMemoryProperty::HostVisible))
 	{
 		throw std::invalid_argument("Host-coherent buffer memory must also be host-visible.");
 	}
-	if (Desc.MemoryProperty.has(EMemoryProperty_t::HostCached) &&
-		!Desc.MemoryProperty.has(EMemoryProperty_t::HostVisible))
+	if (Desc.MemoryProperty.has(EMemoryProperty::HostCached) &&
+		!Desc.MemoryProperty.has(EMemoryProperty::HostVisible))
 	{
 		throw std::invalid_argument("Host-cached buffer memory must also be host-visible.");
 	}
 	const bool memory_usage_is_host_visible = Desc.MemoryUsage == EMemoryUsage::CPUToGPU ||
 		Desc.MemoryUsage == EMemoryUsage::GPUToCPU || Desc.MemoryUsage == EMemoryUsage::CPUOnly;
-	if (Desc.PersistentlyMapped && !Desc.MemoryProperty.has(EMemoryProperty_t::HostVisible) &&
+	if (Desc.PersistentlyMapped && !Desc.MemoryProperty.has(EMemoryProperty::HostVisible) &&
 		!memory_usage_is_host_visible)
 		throw std::invalid_argument("Persistently mapped Vulkan buffers must be host-visible.");
 	const bool requires_device_address =
-		Desc.Usage.has(EBufferUsage_t::DeviceAddress) ||
-		Desc.Usage.has(EBufferUsage_t::AccelerationStructureBuildInput) ||
-		Desc.Usage.has(EBufferUsage_t::AccelerationStructureStorage) ||
-		Desc.Usage.has(EBufferUsage_t::ShaderBindingTable);
+		Desc.Usage.has(EBufferUsage::DeviceAddress) ||
+		Desc.Usage.has(EBufferUsage::AccelerationStructureBuildInput) ||
+		Desc.Usage.has(EBufferUsage::AccelerationStructureStorage) ||
+		Desc.Usage.has(EBufferUsage::ShaderBindingTable);
 	if (requires_device_address && !Device.getFeatures().BufferDeviceAddress)
 		throw std::invalid_argument("Vulkan buffer device address was requested but is not enabled.");
-	if ((Desc.Usage.has(EBufferUsage_t::AccelerationStructureBuildInput) ||
-		Desc.Usage.has(EBufferUsage_t::AccelerationStructureStorage)) &&
+	if ((Desc.Usage.has(EBufferUsage::AccelerationStructureBuildInput) ||
+		Desc.Usage.has(EBufferUsage::AccelerationStructureStorage)) &&
 		!Device.getFeatures().AccelerationStructure)
 		throw std::invalid_argument("Vulkan acceleration-structure buffer usage is not enabled.");
-	if (Desc.Usage.has(EBufferUsage_t::ShaderBindingTable) &&
+	if (Desc.Usage.has(EBufferUsage::ShaderBindingTable) &&
 		!Device.getFeatures().RayTracingPipeline)
 		throw std::invalid_argument("Vulkan shader-binding-table usage is not enabled.");
 }
@@ -117,16 +117,16 @@ std::shared_ptr<VulkanBuffer> VulkanBuffer::create(
 	const bool memory_usage_is_host_visible = Desc.MemoryUsage == EMemoryUsage::CPUToGPU ||
 		Desc.MemoryUsage == EMemoryUsage::GPUToCPU || Desc.MemoryUsage == EMemoryUsage::CPUOnly;
 	const bool requires_device_address =
-		Desc.Usage.has(EBufferUsage_t::DeviceAddress) ||
-		Desc.Usage.has(EBufferUsage_t::AccelerationStructureBuildInput) ||
-		Desc.Usage.has(EBufferUsage_t::AccelerationStructureStorage) ||
-		Desc.Usage.has(EBufferUsage_t::ShaderBindingTable);
+		Desc.Usage.has(EBufferUsage::DeviceAddress) ||
+		Desc.Usage.has(EBufferUsage::AccelerationStructureBuildInput) ||
+		Desc.Usage.has(EBufferUsage::AccelerationStructureStorage) ||
+		Desc.Usage.has(EBufferUsage::ShaderBindingTable);
 	auto required_properties = Desc.MemoryProperty;
 	// RBuffer::Descriptor_t defaults to GPU-local memory. An explicit CPU allocation intent
 	// replaces that default unless the caller supplied additional required properties.
 	if (memory_usage_is_host_visible &&
-		required_properties == EMemoryProperty(EMemoryProperty_t::DeviceLocal))
-		required_properties.clear(EMemoryProperty_t::DeviceLocal);
+		required_properties == EMemoryPropertyFlags(EMemoryProperty::DeviceLocal))
+		required_properties.clear(EMemoryProperty::DeviceLocal);
 	auto memory = Device.allocateBufferMemory(MemoryAllocationDescriptor {
 		.Requirements = requirements,
 		.Usage = Desc.MemoryUsage,
@@ -160,10 +160,10 @@ void* VulkanBuffer::getNativeHandle() const noexcept
 DeviceAddress VulkanBuffer::getDeviceAddress() const noexcept
 {
 	if (!Buffer || !Device || !Device->getFeatures().BufferDeviceAddress ||
-		(!Descriptor.Usage.has(EBufferUsage_t::DeviceAddress) &&
-		 !Descriptor.Usage.has(EBufferUsage_t::AccelerationStructureBuildInput) &&
-		 !Descriptor.Usage.has(EBufferUsage_t::AccelerationStructureStorage) &&
-		 !Descriptor.Usage.has(EBufferUsage_t::ShaderBindingTable)))
+		(!Descriptor.Usage.has(EBufferUsage::DeviceAddress) &&
+		 !Descriptor.Usage.has(EBufferUsage::AccelerationStructureBuildInput) &&
+		 !Descriptor.Usage.has(EBufferUsage::AccelerationStructureStorage) &&
+		 !Descriptor.Usage.has(EBufferUsage::ShaderBindingTable)))
 		return 0;
 	// Vulkan 1.3 includes the Vulkan 1.2 bufferDeviceAddress feature; the KHR path has
 	// equivalent requirements. Address-capable allocations carry DEVICE_ADDRESS_BIT.
@@ -178,7 +178,7 @@ DeviceAddress VulkanBuffer::getDeviceAddress() const noexcept
 
 void* VulkanBuffer::map(DeviceSizeType Offset, DeviceSizeType Size)
 {
-	if (!Memory->getMemoryProperty().has(EMemoryProperty_t::HostVisible))
+	if (!Memory->getMemoryProperty().has(EMemoryProperty::HostVisible))
 		throw std::logic_error("Only host-visible Vulkan buffers can be mapped.");
 	if (IsMapped)
 		throw std::logic_error("Vulkan buffer memory is already mapped.");

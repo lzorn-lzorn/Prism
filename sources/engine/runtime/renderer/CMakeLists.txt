@@ -1,6 +1,7 @@
 add_subdirectory(material)
 add_subdirectory(rdg)
 add_subdirectory(renderer)
+add_subdirectory(uibackend)
 
 add_library(Renderer INTERFACE)
 add_library(Runtime::Renderer ALIAS Renderer)

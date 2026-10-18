@@ -75,7 +75,6 @@ void Engine::initialize()
 	// 初始化物理模块
 
 	// 初始化渲染线程
-	RenderThread = std::make_unique<runtime::RenderThread>();
 
 	// 加载整个引擎的配置
 

@@ -1,4 +1,4 @@
-#include "RHI.hpp"
+﻿#include "RHI.hpp"
 #include "VulkanRHI.hpp"
 #include "VulkanBindGroup.hpp"
 #include "VulkanBuffer.hpp"
@@ -490,7 +490,7 @@ std::shared_ptr<RTexture> VulkanDevice::createTexture(const RTexture::Descriptor
 
 std::shared_ptr<DeviceMemory> VulkanDevice::allocateMemory(
 	MemoryRequirements Requirements,
-	EMemoryProperty Property)
+	EMemoryPropertyFlags Property)
 {
 	requireReady();
 	if (Requirements.Size == 0 || Requirements.MemoryTypeBits == 0)

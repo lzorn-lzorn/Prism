@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <RHI.hpp>
 
@@ -93,7 +93,7 @@ struct RDGTextureDesc
 struct RDGBufferDesc
 {
 	rhi::DeviceSizeType Size { 0 };
-	rhi::EBufferUsage Usage {};
+	rhi::EBufferUsageFlags Usage {};
 
 	[[nodiscard]] bool operator==(const RDGBufferDesc&) const = default;
 };
