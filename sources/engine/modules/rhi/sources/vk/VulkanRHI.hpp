@@ -12,7 +12,7 @@ namespace rhi
 class VulkanDevice;
 
 template <typename VkType, typename RHIType>
-VkType toVk(RHIType value);
+VkType toVk(RHIType Value);
 
 inline auto toVk(EFormat Fomat) -> vk::Format
 {
@@ -54,19 +54,19 @@ inline auto toVk(EIndexFormat Fomat) -> vk::IndexType
 inline auto toVk(EShaderStage Stage) -> vk::ShaderStageFlags
 {
 {
-    vk::ShaderStageFlags result = vk::ShaderStageFlags();
-    if (Stage.has(EShaderStage_t::Vertex)) result |= vk::ShaderStageFlags::BitsType::eVertex;
-    if (Stage.has(EShaderStage_t::Pixel)) result |= vk::ShaderStageFlags::BitsType::eFragment;
-    if (Stage.has(EShaderStage_t::Compute)) result |= vk::ShaderStageFlags::BitsType::eCompute;
-    if (Stage.has(EShaderStage_t::Geometry)) result |= vk::ShaderStageFlags::BitsType::eGeometry;
-    if (Stage.has(EShaderStage_t::Hull)) result |= vk::ShaderStageFlags::BitsType::eTessellationControl;
-    if (Stage.has(EShaderStage_t::Domain)) result |= vk::ShaderStageFlags::BitsType::eTessellationEvaluation;
-    if (Stage.has(EShaderStage_t::RayGeneration)) result |= vk::ShaderStageFlags::BitsType::eRaygenKHR;
-    if (Stage.has(EShaderStage_t::AnyHit)) result |= vk::ShaderStageFlags::BitsType::eAnyHitKHR;
-    if (Stage.has(EShaderStage_t::ClosestHit)) result |= vk::ShaderStageFlags::BitsType::eClosestHitKHR;
-    if (Stage.has(EShaderStage_t::Miss)) result |= vk::ShaderStageFlags::BitsType::eMissKHR;
-    if (Stage.has(EShaderStage_t::Intersection)) result |= vk::ShaderStageFlags::BitsType::eIntersectionKHR;
-    if (Stage.has(EShaderStage_t::Callable)) result |= vk::ShaderStageFlags::BitsType::eCallableKHR;
+    vk::ShaderStageFlags Result = vk::ShaderStageFlags();
+    if (Stage.has(EShaderStage_t::Vertex)) Result |= vk::ShaderStageFlags::BitsType::eVertex;
+    if (Stage.has(EShaderStage_t::Pixel)) Result |= vk::ShaderStageFlags::BitsType::eFragment;
+    if (Stage.has(EShaderStage_t::Compute)) Result |= vk::ShaderStageFlags::BitsType::eCompute;
+    if (Stage.has(EShaderStage_t::Geometry)) Result |= vk::ShaderStageFlags::BitsType::eGeometry;
+    if (Stage.has(EShaderStage_t::Hull)) Result |= vk::ShaderStageFlags::BitsType::eTessellationControl;
+    if (Stage.has(EShaderStage_t::Domain)) Result |= vk::ShaderStageFlags::BitsType::eTessellationEvaluation;
+    if (Stage.has(EShaderStage_t::RayGeneration)) Result |= vk::ShaderStageFlags::BitsType::eRaygenKHR;
+    if (Stage.has(EShaderStage_t::AnyHit)) Result |= vk::ShaderStageFlags::BitsType::eAnyHitKHR;
+    if (Stage.has(EShaderStage_t::ClosestHit)) Result |= vk::ShaderStageFlags::BitsType::eClosestHitKHR;
+    if (Stage.has(EShaderStage_t::Miss)) Result |= vk::ShaderStageFlags::BitsType::eMissKHR;
+    if (Stage.has(EShaderStage_t::Intersection)) Result |= vk::ShaderStageFlags::BitsType::eIntersectionKHR;
+    if (Stage.has(EShaderStage_t::Callable)) Result |= vk::ShaderStageFlags::BitsType::eCallableKHR;
 #ifdef VK_SHADER_STAGE_MESH_BIT_EXT
     if (Stage.has(EShaderStage_t::Mesh)) result |= vk::ShaderStageFlags::BitsType::eMesh;
 #endif
@@ -74,26 +74,26 @@ inline auto toVk(EShaderStage Stage) -> vk::ShaderStageFlags
     if (Stage.has(EShaderStage_t::Amplification) || Stage.has(EShaderStage_t::Task))
         result |= vk::ShaderStageFlags::BitsType::eTask;
 #endif
-    return result;
+    return Result;
 }
 }
 inline auto toVk(EBufferUsageFlags Usage) -> vk::BufferUsageFlags
 {
-    vk::BufferUsageFlags flags = vk::BufferUsageFlags();
-    if (Usage.has(EBufferUsage::Vertex)) flags |= vk::BufferUsageFlags::BitsType::eVertexBuffer;
-    if (Usage.has(EBufferUsage::Index)) flags |= vk::BufferUsageFlags::BitsType::eIndexBuffer;
-    if (Usage.has(EBufferUsage::Uniform)) flags |= vk::BufferUsageFlags::BitsType::eUniformBuffer;
-    if (Usage.has(EBufferUsage::Storage)) flags |= vk::BufferUsageFlags::BitsType::eStorageBuffer;
-    if (Usage.has(EBufferUsage::Indirect)) flags |= vk::BufferUsageFlags::BitsType::eIndirectBuffer;
-    if (Usage.has(EBufferUsage::TransferSrc)) flags |= vk::BufferUsageFlags::BitsType::eTransferSrc;
-    if (Usage.has(EBufferUsage::TransferDst)) flags |= vk::BufferUsageFlags::BitsType::eTransferDst;
-    if (Usage.has(EBufferUsage::UniformTexel)) flags |= vk::BufferUsageFlags::BitsType::eUniformTexelBuffer;
-    if (Usage.has(EBufferUsage::StorageTexel)) flags |= vk::BufferUsageFlags::BitsType::eStorageTexelBuffer;
-    if (Usage.has(EBufferUsage::DeviceAddress)) flags |= vk::BufferUsageFlags::BitsType::eShaderDeviceAddress;
-    if (Usage.has(EBufferUsage::AccelerationStructureBuildInput)) flags |= vk::BufferUsageFlags::BitsType::eAccelerationStructureBuildInputReadOnlyKHR;
-    if (Usage.has(EBufferUsage::AccelerationStructureStorage)) flags |= vk::BufferUsageFlags::BitsType::eAccelerationStructureStorageKHR;
-    if (Usage.has(EBufferUsage::ShaderBindingTable)) flags |= vk::BufferUsageFlags::BitsType::eShaderBindingTableKHR;
-    return flags;
+    vk::BufferUsageFlags Flags = vk::BufferUsageFlags();
+    if (Usage.has(EBufferUsage::Vertex)) Flags |= vk::BufferUsageFlags::BitsType::eVertexBuffer;
+    if (Usage.has(EBufferUsage::Index)) Flags |= vk::BufferUsageFlags::BitsType::eIndexBuffer;
+    if (Usage.has(EBufferUsage::Uniform)) Flags |= vk::BufferUsageFlags::BitsType::eUniformBuffer;
+    if (Usage.has(EBufferUsage::Storage)) Flags |= vk::BufferUsageFlags::BitsType::eStorageBuffer;
+    if (Usage.has(EBufferUsage::Indirect)) Flags |= vk::BufferUsageFlags::BitsType::eIndirectBuffer;
+    if (Usage.has(EBufferUsage::TransferSrc)) Flags |= vk::BufferUsageFlags::BitsType::eTransferSrc;
+    if (Usage.has(EBufferUsage::TransferDst)) Flags |= vk::BufferUsageFlags::BitsType::eTransferDst;
+    if (Usage.has(EBufferUsage::UniformTexel)) Flags |= vk::BufferUsageFlags::BitsType::eUniformTexelBuffer;
+    if (Usage.has(EBufferUsage::StorageTexel)) Flags |= vk::BufferUsageFlags::BitsType::eStorageTexelBuffer;
+    if (Usage.has(EBufferUsage::DeviceAddress)) Flags |= vk::BufferUsageFlags::BitsType::eShaderDeviceAddress;
+    if (Usage.has(EBufferUsage::AccelerationStructureBuildInput)) Flags |= vk::BufferUsageFlags::BitsType::eAccelerationStructureBuildInputReadOnlyKHR;
+    if (Usage.has(EBufferUsage::AccelerationStructureStorage)) Flags |= vk::BufferUsageFlags::BitsType::eAccelerationStructureStorageKHR;
+    if (Usage.has(EBufferUsage::ShaderBindingTable)) Flags |= vk::BufferUsageFlags::BitsType::eShaderBindingTableKHR;
+    return Flags;
 }
 
 inline auto toVk(EDescriptorType Type, EDescriptorBindingFlags Flags = {}) -> vk::DescriptorType
@@ -168,14 +168,14 @@ inline auto toVk(ESamplerAddressMode Mode) -> vk::SamplerAddressMode
 
 inline auto toVk(EImageUsage Usage) -> vk::ImageUsageFlags
 {
-    vk::ImageUsageFlags flags = vk::ImageUsageFlags();
-    if (Usage.has(EImageUsage_t::Sampled)) flags |= vk::ImageUsageFlags::BitsType::eSampled;
-    if (Usage.has(EImageUsage_t::Storage)) flags |= vk::ImageUsageFlags::BitsType::eStorage;
-    if (Usage.has(EImageUsage_t::Target)) flags |= vk::ImageUsageFlags::BitsType::eColorAttachment;
-    if (Usage.has(EImageUsage_t::DepthStencil)) flags |= vk::ImageUsageFlags::BitsType::eDepthStencilAttachment;
-    if (Usage.has(EImageUsage_t::TransferSrc)) flags |= vk::ImageUsageFlags::BitsType::eTransferSrc;
-    if (Usage.has(EImageUsage_t::TransferDst)) flags |= vk::ImageUsageFlags::BitsType::eTransferDst;
-    return flags;
+    vk::ImageUsageFlags Flags = vk::ImageUsageFlags();
+    if (Usage.has(EImageUsage_t::Sampled)) Flags |= vk::ImageUsageFlags::BitsType::eSampled;
+    if (Usage.has(EImageUsage_t::Storage)) Flags |= vk::ImageUsageFlags::BitsType::eStorage;
+    if (Usage.has(EImageUsage_t::Target)) Flags |= vk::ImageUsageFlags::BitsType::eColorAttachment;
+    if (Usage.has(EImageUsage_t::DepthStencil)) Flags |= vk::ImageUsageFlags::BitsType::eDepthStencilAttachment;
+    if (Usage.has(EImageUsage_t::TransferSrc)) Flags |= vk::ImageUsageFlags::BitsType::eTransferSrc;
+    if (Usage.has(EImageUsage_t::TransferDst)) Flags |= vk::ImageUsageFlags::BitsType::eTransferDst;
+    return Flags;
 }
 
 inline vk::PrimitiveTopology toVk(EPrimitiveTopology Topology)

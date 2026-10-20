@@ -20,35 +20,35 @@ namespace
 {
 static std::vector<const char*> getRequiredInstanceExtensions()
 {
-    std::vector<const char*> extensions;
+    std::vector<const char*> Extensions;
 #ifdef USE_SDL
-    Uint32 extension_count = 0;
-    const char* const* sdl_extensions = SDL_Vulkan_GetInstanceExtensions(&extension_count);
-    if (!sdl_extensions)
+    Uint32 ExtensionCount = 0;
+    const char* const* SdlExtensions = SDL_Vulkan_GetInstanceExtensions(&ExtensionCount);
+    if (!SdlExtensions)
     {
         throw std::runtime_error(std::string("Failed to query SDL Vulkan extensions: ") + SDL_GetError());
     }
-    extensions.assign(sdl_extensions, sdl_extensions + extension_count);
+    Extensions.assign(SdlExtensions, SdlExtensions + ExtensionCount);
 #else
     throw std::runtime_error("No generic window backend is available for Vulkan surface creation.");
 #endif
-    return extensions;
+    return Extensions;
 }
 
 static bool checkInstanceExtensions(const std::vector<const char*>& Required)
 {
     if (Required.empty()) return true;
-    auto available = vk::enumerateInstanceExtensionProperties();
-    std::set<std::string> available_set;
-    for (const auto& ext : available)
+    auto Available = vk::enumerateInstanceExtensionProperties();
+    std::set<std::string> AvailableSet;
+    for (const auto& Ext : Available)
     {
-        available_set.insert(ext.extensionName);
+        AvailableSet.insert(Ext.extensionName);
     }
-    for (const char* ext : Required) 
+    for (const char* Ext : Required) 
     {
-        if (available_set.find(ext) == available_set.end()) 
+        if (AvailableSet.find(Ext) == AvailableSet.end()) 
         {
-            std::cerr << "Missing instance extension: " << ext << std::endl;
+            std::cerr << "Missing instance extension: " << Ext << std::endl;
             return false;
         }
     }
@@ -58,17 +58,17 @@ static bool checkInstanceExtensions(const std::vector<const char*>& Required)
 static bool checkDeviceExtensions(vk::PhysicalDevice RealGPU, const std::vector<const char*>& Required)
 {
     if (Required.empty()) return true;
-    auto available = RealGPU.enumerateDeviceExtensionProperties();
-    std::set<std::string> available_set;
-    for (const auto& ext : available)
+    auto Available = RealGPU.enumerateDeviceExtensionProperties();
+    std::set<std::string> AvailableSet;
+    for (const auto& Ext : Available)
     {
-        available_set.insert(ext.extensionName);
+        AvailableSet.insert(Ext.extensionName);
     }
-    for (const char* ext : Required) 
+    for (const char* Ext : Required) 
     {
-        if (available_set.find(ext) == available_set.end()) 
+        if (AvailableSet.find(Ext) == AvailableSet.end()) 
         {
-            std::cerr << "Missing device extension: " << ext << std::endl;
+            std::cerr << "Missing device extension: " << Ext << std::endl;
             return false;
         }
     }
@@ -87,65 +87,65 @@ static bool hasExtension(
 
 static bool checkDeviceFeatures(vk::PhysicalDevice RealGPU, const vk::PhysicalDeviceFeatures& Required)
 {
-    auto supported = RealGPU.getFeatures();
+    auto Supported = RealGPU.getFeatures();
     // 仅检查我们需要的特性
-    if (Required.samplerAnisotropy && !supported.samplerAnisotropy) return false;
-    if (Required.fillModeNonSolid  && !supported.fillModeNonSolid)  return false;
-    if (Required.geometryShader    && !supported.geometryShader)    return false;
-    if (Required.tessellationShader && !supported.tessellationShader) return false;
+    if (Required.samplerAnisotropy && !Supported.samplerAnisotropy) return false;
+    if (Required.fillModeNonSolid  && !Supported.fillModeNonSolid)  return false;
+    if (Required.geometryShader    && !Supported.geometryShader)    return false;
+    if (Required.tessellationShader && !Supported.tessellationShader) return false;
     return true;
 }
 
 
 static uint64_t getDeviceLocalMemorySize(vk::PhysicalDevice RealGPU)
 {
-    auto mem_props = RealGPU.getMemoryProperties();
-    uint64_t max_device_local_size = 0;
-    for (uint32_t i = 0; i < mem_props.memoryHeapCount; ++i) 
+    auto MemProps = RealGPU.getMemoryProperties();
+    uint64_t MaxDeviceLocalSize = 0;
+    for (uint32_t I = 0; I < MemProps.memoryHeapCount; ++I) 
     {
-        if (mem_props.memoryHeaps[i].flags & vk::MemoryHeapFlagBits::eDeviceLocal) 
+        if (MemProps.memoryHeaps[I].flags & vk::MemoryHeapFlagBits::eDeviceLocal) 
         {
-            max_device_local_size = std::max(max_device_local_size, mem_props.memoryHeaps[i].size);
+            MaxDeviceLocalSize = std::max(MaxDeviceLocalSize, MemProps.memoryHeaps[I].size);
         }
     }
-    return max_device_local_size;
+    return MaxDeviceLocalSize;
 }
 
 static int scoreDevice(vk::PhysicalDevice RealGPU)
 {
-    int score = 0;
-    auto props = RealGPU.getProperties();
+    int Score = 0;
+    auto Props = RealGPU.getProperties();
 
     // 设备类型基础分
-    switch (props.deviceType) {
-    case vk::PhysicalDeviceType::eDiscreteGpu:   score += 1000; break;
-    case vk::PhysicalDeviceType::eIntegratedGpu: score += 500;  break;
-    case vk::PhysicalDeviceType::eVirtualGpu:    score += 200;  break;
-    case vk::PhysicalDeviceType::eCpu:           score += 100;  break;
-    default:                                     score += 0;    break;
+    switch (Props.deviceType) {
+    case vk::PhysicalDeviceType::eDiscreteGpu:   Score += 1000; break;
+    case vk::PhysicalDeviceType::eIntegratedGpu: Score += 500;  break;
+    case vk::PhysicalDeviceType::eVirtualGpu:    Score += 200;  break;
+    case vk::PhysicalDeviceType::eCpu:           Score += 100;  break;
+    default:                                     Score += 0;    break;
     }
 
     // 显存大小（每 MB 加 1 分）
-    uint64_t mem_size = getDeviceLocalMemorySize(RealGPU);
-    score += static_cast<int>(mem_size / (1024 * 1024));
+    uint64_t MemSize = getDeviceLocalMemorySize(RealGPU);
+    Score += static_cast<int>(MemSize / (1024 * 1024));
 
     // 队列能力加分
-    auto queue_families = RealGPU.getQueueFamilyProperties();
-    bool has_graphics = false;
-    bool has_compute = false;
-    bool has_separate_compute = false;
-    for (const auto& qf : queue_families) {
-        if (qf.queueFlags & vk::QueueFlagBits::eGraphics) has_graphics = true;
-        if (qf.queueFlags & vk::QueueFlagBits::eCompute)  has_compute  = true;
-        if ((qf.queueFlags & vk::QueueFlagBits::eCompute) &&
-            !(qf.queueFlags & vk::QueueFlagBits::eGraphics)) {
-            has_separate_compute = true;
+    auto QueueFamilies = RealGPU.getQueueFamilyProperties();
+    bool HasGraphics = false;
+    bool HasCompute = false;
+    bool HasSeparateCompute = false;
+    for (const auto& Qf : QueueFamilies) {
+        if (Qf.queueFlags & vk::QueueFlagBits::eGraphics) HasGraphics = true;
+        if (Qf.queueFlags & vk::QueueFlagBits::eCompute)  HasCompute  = true;
+        if ((Qf.queueFlags & vk::QueueFlagBits::eCompute) &&
+            !(Qf.queueFlags & vk::QueueFlagBits::eGraphics)) {
+            HasSeparateCompute = true;
         }
     }
-    if (has_graphics && has_compute) score += 100;
-    if (has_separate_compute)        score += 50;
+    if (HasGraphics && HasCompute) Score += 100;
+    if (HasSeparateCompute)        Score += 50;
 
-    return score;
+    return Score;
 }
 
 
@@ -160,12 +160,12 @@ uint64_t clampCopySize(uint64_t Offset, uint64_t RequestedSize, uint64_t MaxSize
         return 0;
     }
 
-    const uint64_t available_size = MaxSize - Offset;
+    const uint64_t AvailableSize = MaxSize - Offset;
     if (RequestedSize == 0)
     {
-        return available_size;
+        return AvailableSize;
     }
-    return std::min<uint64_t>(RequestedSize, available_size);
+    return std::min<uint64_t>(RequestedSize, AvailableSize);
 }
 
 VulkanRHI::~VulkanRHI()
@@ -197,7 +197,7 @@ void VulkanRHI::initialize(const ui::GenericWindowPointer& Window)
 
 void VulkanRHI::createVkInstance()
 {
-    vk::ApplicationInfo app_info(
+    vk::ApplicationInfo AppInfo(
         "SeedEngine",
         VK_MAKE_VERSION(1, 0, 0),
         "SeedEngine",
@@ -205,71 +205,71 @@ void VulkanRHI::createVkInstance()
         VK_API_VERSION_1_3
     );
 
-    std::vector<const char*> layers;
+    std::vector<const char*> Layers;
 #ifndef NDEBUG
-    const char* validation_layer = "VK_LAYER_KHRONOS_validation";
-    auto available_layers = vk::enumerateInstanceLayerProperties();
-    for (const auto& layer : available_layers) 
+    const char* ValidationLayer = "VK_LAYER_KHRONOS_validation";
+    auto AvailableLayers = vk::enumerateInstanceLayerProperties();
+    for (const auto& Layer : AvailableLayers) 
     {
-        if (strcmp(layer.layerName, validation_layer) == 0) 
+        if (strcmp(Layer.layerName, ValidationLayer) == 0) 
         {
-            layers.push_back(validation_layer);
+            Layers.push_back(ValidationLayer);
             break;
         }
     }
 // TODO: 接入日志系统
-    if (layers.empty())
+    if (Layers.empty())
     {
         std::cerr << "Warning: Validation layer requested but not available." << std::endl;
     }
 #endif
 
-    auto required_instance_extensions = getRequiredInstanceExtensions();
-    const auto available_instance_extensions = vk::enumerateInstanceExtensionProperties();
-    if (hasExtension(available_instance_extensions, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME))
-        required_instance_extensions.push_back(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);
-    if (std::ranges::any_of(available_instance_extensions, [](const vk::ExtensionProperties& extension)
+    auto RequiredInstanceExtensions = getRequiredInstanceExtensions();
+    const auto AvailableInstanceExtensions = vk::enumerateInstanceExtensionProperties();
+    if (hasExtension(AvailableInstanceExtensions, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME))
+        RequiredInstanceExtensions.push_back(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);
+    if (std::ranges::any_of(AvailableInstanceExtensions, [](const vk::ExtensionProperties& Extension)
         {
-            return std::strcmp(extension.extensionName.data(), VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0;
+            return std::strcmp(Extension.extensionName.data(), VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0;
         }))
     {
-        required_instance_extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+        RequiredInstanceExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     }
-    if (!checkInstanceExtensions(required_instance_extensions))
+    if (!checkInstanceExtensions(RequiredInstanceExtensions))
     {
         throw std::runtime_error("Required instance extensions are not supported.");
     }
 
-    vk::InstanceCreateInfo create_info(
+    vk::InstanceCreateInfo CreateInfo(
         vk::InstanceCreateFlags(),
-        &app_info,
-        static_cast<uint32_t>(layers.size()),
-        layers.empty() ? nullptr : layers.data(),
-        static_cast<uint32_t>(required_instance_extensions.size()),
-        required_instance_extensions.empty() ? nullptr : required_instance_extensions.data()
+        &AppInfo,
+        static_cast<uint32_t>(Layers.size()),
+        Layers.empty() ? nullptr : Layers.data(),
+        static_cast<uint32_t>(RequiredInstanceExtensions.size()),
+        RequiredInstanceExtensions.empty() ? nullptr : RequiredInstanceExtensions.data()
     );
 
-    Context->Instance = vk::createInstanceUnique(create_info);
+    Context->Instance = vk::createInstanceUnique(CreateInfo);
 }
 
 void VulkanRHI::createVkSurface(const ui::GenericWindowPointer& Window)
 {
 #ifdef USE_SDL
-    auto* sdl_window = static_cast<SDL_Window*>(Window->getNativeHandle());
-    VkSurfaceKHR surface = VK_NULL_HANDLE;
+    auto* SdlWindow = static_cast<SDL_Window*>(Window->getNativeHandle());
+    VkSurfaceKHR Surface = VK_NULL_HANDLE;
     if (!SDL_Vulkan_CreateSurface(
-        sdl_window,
+        SdlWindow,
         static_cast<VkInstance>(Context->Instance.get()),
         nullptr,
-        &surface))
+        &Surface))
     {
         throw std::runtime_error(std::string("Failed to create SDL Vulkan surface: ") + SDL_GetError());
     }
-    auto state = std::make_shared<VulkanSurfaceState>();
-    state->Instance = Context->Instance.get();
-    state->Handle = vk::SurfaceKHR(surface);
-    state->Generation = Context->NextSurfaceGeneration++;
-    Context->Surface = std::move(state);
+    auto State = std::make_shared<VulkanSurfaceState>();
+    State->Instance = Context->Instance.get();
+    State->Handle = vk::SurfaceKHR(Surface);
+    State->Generation = Context->NextSurfaceGeneration++;
+    Context->Surface = std::move(State);
 #else
     (void)Window;
     throw std::runtime_error("No generic window backend is available for Vulkan surface creation.");
@@ -279,15 +279,15 @@ void VulkanRHI::createVkSurface(const ui::GenericWindowPointer& Window)
 bool VulkanRHI::recoverSurface(const ui::GenericWindowPointer& Window)
 {
     if (!IsInitialized || Context->isDeviceLost()) return false;
-    const auto window = Window ? Window : Context->Window.lock();
-    if (!window || !window->getNativeHandle()) return false;
+    const auto ResolvedWindow = Window ? Window : Context->Window.lock();
+    if (!ResolvedWindow || !ResolvedWindow->getNativeHandle()) return false;
     try
     {
-        createVkSurface(window);
+        createVkSurface(ResolvedWindow);
         if (!Context->PhysicalDevice.getSurfaceSupportKHR(
             Context->PresentQueueFamilyIndex, Context->Surface->Handle))
             return false;
-        Context->Window = window;
+        Context->Window = ResolvedWindow;
         return true;
     }
     catch (const vk::DeviceLostError&)
@@ -295,9 +295,9 @@ bool VulkanRHI::recoverSurface(const ui::GenericWindowPointer& Window)
         Context->markDeviceLost();
         return false;
     }
-    catch (const vk::SystemError& error)
+    catch (const vk::SystemError& Error)
     {
-        if (error.code().value() == static_cast<int>(vk::Result::eErrorDeviceLost))
+        if (Error.code().value() == static_cast<int>(vk::Result::eErrorDeviceLost))
             Context->markDeviceLost();
         return false;
     }
@@ -315,91 +315,91 @@ void VulkanRHI::pickPhysicalDevice()
     }
         
 
-    auto physical_devices = Context->Instance->enumeratePhysicalDevices();
-    if (physical_devices.empty())
+    auto PhysicalDevices = Context->Instance->enumeratePhysicalDevices();
+    if (PhysicalDevices.empty())
     {
         throw std::runtime_error("No Vulkan physical devices found.");
     }
 
-    vk::PhysicalDeviceFeatures required_features{};
+    vk::PhysicalDeviceFeatures RequiredFeatures{};
 
     // TODO: 需要支持的设备扩展
-    std::vector<const char*> requiredDeviceExtensions = 
+    std::vector<const char*> RequiredDeviceExtensions = 
     {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,   // 交换链
     };
 
-    vk::PhysicalDevice best_device = nullptr;
-    int best_score = -1;
+    vk::PhysicalDevice BestDevice = nullptr;
+    int BestScore = -1;
 
-    for (const auto& device : physical_devices) 
+    for (const auto& Device : PhysicalDevices) 
     {
-        if (device.getProperties().apiVersion < VK_API_VERSION_1_3)
+        if (Device.getProperties().apiVersion < VK_API_VERSION_1_3)
         {
             std::println("Device {} does not support Vulkan 1.3, skipping.",
-                device.getProperties().deviceName);
+                Device.getProperties().deviceName);
             continue;
         }
 
-        vk::PhysicalDeviceVulkan13Features vulkan13_features;
-        vk::PhysicalDeviceFeatures2 feature_query;
-        feature_query.pNext = &vulkan13_features;
-        device.getFeatures2(&feature_query);
-        if (!vulkan13_features.dynamicRendering || !vulkan13_features.synchronization2)
+        vk::PhysicalDeviceVulkan13Features Vulkan13Features;
+        vk::PhysicalDeviceFeatures2 FeatureQuery;
+        FeatureQuery.pNext = &Vulkan13Features;
+        Device.getFeatures2(&FeatureQuery);
+        if (!Vulkan13Features.dynamicRendering || !Vulkan13Features.synchronization2)
         {
             std::println(
                 "Device {} lacks dynamic rendering or synchronization2, skipping.",
-                device.getProperties().deviceName);
+                Device.getProperties().deviceName);
             continue;
         }
 
         // ---- 检查核心特性 ----
-        if (!checkDeviceFeatures(device, required_features)) 
+        if (!checkDeviceFeatures(Device, RequiredFeatures)) 
         {
             std::println("Device {} does not support required features, skipping.", 
-                device.getProperties().deviceName);
+                Device.getProperties().deviceName);
             continue;
         }
 
         // ---- 检查设备扩展 ----
-        if (!checkDeviceExtensions(device, requiredDeviceExtensions)) 
+        if (!checkDeviceExtensions(Device, RequiredDeviceExtensions)) 
         {
             std::println("Device {} does not support required extensions, skipping.", 
-                device.getProperties().deviceName);
+                Device.getProperties().deviceName);
             continue;
         }
 
         // ---- 检查队列族(至少需要图形和计算) ----
-        auto queue_families = device.getQueueFamilyProperties();
-        bool has_graphics = false;
-        bool has_present = false;
-        for (uint32_t family_index = 0; family_index < queue_families.size(); ++family_index)
+        auto QueueFamilies = Device.getQueueFamilyProperties();
+        bool HasGraphics = false;
+        bool HasPresent = false;
+        for (uint32_t FamilyIndex = 0; FamilyIndex < QueueFamilies.size(); ++FamilyIndex)
         {
-            const auto& qf = queue_families[family_index];
-            if (qf.queueFlags & vk::QueueFlagBits::eGraphics) has_graphics = true;
-            if (device.getSurfaceSupportKHR(family_index, Context->Surface->Handle)) has_present = true;
+            const auto& Qf = QueueFamilies[FamilyIndex];
+            if (Qf.queueFlags & vk::QueueFlagBits::eGraphics) HasGraphics = true;
+            if (Device.getSurfaceSupportKHR(FamilyIndex, Context->Surface->Handle)) HasPresent = true;
         }
-        if (!has_graphics || !has_present) 
+        if (!HasGraphics || !HasPresent) 
         {
             std::println("Device {} lacks graphics or presentation support, skipping.", 
-                device.getProperties().deviceName);
+                Device.getProperties().deviceName);
             continue;
         }
 
-        int score = scoreDevice(device);
-        if (score > best_score) {
-            best_score = score;
-            best_device = device;
+        int Score = scoreDevice(Device);
+        if (Score > BestScore) {
+            BestScore = Score;
+            BestDevice = Device;
         }
     }
 
-    if (!best_device)
+    if (!BestDevice)
     {
         throw std::runtime_error("No suitable Vulkan physical device found.");
     }
-    Context->PhysicalDevice = best_device;
+    Context->PhysicalDevice = BestDevice;
     std::println("Selected device: {} (score {})\n", 
-                Context->PhysicalDevice.getProperties().deviceName.data(), best_score);
+                Context->PhysicalDevice.getProperties().deviceName.data(), BestScore);
 }
 
 void VulkanRHI::createLogicalDevice()
@@ -409,368 +409,368 @@ void VulkanRHI::createLogicalDevice()
         throw std::runtime_error("Physical device not selected.");
     }
 
-    auto queue_families = Context->PhysicalDevice.getQueueFamilyProperties();
+    auto QueueFamilies = Context->PhysicalDevice.getQueueFamilyProperties();
 
     // ---- 查找图形队列族 ----
-    uint32_t graphics_queue_family = UINT32_MAX;
-    for (uint32_t i = 0; i < queue_families.size(); ++i) 
+    uint32_t GraphicsQueueFamily = UINT32_MAX;
+    for (uint32_t I = 0; I < QueueFamilies.size(); ++I) 
     {
-        if (queue_families[i].queueFlags & vk::QueueFlagBits::eGraphics) 
+        if (QueueFamilies[I].queueFlags & vk::QueueFlagBits::eGraphics) 
         {
-            graphics_queue_family = i;
+            GraphicsQueueFamily = I;
             break;
         }
     }
-    if (graphics_queue_family == UINT32_MAX)
+    if (GraphicsQueueFamily == UINT32_MAX)
     {
         throw std::runtime_error("No graphics queue family found.");
     }
-    Context->GraphicsQueueFamilyIndex = graphics_queue_family;
+    Context->GraphicsQueueFamilyIndex = GraphicsQueueFamily;
 
     // ---- 查找呈现队列族 ----
-    uint32_t present_queue_family = UINT32_MAX;
-    for (uint32_t i = 0; i < queue_families.size(); ++i)
+    uint32_t PresentQueueFamily = UINT32_MAX;
+    for (uint32_t I = 0; I < QueueFamilies.size(); ++I)
     {
-        if (Context->PhysicalDevice.getSurfaceSupportKHR(i, Context->Surface->Handle))
+        if (Context->PhysicalDevice.getSurfaceSupportKHR(I, Context->Surface->Handle))
         {
-            present_queue_family = i;
+            PresentQueueFamily = I;
             break;
         }
     }
-    if (present_queue_family == UINT32_MAX)
+    if (PresentQueueFamily == UINT32_MAX)
     {
         throw std::runtime_error("No presentation queue family found.");
     }
-    Context->PresentQueueFamilyIndex = present_queue_family;
+    Context->PresentQueueFamilyIndex = PresentQueueFamily;
 
-    uint32_t compute_queue_family = graphics_queue_family;
-    uint32_t copy_queue_family = graphics_queue_family;
-    for (uint32_t i = 0; i < queue_families.size(); ++i)
+    uint32_t ComputeQueueFamily = GraphicsQueueFamily;
+    uint32_t CopyQueueFamily = GraphicsQueueFamily;
+    for (uint32_t I = 0; I < QueueFamilies.size(); ++I)
     {
-        if ((queue_families[i].queueFlags & vk::QueueFlagBits::eCompute) &&
-            !(queue_families[i].queueFlags & vk::QueueFlagBits::eGraphics))
-            compute_queue_family = i;
-        if ((queue_families[i].queueFlags & vk::QueueFlagBits::eTransfer) &&
-            !(queue_families[i].queueFlags & vk::QueueFlagBits::eGraphics) &&
-            !(queue_families[i].queueFlags & vk::QueueFlagBits::eCompute))
-            copy_queue_family = i;
+        if ((QueueFamilies[I].queueFlags & vk::QueueFlagBits::eCompute) &&
+            !(QueueFamilies[I].queueFlags & vk::QueueFlagBits::eGraphics))
+            ComputeQueueFamily = I;
+        if ((QueueFamilies[I].queueFlags & vk::QueueFlagBits::eTransfer) &&
+            !(QueueFamilies[I].queueFlags & vk::QueueFlagBits::eGraphics) &&
+            !(QueueFamilies[I].queueFlags & vk::QueueFlagBits::eCompute))
+            CopyQueueFamily = I;
     }
-    Context->ComputeQueueFamilyIndex = compute_queue_family;
-    Context->CopyQueueFamilyIndex = copy_queue_family;
+    Context->ComputeQueueFamilyIndex = ComputeQueueFamily;
+    Context->CopyQueueFamilyIndex = CopyQueueFamily;
 
     // ---- 准备队列创建信息 ----
-    std::vector<vk::DeviceQueueCreateInfo> queue_createInfos;
-    float queue_priority = 1.0f;
-    std::set<uint32_t> unique_queue_families = {
-        graphics_queue_family,
-        present_queue_family,
-        compute_queue_family,
-        copy_queue_family };
-    for (uint32_t family : unique_queue_families) 
+    std::vector<vk::DeviceQueueCreateInfo> QueueCreateInfos;
+    float QueuePriority = 1.0f;
+    std::set<uint32_t> UniqueQueueFamilies = {
+        GraphicsQueueFamily,
+        PresentQueueFamily,
+        ComputeQueueFamily,
+        CopyQueueFamily };
+    for (uint32_t Family : UniqueQueueFamilies) 
     {
-        vk::DeviceQueueCreateInfo queue_creation_info(
+        vk::DeviceQueueCreateInfo QueueCreationInfo(
             vk::DeviceQueueCreateFlags(),
-            family,
+            Family,
             1,                // 每个族申请一个队列
-            &queue_priority
+            &QueuePriority
         );
-        queue_createInfos.push_back(queue_creation_info);
+        QueueCreateInfos.push_back(QueueCreationInfo);
     }
 
-    const auto available_extensions = Context->PhysicalDevice.enumerateDeviceExtensionProperties();
-    const bool mesh_shader_extension_available =
-        hasExtension(available_extensions, VK_EXT_MESH_SHADER_EXTENSION_NAME);
-    const bool extended_dynamic_state3_extension_available =
-        hasExtension(available_extensions, VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME);
-    const bool vertex_input_dynamic_state_extension_available =
-        hasExtension(available_extensions, VK_EXT_VERTEX_INPUT_DYNAMIC_STATE_EXTENSION_NAME);
-    const bool deferred_host_operations_available =
-        hasExtension(available_extensions, VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
-    const bool acceleration_structure_extension_available =
-        hasExtension(available_extensions, VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
-    const bool ray_tracing_pipeline_extension_available =
-        hasExtension(available_extensions, VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
-    const bool ray_query_extension_available =
-        hasExtension(available_extensions, VK_KHR_RAY_QUERY_EXTENSION_NAME);
-    const bool hdr_metadata_extension_available =
-        hasExtension(available_extensions, VK_EXT_HDR_METADATA_EXTENSION_NAME);
+    const auto AvailableExtensions = Context->PhysicalDevice.enumerateDeviceExtensionProperties();
+    const bool MeshShaderExtensionAvailable =
+        hasExtension(AvailableExtensions, VK_EXT_MESH_SHADER_EXTENSION_NAME);
+    const bool ExtendedDynamicState3ExtensionAvailable =
+        hasExtension(AvailableExtensions, VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME);
+    const bool VertexInputDynamicStateExtensionAvailable =
+        hasExtension(AvailableExtensions, VK_EXT_VERTEX_INPUT_DYNAMIC_STATE_EXTENSION_NAME);
+    const bool DeferredHostOperationsAvailable =
+        hasExtension(AvailableExtensions, VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
+    const bool AccelerationStructureExtensionAvailable =
+        hasExtension(AvailableExtensions, VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+    const bool RayTracingPipelineExtensionAvailable =
+        hasExtension(AvailableExtensions, VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
+    const bool RayQueryExtensionAvailable =
+        hasExtension(AvailableExtensions, VK_KHR_RAY_QUERY_EXTENSION_NAME);
+    const bool HdrMetadataExtensionAvailable =
+        hasExtension(AvailableExtensions, VK_EXT_HDR_METADATA_EXTENSION_NAME);
 
-    vk::PhysicalDeviceVulkan13Features supported_vulkan13 {};
-    vk::PhysicalDeviceVulkan12Features supported_vulkan12 {};
-    vk::PhysicalDeviceMultiviewFeatures supported_multiview {};
-    vk::PhysicalDeviceMeshShaderFeaturesEXT supported_mesh_shader {};
-    vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT supported_dynamic_state {};
-    vk::PhysicalDeviceExtendedDynamicState2FeaturesEXT supported_dynamic_state2 {};
-    vk::PhysicalDeviceExtendedDynamicState3FeaturesEXT supported_dynamic_state3 {};
-    vk::PhysicalDeviceVertexInputDynamicStateFeaturesEXT supported_vertex_input {};
-    vk::PhysicalDeviceAccelerationStructureFeaturesKHR supported_acceleration_structure {};
-    vk::PhysicalDeviceRayTracingPipelineFeaturesKHR supported_ray_tracing_pipeline {};
-    vk::PhysicalDeviceRayQueryFeaturesKHR supported_ray_query {};
-    void* supported_ray_tracing_head = nullptr;
-    if (acceleration_structure_extension_available)
+    vk::PhysicalDeviceVulkan13Features SupportedVulkan13 {};
+    vk::PhysicalDeviceVulkan12Features SupportedVulkan12 {};
+    vk::PhysicalDeviceMultiviewFeatures SupportedMultiview {};
+    vk::PhysicalDeviceMeshShaderFeaturesEXT SupportedMeshShader {};
+    vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT SupportedDynamicState {};
+    vk::PhysicalDeviceExtendedDynamicState2FeaturesEXT SupportedDynamicState2 {};
+    vk::PhysicalDeviceExtendedDynamicState3FeaturesEXT SupportedDynamicState3 {};
+    vk::PhysicalDeviceVertexInputDynamicStateFeaturesEXT SupportedVertexInput {};
+    vk::PhysicalDeviceAccelerationStructureFeaturesKHR SupportedAccelerationStructure {};
+    vk::PhysicalDeviceRayTracingPipelineFeaturesKHR SupportedRayTracingPipeline {};
+    vk::PhysicalDeviceRayQueryFeaturesKHR SupportedRayQuery {};
+    void* SupportedRayTracingHead = nullptr;
+    if (AccelerationStructureExtensionAvailable)
     {
-        supported_ray_tracing_head = &supported_acceleration_structure;
-        supported_acceleration_structure.pNext = ray_tracing_pipeline_extension_available
-            ? static_cast<void*>(&supported_ray_tracing_pipeline)
-            : ray_query_extension_available ? static_cast<void*>(&supported_ray_query) : nullptr;
-        supported_ray_tracing_pipeline.pNext = ray_query_extension_available
-            ? static_cast<void*>(&supported_ray_query) : nullptr;
+        SupportedRayTracingHead = &SupportedAccelerationStructure;
+        SupportedAccelerationStructure.pNext = RayTracingPipelineExtensionAvailable
+            ? static_cast<void*>(&SupportedRayTracingPipeline)
+            : RayQueryExtensionAvailable ? static_cast<void*>(&SupportedRayQuery) : nullptr;
+        SupportedRayTracingPipeline.pNext = RayQueryExtensionAvailable
+            ? static_cast<void*>(&SupportedRayQuery) : nullptr;
     }
-    supported_vulkan13.pNext = &supported_vulkan12;
-    supported_vulkan12.pNext = &supported_multiview;
+    SupportedVulkan13.pNext = &SupportedVulkan12;
+    SupportedVulkan12.pNext = &SupportedMultiview;
     // VK_EXT_extended_dynamic_state[2] are promoted to Vulkan 1.3 but retain feature structs.
-    supported_multiview.pNext = mesh_shader_extension_available
-        ? static_cast<void*>(&supported_mesh_shader)
-        : static_cast<void*>(&supported_dynamic_state);
-    supported_mesh_shader.pNext = &supported_dynamic_state;
-    supported_dynamic_state.pNext = &supported_dynamic_state2;
-    supported_dynamic_state2.pNext = extended_dynamic_state3_extension_available
-        ? static_cast<void*>(&supported_dynamic_state3)
-        : vertex_input_dynamic_state_extension_available
-            ? static_cast<void*>(&supported_vertex_input)
-            : supported_ray_tracing_head;
-    supported_dynamic_state3.pNext = vertex_input_dynamic_state_extension_available
-        ? static_cast<void*>(&supported_vertex_input)
-        : supported_ray_tracing_head;
-    supported_vertex_input.pNext = supported_ray_tracing_head;
-    vk::PhysicalDeviceFeatures2 supported_features {};
-    supported_features.pNext = &supported_vulkan13;
-    Context->PhysicalDevice.getFeatures2(&supported_features);
-    if (!supported_vulkan13.dynamicRendering || !supported_vulkan13.synchronization2 ||
-        !supported_vulkan12.timelineSemaphore)
+    SupportedMultiview.pNext = MeshShaderExtensionAvailable
+        ? static_cast<void*>(&SupportedMeshShader)
+        : static_cast<void*>(&SupportedDynamicState);
+    SupportedMeshShader.pNext = &SupportedDynamicState;
+    SupportedDynamicState.pNext = &SupportedDynamicState2;
+    SupportedDynamicState2.pNext = ExtendedDynamicState3ExtensionAvailable
+        ? static_cast<void*>(&SupportedDynamicState3)
+        : VertexInputDynamicStateExtensionAvailable
+            ? static_cast<void*>(&SupportedVertexInput)
+            : SupportedRayTracingHead;
+    SupportedDynamicState3.pNext = VertexInputDynamicStateExtensionAvailable
+        ? static_cast<void*>(&SupportedVertexInput)
+        : SupportedRayTracingHead;
+    SupportedVertexInput.pNext = SupportedRayTracingHead;
+    vk::PhysicalDeviceFeatures2 SupportedFeatures {};
+    SupportedFeatures.pNext = &SupportedVulkan13;
+    Context->PhysicalDevice.getFeatures2(&SupportedFeatures);
+    if (!SupportedVulkan13.dynamicRendering || !SupportedVulkan13.synchronization2 ||
+        !SupportedVulkan12.timelineSemaphore)
     {
         throw std::runtime_error(
             "Selected Vulkan device lacks dynamic rendering, synchronization2, or timeline semaphores.");
     }
 
-    vk::PhysicalDeviceVulkan13Features enabled_vulkan13 {};
-    enabled_vulkan13.dynamicRendering = VK_TRUE;
-    enabled_vulkan13.synchronization2 = VK_TRUE;
-    vk::PhysicalDeviceVulkan12Features enabled_vulkan12 {};
-    enabled_vulkan12.descriptorIndexing = supported_vulkan12.descriptorIndexing;
-    enabled_vulkan12.timelineSemaphore = supported_vulkan12.timelineSemaphore;
+    vk::PhysicalDeviceVulkan13Features EnabledVulkan13 {};
+    EnabledVulkan13.dynamicRendering = VK_TRUE;
+    EnabledVulkan13.synchronization2 = VK_TRUE;
+    vk::PhysicalDeviceVulkan12Features EnabledVulkan12 {};
+    EnabledVulkan12.descriptorIndexing = SupportedVulkan12.descriptorIndexing;
+    EnabledVulkan12.timelineSemaphore = SupportedVulkan12.timelineSemaphore;
     // Vulkan 1.3 promotes the Vulkan 1.2 bufferDeviceAddress capability; the
     // VK_KHR_buffer_device_address extension has equivalent allocation/query rules.
-    enabled_vulkan12.bufferDeviceAddress = supported_vulkan12.bufferDeviceAddress;
-    enabled_vulkan12.runtimeDescriptorArray = supported_vulkan12.runtimeDescriptorArray;
-    enabled_vulkan12.descriptorBindingPartiallyBound = supported_vulkan12.descriptorBindingPartiallyBound;
-    enabled_vulkan12.descriptorBindingVariableDescriptorCount =
-        supported_vulkan12.descriptorBindingVariableDescriptorCount;
-    enabled_vulkan12.descriptorBindingUniformBufferUpdateAfterBind =
-        supported_vulkan12.descriptorBindingUniformBufferUpdateAfterBind;
-    enabled_vulkan12.descriptorBindingSampledImageUpdateAfterBind =
-        supported_vulkan12.descriptorBindingSampledImageUpdateAfterBind;
-    enabled_vulkan12.descriptorBindingStorageImageUpdateAfterBind =
-        supported_vulkan12.descriptorBindingStorageImageUpdateAfterBind;
-    enabled_vulkan12.descriptorBindingStorageBufferUpdateAfterBind =
-        supported_vulkan12.descriptorBindingStorageBufferUpdateAfterBind;
-    enabled_vulkan12.descriptorBindingUniformTexelBufferUpdateAfterBind =
-        supported_vulkan12.descriptorBindingUniformTexelBufferUpdateAfterBind;
-    enabled_vulkan12.descriptorBindingStorageTexelBufferUpdateAfterBind =
-        supported_vulkan12.descriptorBindingStorageTexelBufferUpdateAfterBind;
-    enabled_vulkan12.separateDepthStencilLayouts = supported_vulkan12.separateDepthStencilLayouts;
-    vk::PhysicalDeviceMultiviewFeatures enabled_multiview {};
-    enabled_multiview.multiview = supported_multiview.multiview;
-    enabled_vulkan13.pNext = &enabled_vulkan12;
-    enabled_vulkan12.pNext = &enabled_multiview;
-    vk::PhysicalDeviceMeshShaderFeaturesEXT enabled_mesh_shader {};
-    enabled_mesh_shader.meshShader = mesh_shader_extension_available
-        ? supported_mesh_shader.meshShader
+    EnabledVulkan12.bufferDeviceAddress = SupportedVulkan12.bufferDeviceAddress;
+    EnabledVulkan12.runtimeDescriptorArray = SupportedVulkan12.runtimeDescriptorArray;
+    EnabledVulkan12.descriptorBindingPartiallyBound = SupportedVulkan12.descriptorBindingPartiallyBound;
+    EnabledVulkan12.descriptorBindingVariableDescriptorCount =
+        SupportedVulkan12.descriptorBindingVariableDescriptorCount;
+    EnabledVulkan12.descriptorBindingUniformBufferUpdateAfterBind =
+        SupportedVulkan12.descriptorBindingUniformBufferUpdateAfterBind;
+    EnabledVulkan12.descriptorBindingSampledImageUpdateAfterBind =
+        SupportedVulkan12.descriptorBindingSampledImageUpdateAfterBind;
+    EnabledVulkan12.descriptorBindingStorageImageUpdateAfterBind =
+        SupportedVulkan12.descriptorBindingStorageImageUpdateAfterBind;
+    EnabledVulkan12.descriptorBindingStorageBufferUpdateAfterBind =
+        SupportedVulkan12.descriptorBindingStorageBufferUpdateAfterBind;
+    EnabledVulkan12.descriptorBindingUniformTexelBufferUpdateAfterBind =
+        SupportedVulkan12.descriptorBindingUniformTexelBufferUpdateAfterBind;
+    EnabledVulkan12.descriptorBindingStorageTexelBufferUpdateAfterBind =
+        SupportedVulkan12.descriptorBindingStorageTexelBufferUpdateAfterBind;
+    EnabledVulkan12.separateDepthStencilLayouts = SupportedVulkan12.separateDepthStencilLayouts;
+    vk::PhysicalDeviceMultiviewFeatures EnabledMultiview {};
+    EnabledMultiview.multiview = SupportedMultiview.multiview;
+    EnabledVulkan13.pNext = &EnabledVulkan12;
+    EnabledVulkan12.pNext = &EnabledMultiview;
+    vk::PhysicalDeviceMeshShaderFeaturesEXT EnabledMeshShader {};
+    EnabledMeshShader.meshShader = MeshShaderExtensionAvailable
+        ? SupportedMeshShader.meshShader
         : VK_FALSE;
-    enabled_mesh_shader.taskShader = mesh_shader_extension_available
-        ? supported_mesh_shader.taskShader
+    EnabledMeshShader.taskShader = MeshShaderExtensionAvailable
+        ? SupportedMeshShader.taskShader
         : VK_FALSE;
-    vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT enabled_dynamic_state {};
-    enabled_dynamic_state.extendedDynamicState = supported_dynamic_state.extendedDynamicState;
-    vk::PhysicalDeviceExtendedDynamicState2FeaturesEXT enabled_dynamic_state2 {};
-    enabled_dynamic_state2.extendedDynamicState2 = supported_dynamic_state2.extendedDynamicState2;
-    vk::PhysicalDeviceExtendedDynamicState3FeaturesEXT enabled_dynamic_state3 {};
-    if (extended_dynamic_state3_extension_available)
+    vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT EnabledDynamicState {};
+    EnabledDynamicState.extendedDynamicState = SupportedDynamicState.extendedDynamicState;
+    vk::PhysicalDeviceExtendedDynamicState2FeaturesEXT EnabledDynamicState2 {};
+    EnabledDynamicState2.extendedDynamicState2 = SupportedDynamicState2.extendedDynamicState2;
+    vk::PhysicalDeviceExtendedDynamicState3FeaturesEXT EnabledDynamicState3 {};
+    if (ExtendedDynamicState3ExtensionAvailable)
     {
         // Enable the portable VK_EXT_extended_dynamic_state3 fixed-function subset represented
         // by this aggregate capability. Vendor/companion-extension states remain disabled.
-        enabled_dynamic_state3.extendedDynamicState3TessellationDomainOrigin =
-            supported_dynamic_state3.extendedDynamicState3TessellationDomainOrigin;
-        enabled_dynamic_state3.extendedDynamicState3DepthClampEnable =
-            supported_dynamic_state3.extendedDynamicState3DepthClampEnable;
-        enabled_dynamic_state3.extendedDynamicState3PolygonMode =
-            supported_dynamic_state3.extendedDynamicState3PolygonMode;
-        enabled_dynamic_state3.extendedDynamicState3RasterizationSamples =
-            supported_dynamic_state3.extendedDynamicState3RasterizationSamples;
-        enabled_dynamic_state3.extendedDynamicState3SampleMask =
-            supported_dynamic_state3.extendedDynamicState3SampleMask;
-        enabled_dynamic_state3.extendedDynamicState3AlphaToCoverageEnable =
-            supported_dynamic_state3.extendedDynamicState3AlphaToCoverageEnable;
-        enabled_dynamic_state3.extendedDynamicState3AlphaToOneEnable =
-            supported_dynamic_state3.extendedDynamicState3AlphaToOneEnable;
-        enabled_dynamic_state3.extendedDynamicState3LogicOpEnable =
-            supported_dynamic_state3.extendedDynamicState3LogicOpEnable;
-        enabled_dynamic_state3.extendedDynamicState3ColorBlendEnable =
-            supported_dynamic_state3.extendedDynamicState3ColorBlendEnable;
-        enabled_dynamic_state3.extendedDynamicState3ColorBlendEquation =
-            supported_dynamic_state3.extendedDynamicState3ColorBlendEquation;
-        enabled_dynamic_state3.extendedDynamicState3ColorWriteMask =
-            supported_dynamic_state3.extendedDynamicState3ColorWriteMask;
+        EnabledDynamicState3.extendedDynamicState3TessellationDomainOrigin =
+            SupportedDynamicState3.extendedDynamicState3TessellationDomainOrigin;
+        EnabledDynamicState3.extendedDynamicState3DepthClampEnable =
+            SupportedDynamicState3.extendedDynamicState3DepthClampEnable;
+        EnabledDynamicState3.extendedDynamicState3PolygonMode =
+            SupportedDynamicState3.extendedDynamicState3PolygonMode;
+        EnabledDynamicState3.extendedDynamicState3RasterizationSamples =
+            SupportedDynamicState3.extendedDynamicState3RasterizationSamples;
+        EnabledDynamicState3.extendedDynamicState3SampleMask =
+            SupportedDynamicState3.extendedDynamicState3SampleMask;
+        EnabledDynamicState3.extendedDynamicState3AlphaToCoverageEnable =
+            SupportedDynamicState3.extendedDynamicState3AlphaToCoverageEnable;
+        EnabledDynamicState3.extendedDynamicState3AlphaToOneEnable =
+            SupportedDynamicState3.extendedDynamicState3AlphaToOneEnable;
+        EnabledDynamicState3.extendedDynamicState3LogicOpEnable =
+            SupportedDynamicState3.extendedDynamicState3LogicOpEnable;
+        EnabledDynamicState3.extendedDynamicState3ColorBlendEnable =
+            SupportedDynamicState3.extendedDynamicState3ColorBlendEnable;
+        EnabledDynamicState3.extendedDynamicState3ColorBlendEquation =
+            SupportedDynamicState3.extendedDynamicState3ColorBlendEquation;
+        EnabledDynamicState3.extendedDynamicState3ColorWriteMask =
+            SupportedDynamicState3.extendedDynamicState3ColorWriteMask;
     }
-    const bool enable_dynamic_state3_extension =
-        enabled_dynamic_state3.extendedDynamicState3TessellationDomainOrigin ||
-        enabled_dynamic_state3.extendedDynamicState3DepthClampEnable ||
-        enabled_dynamic_state3.extendedDynamicState3PolygonMode ||
-        enabled_dynamic_state3.extendedDynamicState3RasterizationSamples ||
-        enabled_dynamic_state3.extendedDynamicState3SampleMask ||
-        enabled_dynamic_state3.extendedDynamicState3AlphaToCoverageEnable ||
-        enabled_dynamic_state3.extendedDynamicState3AlphaToOneEnable ||
-        enabled_dynamic_state3.extendedDynamicState3LogicOpEnable ||
-        enabled_dynamic_state3.extendedDynamicState3ColorBlendEnable ||
-        enabled_dynamic_state3.extendedDynamicState3ColorBlendEquation ||
-        enabled_dynamic_state3.extendedDynamicState3ColorWriteMask;
-    vk::PhysicalDeviceVertexInputDynamicStateFeaturesEXT enabled_vertex_input {};
-    enabled_vertex_input.vertexInputDynamicState = vertex_input_dynamic_state_extension_available
-        ? supported_vertex_input.vertexInputDynamicState
+    const bool EnableDynamicState3Extension =
+        EnabledDynamicState3.extendedDynamicState3TessellationDomainOrigin ||
+        EnabledDynamicState3.extendedDynamicState3DepthClampEnable ||
+        EnabledDynamicState3.extendedDynamicState3PolygonMode ||
+        EnabledDynamicState3.extendedDynamicState3RasterizationSamples ||
+        EnabledDynamicState3.extendedDynamicState3SampleMask ||
+        EnabledDynamicState3.extendedDynamicState3AlphaToCoverageEnable ||
+        EnabledDynamicState3.extendedDynamicState3AlphaToOneEnable ||
+        EnabledDynamicState3.extendedDynamicState3LogicOpEnable ||
+        EnabledDynamicState3.extendedDynamicState3ColorBlendEnable ||
+        EnabledDynamicState3.extendedDynamicState3ColorBlendEquation ||
+        EnabledDynamicState3.extendedDynamicState3ColorWriteMask;
+    vk::PhysicalDeviceVertexInputDynamicStateFeaturesEXT EnabledVertexInput {};
+    EnabledVertexInput.vertexInputDynamicState = VertexInputDynamicStateExtensionAvailable
+        ? SupportedVertexInput.vertexInputDynamicState
         : VK_FALSE;
     // VK_KHR_ray_tracing_pipeline requires acceleration_structure and deferred_host_operations.
     // SPIR-V 1.4, shaderFloatControls, and bufferDeviceAddress are infra in the required Vulkan 1.3 API.
-    const bool enable_acceleration_structure = deferred_host_operations_available &&
-        acceleration_structure_extension_available && enabled_vulkan12.bufferDeviceAddress &&
-        supported_acceleration_structure.accelerationStructure;
-    const bool enable_ray_tracing_pipeline = enable_acceleration_structure &&
-        ray_tracing_pipeline_extension_available && supported_ray_tracing_pipeline.rayTracingPipeline;
-    const bool enable_ray_query = enable_acceleration_structure && ray_query_extension_available &&
-        supported_ray_query.rayQuery;
-    vk::PhysicalDeviceAccelerationStructureFeaturesKHR enabled_acceleration_structure {};
-    enabled_acceleration_structure.accelerationStructure = enable_acceleration_structure;
-    vk::PhysicalDeviceRayTracingPipelineFeaturesKHR enabled_ray_tracing_pipeline {};
-    enabled_ray_tracing_pipeline.rayTracingPipeline = enable_ray_tracing_pipeline;
-    vk::PhysicalDeviceRayQueryFeaturesKHR enabled_ray_query {};
-    enabled_ray_query.rayQuery = enable_ray_query;
-    void* enabled_ray_tracing_head = enable_acceleration_structure
-        ? static_cast<void*>(&enabled_acceleration_structure) : nullptr;
-    enabled_acceleration_structure.pNext = enable_ray_tracing_pipeline
-        ? static_cast<void*>(&enabled_ray_tracing_pipeline)
-        : enable_ray_query ? static_cast<void*>(&enabled_ray_query) : nullptr;
-    enabled_ray_tracing_pipeline.pNext = enable_ray_query
-        ? static_cast<void*>(&enabled_ray_query) : nullptr;
+    const bool EnableAccelerationStructure = DeferredHostOperationsAvailable &&
+        AccelerationStructureExtensionAvailable && EnabledVulkan12.bufferDeviceAddress &&
+        SupportedAccelerationStructure.accelerationStructure;
+    const bool EnableRayTracingPipeline = EnableAccelerationStructure &&
+        RayTracingPipelineExtensionAvailable && SupportedRayTracingPipeline.rayTracingPipeline;
+    const bool EnableRayQuery = EnableAccelerationStructure && RayQueryExtensionAvailable &&
+        SupportedRayQuery.rayQuery;
+    vk::PhysicalDeviceAccelerationStructureFeaturesKHR EnabledAccelerationStructure {};
+    EnabledAccelerationStructure.accelerationStructure = EnableAccelerationStructure;
+    vk::PhysicalDeviceRayTracingPipelineFeaturesKHR EnabledRayTracingPipeline {};
+    EnabledRayTracingPipeline.rayTracingPipeline = EnableRayTracingPipeline;
+    vk::PhysicalDeviceRayQueryFeaturesKHR EnabledRayQuery {};
+    EnabledRayQuery.rayQuery = EnableRayQuery;
+    void* EnabledRayTracingHead = EnableAccelerationStructure
+        ? static_cast<void*>(&EnabledAccelerationStructure) : nullptr;
+    EnabledAccelerationStructure.pNext = EnableRayTracingPipeline
+        ? static_cast<void*>(&EnabledRayTracingPipeline)
+        : EnableRayQuery ? static_cast<void*>(&EnabledRayQuery) : nullptr;
+    EnabledRayTracingPipeline.pNext = EnableRayQuery
+        ? static_cast<void*>(&EnabledRayQuery) : nullptr;
 
-    enabled_multiview.pNext = enabled_mesh_shader.meshShader
-        ? static_cast<void*>(&enabled_mesh_shader)
-        : static_cast<void*>(&enabled_dynamic_state);
-    enabled_mesh_shader.pNext = &enabled_dynamic_state;
-    enabled_dynamic_state.pNext = &enabled_dynamic_state2;
-    enabled_dynamic_state2.pNext = enable_dynamic_state3_extension
-        ? static_cast<void*>(&enabled_dynamic_state3)
-        : enabled_vertex_input.vertexInputDynamicState
-            ? static_cast<void*>(&enabled_vertex_input)
-            : enabled_ray_tracing_head;
-    enabled_dynamic_state3.pNext = enabled_vertex_input.vertexInputDynamicState
-        ? static_cast<void*>(&enabled_vertex_input)
-        : enabled_ray_tracing_head;
-    enabled_vertex_input.pNext = enabled_ray_tracing_head;
+    EnabledMultiview.pNext = EnabledMeshShader.meshShader
+        ? static_cast<void*>(&EnabledMeshShader)
+        : static_cast<void*>(&EnabledDynamicState);
+    EnabledMeshShader.pNext = &EnabledDynamicState;
+    EnabledDynamicState.pNext = &EnabledDynamicState2;
+    EnabledDynamicState2.pNext = EnableDynamicState3Extension
+        ? static_cast<void*>(&EnabledDynamicState3)
+        : EnabledVertexInput.vertexInputDynamicState
+            ? static_cast<void*>(&EnabledVertexInput)
+            : EnabledRayTracingHead;
+    EnabledDynamicState3.pNext = EnabledVertexInput.vertexInputDynamicState
+        ? static_cast<void*>(&EnabledVertexInput)
+        : EnabledRayTracingHead;
+    EnabledVertexInput.pNext = EnabledRayTracingHead;
 
     // Pipeline 后端只在对应能力实际启用后对外报告支持. 这里按硬件支持启用
     // 常用固定功能；扩展动态状态, Mesh 和 Ray Tracing 仍由后续扩展链单独管理. 
-    vk::PhysicalDeviceFeatures enabled_features{};
-    enabled_features.geometryShader = supported_features.features.geometryShader;
-    enabled_features.tessellationShader = supported_features.features.tessellationShader;
-    enabled_features.fillModeNonSolid = supported_features.features.fillModeNonSolid;
-    enabled_features.wideLines = supported_features.features.wideLines;
-    enabled_features.depthClamp = supported_features.features.depthClamp;
-    enabled_features.depthBounds = supported_features.features.depthBounds;
-    enabled_features.sampleRateShading = supported_features.features.sampleRateShading;
-    enabled_features.samplerAnisotropy = supported_features.features.samplerAnisotropy;
-    enabled_features.alphaToOne = supported_features.features.alphaToOne;
-    enabled_features.independentBlend = supported_features.features.independentBlend;
-    enabled_features.pipelineStatisticsQuery = supported_features.features.pipelineStatisticsQuery;
+    vk::PhysicalDeviceFeatures EnabledFeatures{};
+    EnabledFeatures.geometryShader = SupportedFeatures.features.geometryShader;
+    EnabledFeatures.tessellationShader = SupportedFeatures.features.tessellationShader;
+    EnabledFeatures.fillModeNonSolid = SupportedFeatures.features.fillModeNonSolid;
+    EnabledFeatures.wideLines = SupportedFeatures.features.wideLines;
+    EnabledFeatures.depthClamp = SupportedFeatures.features.depthClamp;
+    EnabledFeatures.depthBounds = SupportedFeatures.features.depthBounds;
+    EnabledFeatures.sampleRateShading = SupportedFeatures.features.sampleRateShading;
+    EnabledFeatures.samplerAnisotropy = SupportedFeatures.features.samplerAnisotropy;
+    EnabledFeatures.alphaToOne = SupportedFeatures.features.alphaToOne;
+    EnabledFeatures.independentBlend = SupportedFeatures.features.independentBlend;
+    EnabledFeatures.pipelineStatisticsQuery = SupportedFeatures.features.pipelineStatisticsQuery;
 
     // ---- 启用扩展(与之前检查对应) ----
-    std::vector<const char*> enabledExtensions;
-    enabledExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
-    if (hdr_metadata_extension_available)
-        enabledExtensions.push_back(VK_EXT_HDR_METADATA_EXTENSION_NAME);
-    if (enabled_mesh_shader.meshShader)
-        enabledExtensions.push_back(VK_EXT_MESH_SHADER_EXTENSION_NAME);
-    if (enable_dynamic_state3_extension)
-        enabledExtensions.push_back(VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME);
-    if (enabled_vertex_input.vertexInputDynamicState)
-        enabledExtensions.push_back(VK_EXT_VERTEX_INPUT_DYNAMIC_STATE_EXTENSION_NAME);
-    if (enable_acceleration_structure)
+    std::vector<const char*> EnabledExtensions;
+    EnabledExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    if (HdrMetadataExtensionAvailable)
+        EnabledExtensions.push_back(VK_EXT_HDR_METADATA_EXTENSION_NAME);
+    if (EnabledMeshShader.meshShader)
+        EnabledExtensions.push_back(VK_EXT_MESH_SHADER_EXTENSION_NAME);
+    if (EnableDynamicState3Extension)
+        EnabledExtensions.push_back(VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME);
+    if (EnabledVertexInput.vertexInputDynamicState)
+        EnabledExtensions.push_back(VK_EXT_VERTEX_INPUT_DYNAMIC_STATE_EXTENSION_NAME);
+    if (EnableAccelerationStructure)
     {
-        enabledExtensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
-        enabledExtensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
-        if (enable_ray_tracing_pipeline)
-            enabledExtensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
-        if (enable_ray_query)
-            enabledExtensions.push_back(VK_KHR_RAY_QUERY_EXTENSION_NAME);
+        EnabledExtensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
+        EnabledExtensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+        if (EnableRayTracingPipeline)
+            EnabledExtensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
+        if (EnableRayQuery)
+            EnabledExtensions.push_back(VK_KHR_RAY_QUERY_EXTENSION_NAME);
     }
 
-    vk::DeviceCreateInfo device_creation_info(
+    vk::DeviceCreateInfo DeviceCreationInfo(
         vk::DeviceCreateFlags(),
-        static_cast<uint32_t>(queue_createInfos.size()),
-        queue_createInfos.data(),
+        static_cast<uint32_t>(QueueCreateInfos.size()),
+        QueueCreateInfos.data(),
         0,
         nullptr,
-        static_cast<uint32_t>(enabledExtensions.size()),
-        enabledExtensions.empty() ? nullptr : enabledExtensions.data(),
-        &enabled_features
+        static_cast<uint32_t>(EnabledExtensions.size()),
+        EnabledExtensions.empty() ? nullptr : EnabledExtensions.data(),
+        &EnabledFeatures
     );
-    device_creation_info.pNext = &enabled_vulkan13;
+    DeviceCreationInfo.pNext = &EnabledVulkan13;
 
-    Context->Device = Context->PhysicalDevice.createDeviceUnique(device_creation_info);
+    Context->Device = Context->PhysicalDevice.createDeviceUnique(DeviceCreationInfo);
 
-    auto& features = Context->EnabledFeatures;
-    features.DynamicRendering = true;
-    features.Synchronization2 = true;
-    features.TimelineSemaphore = true;
-    features.Multiview = enabled_multiview.multiview == VK_TRUE;
-    features.SeparateDepthStencilLayouts = enabled_vulkan12.separateDepthStencilLayouts == VK_TRUE;
-    features.GeometryShader = enabled_features.geometryShader == VK_TRUE;
-    features.TessellationShader = enabled_features.tessellationShader == VK_TRUE;
-    features.FillModeNonSolid = enabled_features.fillModeNonSolid == VK_TRUE;
-    features.WideLines = enabled_features.wideLines == VK_TRUE;
-    features.DepthClamp = enabled_features.depthClamp == VK_TRUE;
-    features.DepthBounds = enabled_features.depthBounds == VK_TRUE;
-    features.SampleRateShading = enabled_features.sampleRateShading == VK_TRUE;
-    features.SamplerAnisotropy = enabled_features.samplerAnisotropy == VK_TRUE;
-    features.AlphaToOne = enabled_features.alphaToOne == VK_TRUE;
-    features.IndependentBlend = enabled_features.independentBlend == VK_TRUE;
-    features.ExtendedDynamicState = enabled_dynamic_state.extendedDynamicState == VK_TRUE;
-    features.ExtendedDynamicState2 = enabled_dynamic_state2.extendedDynamicState2 == VK_TRUE;
+    auto& Features = Context->EnabledFeatures;
+    Features.DynamicRendering = true;
+    Features.Synchronization2 = true;
+    Features.TimelineSemaphore = true;
+    Features.Multiview = EnabledMultiview.multiview == VK_TRUE;
+    Features.SeparateDepthStencilLayouts = EnabledVulkan12.separateDepthStencilLayouts == VK_TRUE;
+    Features.GeometryShader = EnabledFeatures.geometryShader == VK_TRUE;
+    Features.TessellationShader = EnabledFeatures.tessellationShader == VK_TRUE;
+    Features.FillModeNonSolid = EnabledFeatures.fillModeNonSolid == VK_TRUE;
+    Features.WideLines = EnabledFeatures.wideLines == VK_TRUE;
+    Features.DepthClamp = EnabledFeatures.depthClamp == VK_TRUE;
+    Features.DepthBounds = EnabledFeatures.depthBounds == VK_TRUE;
+    Features.SampleRateShading = EnabledFeatures.sampleRateShading == VK_TRUE;
+    Features.SamplerAnisotropy = EnabledFeatures.samplerAnisotropy == VK_TRUE;
+    Features.AlphaToOne = EnabledFeatures.alphaToOne == VK_TRUE;
+    Features.IndependentBlend = EnabledFeatures.independentBlend == VK_TRUE;
+    Features.ExtendedDynamicState = EnabledDynamicState.extendedDynamicState == VK_TRUE;
+    Features.ExtendedDynamicState2 = EnabledDynamicState2.extendedDynamicState2 == VK_TRUE;
     // Do not overclaim EDS3: every state in the backend's aggregate subset must be enabled.
-    features.ExtendedDynamicState3 =
-        enabled_dynamic_state3.extendedDynamicState3TessellationDomainOrigin &&
-        enabled_dynamic_state3.extendedDynamicState3DepthClampEnable &&
-        enabled_dynamic_state3.extendedDynamicState3PolygonMode &&
-        enabled_dynamic_state3.extendedDynamicState3RasterizationSamples &&
-        enabled_dynamic_state3.extendedDynamicState3SampleMask &&
-        enabled_dynamic_state3.extendedDynamicState3AlphaToCoverageEnable &&
-        enabled_dynamic_state3.extendedDynamicState3AlphaToOneEnable &&
-        enabled_dynamic_state3.extendedDynamicState3LogicOpEnable &&
-        enabled_dynamic_state3.extendedDynamicState3ColorBlendEnable &&
-        enabled_dynamic_state3.extendedDynamicState3ColorBlendEquation &&
-        enabled_dynamic_state3.extendedDynamicState3ColorWriteMask;
-    features.DynamicVertexInput = enabled_vertex_input.vertexInputDynamicState == VK_TRUE;
-    features.DescriptorIndexing = enabled_vulkan12.descriptorIndexing == VK_TRUE;
-    features.RuntimeDescriptorArray = enabled_vulkan12.runtimeDescriptorArray == VK_TRUE;
-    features.PartiallyBoundDescriptors = enabled_vulkan12.descriptorBindingPartiallyBound == VK_TRUE;
-    features.VariableDescriptorCount = enabled_vulkan12.descriptorBindingVariableDescriptorCount == VK_TRUE;
-    features.UpdateAfterBind =
-        enabled_vulkan12.descriptorBindingUniformBufferUpdateAfterBind &&
-        enabled_vulkan12.descriptorBindingSampledImageUpdateAfterBind &&
-        enabled_vulkan12.descriptorBindingStorageImageUpdateAfterBind &&
-        enabled_vulkan12.descriptorBindingStorageBufferUpdateAfterBind &&
-        enabled_vulkan12.descriptorBindingUniformTexelBufferUpdateAfterBind &&
-        enabled_vulkan12.descriptorBindingStorageTexelBufferUpdateAfterBind;
-    features.MeshShader = enabled_mesh_shader.meshShader == VK_TRUE;
-    features.TaskShader = features.MeshShader && enabled_mesh_shader.taskShader == VK_TRUE;
-    features.OcclusionQueries = true;
-    features.PipelineStatisticsQueries = enabled_features.pipelineStatisticsQuery == VK_TRUE;
-    features.QueryResultCopy = true;
-    features.BufferDeviceAddress = enabled_vulkan12.bufferDeviceAddress == VK_TRUE;
-    features.AccelerationStructure = enable_acceleration_structure;
-    features.RayTracingPipeline = enable_ray_tracing_pipeline;
-    features.RayQuery = enable_ray_query;
-    features.SecondaryCommandLists = true;
-    features.SwapchainStatus = true;
-    features.HDRMetadata = hdr_metadata_extension_available;
+    Features.ExtendedDynamicState3 =
+        EnabledDynamicState3.extendedDynamicState3TessellationDomainOrigin &&
+        EnabledDynamicState3.extendedDynamicState3DepthClampEnable &&
+        EnabledDynamicState3.extendedDynamicState3PolygonMode &&
+        EnabledDynamicState3.extendedDynamicState3RasterizationSamples &&
+        EnabledDynamicState3.extendedDynamicState3SampleMask &&
+        EnabledDynamicState3.extendedDynamicState3AlphaToCoverageEnable &&
+        EnabledDynamicState3.extendedDynamicState3AlphaToOneEnable &&
+        EnabledDynamicState3.extendedDynamicState3LogicOpEnable &&
+        EnabledDynamicState3.extendedDynamicState3ColorBlendEnable &&
+        EnabledDynamicState3.extendedDynamicState3ColorBlendEquation &&
+        EnabledDynamicState3.extendedDynamicState3ColorWriteMask;
+    Features.DynamicVertexInput = EnabledVertexInput.vertexInputDynamicState == VK_TRUE;
+    Features.DescriptorIndexing = EnabledVulkan12.descriptorIndexing == VK_TRUE;
+    Features.RuntimeDescriptorArray = EnabledVulkan12.runtimeDescriptorArray == VK_TRUE;
+    Features.PartiallyBoundDescriptors = EnabledVulkan12.descriptorBindingPartiallyBound == VK_TRUE;
+    Features.VariableDescriptorCount = EnabledVulkan12.descriptorBindingVariableDescriptorCount == VK_TRUE;
+    Features.UpdateAfterBind =
+        EnabledVulkan12.descriptorBindingUniformBufferUpdateAfterBind &&
+        EnabledVulkan12.descriptorBindingSampledImageUpdateAfterBind &&
+        EnabledVulkan12.descriptorBindingStorageImageUpdateAfterBind &&
+        EnabledVulkan12.descriptorBindingStorageBufferUpdateAfterBind &&
+        EnabledVulkan12.descriptorBindingUniformTexelBufferUpdateAfterBind &&
+        EnabledVulkan12.descriptorBindingStorageTexelBufferUpdateAfterBind;
+    Features.MeshShader = EnabledMeshShader.meshShader == VK_TRUE;
+    Features.TaskShader = Features.MeshShader && EnabledMeshShader.taskShader == VK_TRUE;
+    Features.OcclusionQueries = true;
+    Features.PipelineStatisticsQueries = EnabledFeatures.pipelineStatisticsQuery == VK_TRUE;
+    Features.QueryResultCopy = true;
+    Features.BufferDeviceAddress = EnabledVulkan12.bufferDeviceAddress == VK_TRUE;
+    Features.AccelerationStructure = EnableAccelerationStructure;
+    Features.RayTracingPipeline = EnableRayTracingPipeline;
+    Features.RayQuery = EnableRayQuery;
+    Features.SecondaryCommandLists = true;
+    Features.SwapchainStatus = true;
+    Features.HDRMetadata = HdrMetadataExtensionAvailable;
 }
 
 std::shared_ptr<RDevice> VulkanRHI::createDevice()

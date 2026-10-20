@@ -1482,11 +1482,11 @@ public:
     using RuntimeStats = mem::MemoryAllocatorEngine::RuntimeStats;
 
     /**
-     * @brief Configure allocator before first runtime use.
+     * @brief 在首次运行时使用之前配置分配器。
      * @param
-     *     - Config  const AllocatorConfig&  Runtime allocator options.
+     *     - Config  const AllocatorConfig&  运行时分配器选项。
      * @usage
-     *     - Invoke at engine bootstrap before any memory allocation call.
+     *     - 在引擎启动阶段、任何内存分配调用之前调用。
      * @return
      *     - void
      */
@@ -1496,16 +1496,16 @@ public:
     }
 
     /**
-     * @brief Allocate memory block from the unified allocator pipeline.
+     * @brief 从统一分配器管线中分配内存块。
      * @param
-     *     - Size        std::size_t   Requested bytes.
-     *     - Alignment   std::size_t   Required Alignment.
-     *     - ResourceId  std::uint32_t Optional resource grouping id.
-     *     - ZeroMemory  bool          Whether user payload should be zero-filled.
+     *     - Size        std::size_t   请求的字节数。
+     *     - Alignment   std::size_t   要求的 Alignment。
+     *     - ResourceId  std::uint32_t 可选的资源分组 id。
+     *     - ZeroMemory  bool          用户数据是否应被零填充。
      * @usage
-     *     - Use as default entry for engine systems that need tracked allocations.
+     *     - 作为需要跟踪分配的引擎系统的默认入口使用。
      * @return
-     *     - void*  User payload pointer. Throws std::bad_alloc on failure unless IsNoThrow is true.
+     *     - void*  用户数据指针。除非 IsNoThrow 为 true，失败时抛出 std::bad_alloc。
      */
     [[nodiscard]] static void *allocate(
         const std::size_t Size,
@@ -1523,17 +1523,17 @@ public:
     }
 
     /**
-     * @brief Allocate memory with transient/persistent lifetime decided at compile-time.
+     * @brief 以编译期决定的 transient/persistent 生命周期分配内存。
      * @param
-     *     - Size        std::size_t   Requested bytes.
-     *     - Alignment   std::size_t   Required alignment.
-     *     - ResourceId  std::uint32_t Optional resource grouping id.
-     *     - ZeroMemory  bool          Whether user payload should be zero-filled.
-     *     - IsNoThrow   bool          Return nullptr instead of throwing on failure.
+     *     - Size        std::size_t   请求的字节数。
+     *     - Alignment   std::size_t   要求的对齐值。
+     *     - ResourceId  std::uint32_t 可选的资源分组 id。
+     *     - ZeroMemory  bool          用户数据是否应被零填充。
+     *     - IsNoThrow   bool          失败时返回 nullptr 而非抛出异常。
      * @usage
-     *     - Internal facade helper used by default/transient/persistent entry points.
+     *     - 供 default/transient/persistent 入口点使用的内部门面辅助函数。
      * @return
-     *     - void*  User payload pointer.
+     *     - void*  用户数据指针。
      */
     template<AllocationLifetime Lifetime>
     [[nodiscard]] static void *allocateWithLifetime(
@@ -1560,16 +1560,16 @@ public:
     }
 
     /**
-     * @brief Allocate memory with nothrow semantics.
+     * @brief 以 nothrow 语义分配内存。
      * @param
-     *     - Size        std::size_t   Requested bytes.
-     *     - Alignment   std::size_t   Required alignment.
-     *     - ResourceId  std::uint32_t Optional resource grouping id.
-     *     - ZeroMemory  bool          Whether user payload should be zero-filled.
+     *     - Size        std::size_t   请求的字节数。
+     *     - Alignment   std::size_t   要求的对齐值。
+     *     - ResourceId  std::uint32_t 可选的资源分组 id。
+     *     - ZeroMemory  bool          用户数据是否应被零填充。
      * @usage
-     *     - Use when callers need null-on-failure behavior instead of exceptions.
+     *     - 当调用方需要“失败返回 null”而非异常的行为时使用。
      * @return
-     *     - void*  User payload pointer or nullptr on allocation failure.
+     *     - void*  用户数据指针；分配失败时返回 nullptr。
      */
     [[nodiscard]] static void *allocateNoThrow(
         const std::size_t Size,
@@ -1581,14 +1581,14 @@ public:
     }
 
     /**
-     * @brief Free memory block allocated by AllocatorFacade::allocate.
+     * @brief 释放由 AllocatorFacade::allocate 分配的内存块。
      * @param
-     *     - Ptr         void*         Pointer returned by allocate.
-     *     - Size        std::size_t   Original requested Size.
-     *     - Alignment   std::size_t   Original Alignment.
-     *     - ResourceId  std::uint32_t Optional resource grouping id.
+     *     - Ptr         void*         allocate 返回的指针。
+     *     - Size        std::size_t   最初请求的 Size。
+     *     - Alignment   std::size_t   最初的 Alignment。
+     *     - ResourceId  std::uint32_t 可选的资源分组 id。
      * @usage
-     *     - Always pass the same Size/Alignment metadata used on allocation.
+     *     - 始终传入与分配时相同的 Size/Alignment 元数据。
      * @return
      *     - void
      */
@@ -1606,14 +1606,14 @@ public:
     }
 
     /**
-     * @brief Free memory using compile-time lifetime dispatch.
+     * @brief 使用编译期生命周期分派来释放内存。
      * @param
-     *     - Ptr         void*         Pointer returned by matching allocate path.
-     *     - Size        std::size_t   Original requested Size.
-     *     - Alignment   std::size_t   Original Alignment.
-     *     - ResourceId  std::uint32_t Optional resource grouping id.
+     *     - Ptr         void*         由对应分配路径返回的指针。
+     *     - Size        std::size_t   最初请求的 Size。
+     *     - Alignment   std::size_t   最初的 Alignment。
+     *     - ResourceId  std::uint32_t 可选的资源分组 id。
      * @usage
-     *     - Internal facade helper used by default/transient/persistent free APIs.
+     *     - 供 default/transient/persistent 释放 API 使用的内部门面辅助函数。
      * @return
      *     - void
      */
@@ -1637,16 +1637,16 @@ public:
     }
 
     /**
-     * @brief Allocate memory marked as transient/hot-lifetime.
+     * @brief 分配标记为 transient/热生命周期的内存。
      * @param
-     *     - Size        std::size_t   Requested bytes.
-     *     - Alignment   std::size_t   Required Alignment.
-     *     - ResourceId  std::uint32_t Optional resource grouping id.
-     *     - ZeroMemory  bool          Whether user payload should be zero-filled.
+     *     - Size        std::size_t   请求的字节数。
+     *     - Alignment   std::size_t   要求的 Alignment。
+     *     - ResourceId  std::uint32_t 可选的资源分组 id。
+     *     - ZeroMemory  bool          用户数据是否应被零填充。
      * @usage
-     *     - Use for frame-local or short-lived objects to favor fast reuse paths.
+     *     - 用于帧内或短生命周期对象，以优先走快速复用路径。
      * @return
-     *     - void*  User payload pointer.
+     *     - void*  用户数据指针。
      */
     [[nodiscard]] static void *allocateTransient(
         const std::size_t Size,
@@ -1664,16 +1664,16 @@ public:
     }
 
     /**
-     * @brief Allocate memory marked as persistent/long-lived.
+     * @brief 分配标记为 persistent/长生命周期的内存。
      * @param
-     *     - Size        std::size_t   Requested bytes.
-     *     - Alignment   std::size_t   Required Alignment.
-     *     - ResourceId  std::uint32_t Optional resource grouping id.
-     *     - ZeroMemory  bool          Whether user payload should be zero-filled.
+     *     - Size        std::size_t   请求的字节数。
+     *     - Alignment   std::size_t   要求的 Alignment。
+     *     - ResourceId  std::uint32_t 可选的资源分组 id。
+     *     - ZeroMemory  bool          用户数据是否应被零填充。
      * @usage
-     *     - Use for resources with long lifetime to reduce TLS Cache pollution.
+     *     - 用于长生命周期的资源，以减少 TLS 缓存污染。
      * @return
-     *     - void*  User payload pointer.
+     *     - void*  用户数据指针。
      */
     [[nodiscard]] static void *allocatePersistent(
         const std::size_t Size,
@@ -1691,14 +1691,14 @@ public:
     }
 
     /**
-     * @brief Free memory allocated by allocateTransient().
+     * @brief 释放由 allocateTransient() 分配的内存。
      * @param
-     *     - Ptr         void*         Pointer returned by allocateTransient().
-     *     - Size        std::size_t   Original requested Size.
-     *     - Alignment   std::size_t   Original Alignment.
-     *     - ResourceId  std::uint32_t Optional resource grouping id.
+     *     - Ptr         void*         allocateTransient() 返回的指针。
+     *     - Size        std::size_t   最初请求的 Size。
+     *     - Alignment   std::size_t   最初的 Alignment。
+     *     - ResourceId  std::uint32_t 可选的资源分组 id。
      * @usage
-     *     - Pair with allocateTransient() to keep lifetime hints consistent.
+     *     - 与 allocateTransient() 配对使用，以保持生命周期提示一致。
      * @return
      *     - void
      */
@@ -1716,14 +1716,14 @@ public:
     }
 
     /**
-     * @brief Free memory allocated by allocatePersistent().
+     * @brief 释放由 allocatePersistent() 分配的内存。
      * @param
-     *     - Ptr         void*         Pointer returned by allocatePersistent().
-     *     - Size        std::size_t   Original requested Size.
-     *     - Alignment   std::size_t   Original Alignment.
-     *     - ResourceId  std::uint32_t Optional resource grouping id.
+     *     - Ptr         void*         allocatePersistent() 返回的指针。
+     *     - Size        std::size_t   最初请求的 Size。
+     *     - Alignment   std::size_t   最初的 Alignment。
+     *     - ResourceId  std::uint32_t 可选的资源分组 id。
      * @usage
-     *     - Pair with allocatePersistent() to keep lifetime hints consistent.
+     *     - 与 allocatePersistent() 配对使用，以保持生命周期提示一致。
      * @return
      *     - void
      */
@@ -1742,11 +1742,11 @@ public:
 
     template<typename ObserverType>
     /**
-     * @brief Bind Observer to global memory Event bus.
+     * @brief 将 Observer 绑定到全局内存 Event 总线。
      * @param
-     *     - Observer  ObserverType&  Observer instance implementing onMemoryEvent().
+     *     - Observer  ObserverType&  实现了 onMemoryEvent() 的 Observer 实例。
      * @usage
-     *     - Bind statistics/leak/profiler modules without changing allocator infra.
+     *     - 无需修改分配器基础设施即可绑定统计/泄漏/性能分析模块。
      * @return
      *     - void
      */
@@ -1757,11 +1757,11 @@ public:
 
     template<typename ObserverType>
     /**
-     * @brief Unbind Observer from global memory Event bus.
+     * @brief 将 Observer 从全局内存 Event 总线解绑。
      * @param
-     *     - Observer  ObserverType&  Observer instance previously bound.
+     *     - Observer  ObserverType&  先前绑定的 Observer 实例。
      * @usage
-     *     - Call during subsystem shutdown to avoid dangling callbacks.
+     *     - 在子系统关闭时调用，以避免悬空回调。
      * @return
      *     - void
      */
@@ -1771,13 +1771,13 @@ public:
     }
 
     /**
-     * @brief Access global memory Event bus.
+     * @brief 访问全局内存 Event 总线。
      * @param
      *     - none
      * @usage
-     *     - Bind statistics, leak, and profiling observers through this API.
+     *     - 通过此 API 绑定统计、泄漏和性能分析观测器。
      * @return
-     *     - MemoryEventBus&  Shared Event bus instance.
+     *     - MemoryEventBus&  共享的 Event 总线实例。
      */
     [[nodiscard]] static MemoryEventBus &getEventBus()
     {
@@ -1785,11 +1785,11 @@ public:
     }
 
     /**
-     * @brief Flush and release current thread Cache explicitly.
+     * @brief 显式冲刷并释放当前线程的 Cache。
      * @param
      *     - none
      * @usage
-     *     - Call on worker-thread shutdown in long-lived processes.
+     *     - 在长生命周期进程的工作线程关闭时调用。
      * @return
      *     - void
      */
@@ -1799,11 +1799,11 @@ public:
     }
 
     /**
-     * @brief Explicitly flush deferred frees (UAF quarantine) to allocator backends.
+     * @brief 显式将延迟释放（UAF quarantine）冲刷到分配器后端。
      * @param
      *     - none
      * @usage
-     *     - Useful at frame boundaries or test checkpoints requiring deterministic release.
+     *     - 在需要确定性释放的帧边界或测试检查点处很有用。
      * @return
      *     - void
      */
@@ -1813,11 +1813,11 @@ public:
     }
 
     /**
-     * @brief Set current Frame id injected into allocation metadata.
+     * @brief 设置注入到分配元数据中的当前 Frame id。
      * @param
-     *     - Frame  std::uint32_t  Frame number.
+     *     - Frame  std::uint32_t  帧号。
      * @usage
-     *     - Update once per Frame before gameplay allocations.
+     *     - 在每帧游戏逻辑分配之前更新一次。
      * @return
      *     - void
      */
@@ -1827,13 +1827,13 @@ public:
     }
 
     /**
-     * @brief Batch-prewarm allocator classes for startup or level-transition spikes.
+     * @brief 为启动或关卡切换的尖峰批量预热分配器类。
      * @param
-     *     - Requests  const std::vector<MemoryPrewarmRequest>&  Batch of prewarm requests.
+     *     - Requests  const std::vector<MemoryPrewarmRequest>&  一批预热请求。
      * @usage
-     *     - Execute in loading phases to pre-touch spans and reduce first-use hitches.
+     *     - 在加载阶段执行，以预触碰 span 并减少首次使用的卡顿。
      * @return
-     *     - std::size_t  Number of warmed allocations successfully executed.
+     *     - std::size_t  成功执行的预热分配数量。
      */
     [[nodiscard]] static std::size_t prewarm(const std::vector<MemoryPrewarmRequest> &Requests)
     {
@@ -1841,13 +1841,13 @@ public:
     }
 
     /**
-     * @brief Read runtime allocator counters useful for diagnostics dashboards.
+     * @brief 读取对诊断面板有用的运行时分配器计数器。
      * @param
      *     - none
      * @usage
-     *     - Poll periodically to observe quarantine pressure and dedicated Cache occupancy.
+     *     - 定期轮询以观察 quarantine 压力与 dedicated Cache 占用。
      * @return
-     *     - RuntimeStats  Current allocator runtime counters.
+     *     - RuntimeStats  当前分配器运行时计数器。
      */
     [[nodiscard]] static RuntimeStats getStats()
     {
@@ -1862,11 +1862,11 @@ public:
     using value_type = Ty;
 
     /**
-     * @brief Default construct STL adapter allocator.
+     * @brief 默认构造 STL 适配器分配器。
      * @param
      *     - none
      * @usage
-     *     - Use as std container allocator argument.
+     *     - 作为 std 容器的分配器实参使用。
      * @return
      *     - void
      */
@@ -1878,13 +1878,13 @@ public:
     }
 
     /**
-     * @brief Allocate contiguous typed storage for STL container.
+     * @brief 为 STL 容器分配连续的带类型存储。
      * @param
-     *     - count  std::size_t  Number of elements.
+     *     - count  std::size_t  元素数量。
      * @usage
-     *     - Called by STL container internals during growth.
+     *     - 在增长过程中由 STL 容器内部调用。
      * @return
-     *     - Ty*  Typed storage pointer.
+     *     - Ty*  带类型存储指针。
      */
     [[nodiscard]] Ty *allocate(const std::size_t count)
     {
@@ -1894,12 +1894,12 @@ public:
     }
 
     /**
-     * @brief Free typed storage previously allocated by this allocator.
+     * @brief 释放由此分配器先前分配的带类型存储。
      * @param
-     *     - Ptr    Ty*          Storage pointer.
-     *     - count  std::size_t  Number of elements.
+     *     - Ptr    Ty*          存储指针。
+     *     - count  std::size_t  元素数量。
      * @usage
-     *     - Called by STL container internals during shrink/destruction.
+     *     - 在收缩/析构过程中由 STL 容器内部调用。
      * @return
      *     - void
      */

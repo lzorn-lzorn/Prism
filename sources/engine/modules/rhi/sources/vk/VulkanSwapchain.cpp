@@ -43,32 +43,32 @@ std::optional<EColorSpace> fromVkColorSpace(vk::ColorSpaceKHR ColorSpace)
 
 vk::CompositeAlphaFlagBitsKHR chooseCompositeAlpha(vk::CompositeAlphaFlagsKHR Supported)
 {
-    constexpr std::array candidates {
+    constexpr std::array Candidates {
         vk::CompositeAlphaFlagBitsKHR::eOpaque,
         vk::CompositeAlphaFlagBitsKHR::ePreMultiplied,
         vk::CompositeAlphaFlagBitsKHR::ePostMultiplied,
         vk::CompositeAlphaFlagBitsKHR::eInherit };
-    for (const auto candidate : candidates)
-        if (Supported & candidate) return candidate;
+    for (const auto Candidate : Candidates)
+        if (Supported & Candidate) return Candidate;
     throw std::runtime_error("The Vulkan surface exposes no supported composite alpha mode.");
 }
 
 VulkanSemaphore* semaphoreOf(const std::shared_ptr<RSemaphore>& Semaphore, VulkanDevice& Device)
 {
     if (!Semaphore) return nullptr;
-    auto* result = dynamic_cast<VulkanSemaphore*>(Semaphore.get());
-    if (!result || &result->getDevice() != &Device || result->isTimeline())
+    auto* Result = dynamic_cast<VulkanSemaphore*>(Semaphore.get());
+    if (!Result || &Result->getDevice() != &Device || Result->isTimeline())
         throw std::invalid_argument("Swapchain acquisition requires a binary semaphore from the same device.");
-    return result;
+    return Result;
 }
 
 VulkanFence* fenceOf(const std::shared_ptr<RFence>& Fence, VulkanDevice& Device)
 {
     if (!Fence) return nullptr;
-    auto* result = dynamic_cast<VulkanFence*>(Fence.get());
-    if (!result || &result->getDevice() != &Device)
+    auto* Result = dynamic_cast<VulkanFence*>(Fence.get());
+    if (!Result || &Result->getDevice() != &Device)
         throw std::invalid_argument("Acquire fence belongs to another RHI device or backend.");
-    return result;
+    return Result;
 }
 }
 
@@ -122,31 +122,31 @@ AcquireResult VulkanSwapchain::acquireNextImage(
         !Surface || Surface != Context->Surface)
         return { EAcquireStatus::SurfaceLost, 0, 0 };
     if (!Swapchain) return { EAcquireStatus::NotReady, 0, 0 };
-    auto* semaphore = semaphoreOf(SignalSemaphore, *Device);
-    auto* fence = fenceOf(SignalFence, *Device);
-    if (!semaphore && !fence)
+    auto* Semaphore = semaphoreOf(SignalSemaphore, *Device);
+    auto* Fence = fenceOf(SignalFence, *Device);
+    if (!Semaphore && !Fence)
         throw std::invalid_argument("Swapchain acquisition requires a semaphore or fence signal target.");
     try
     {
-        const auto result = Context->Device->acquireNextImageKHR(
+        const auto Result = Context->Device->acquireNextImageKHR(
             Swapchain.get(),
             TimeoutNanoseconds,
-            semaphore ? semaphore->getVkSemaphore() : vk::Semaphore{},
-            fence ? fence->getVkFence() : vk::Fence{});
-        const auto status = vulkan_wsi::mapAcquire(result.result);
-        if (!status) throw std::runtime_error("Unexpected Vulkan image-acquisition result.");
-        recordStatus(vulkan_wsi::mapStatus(result.result).value_or(ESwapchainStatus::OutOfDate));
-        return { *status, result.value,
-            (*status == EAcquireStatus::Success || *status == EAcquireStatus::Suboptimal) ? Generation : 0 };
+            Semaphore ? Semaphore->getVkSemaphore() : vk::Semaphore{},
+            Fence ? Fence->getVkFence() : vk::Fence{});
+        const auto Status = vulkan_wsi::mapAcquire(Result.result);
+        if (!Status) throw std::runtime_error("Unexpected Vulkan image-acquisition result.");
+        recordStatus(vulkan_wsi::mapStatus(Result.result).value_or(ESwapchainStatus::OutOfDate));
+        return { *Status, Result.value,
+            (*Status == EAcquireStatus::Success || *Status == EAcquireStatus::Suboptimal) ? Generation : 0 };
     }
-    catch (const vk::SystemError& error)
+    catch (const vk::SystemError& Error)
     {
-        const auto result = vulkan_wsi::resultFromSystemError(error);
-        const auto status = vulkan_wsi::mapAcquire(result);
-        if (status)
+        const auto Result = vulkan_wsi::resultFromSystemError(Error);
+        const auto Status = vulkan_wsi::mapAcquire(Result);
+        if (Status)
         {
-            if (const auto health = vulkan_wsi::mapStatus(result)) recordStatus(*health);
-            return { *status, 0, 0 };
+            if (const auto Health = vulkan_wsi::mapStatus(Result)) recordStatus(*Health);
+            return { *Status, 0, 0 };
         }
         throw;
     }
@@ -170,9 +170,9 @@ void VulkanSwapchain::recreate(uint32_t Width, uint32_t Height)
         throw std::runtime_error("Vulkan surface generation changed; call recoverSurface() on the swapchain.");
     if (!retirePresentGeneration())
         throw std::runtime_error("Vulkan swapchain retirement failed because the device was lost.");
-    vk::UniqueSwapchainKHR old = std::move(Swapchain);
+    vk::UniqueSwapchainKHR Old = std::move(Swapchain);
     releaseImages();
-    create(old.get());
+    create(Old.get());
 }
 
 bool VulkanSwapchain::recoverSurface(uint32_t Width, uint32_t Height)
@@ -190,10 +190,10 @@ bool VulkanSwapchain::recoverSurface(uint32_t Width, uint32_t Height)
         return true;
     }
     try { create(); return true; }
-    catch (const vk::SystemError& error)
+    catch (const vk::SystemError& Error)
     {
-        if (const auto mapped = vulkan_wsi::mapStatus(vulkan_wsi::resultFromSystemError(error)))
-            recordStatus(*mapped);
+        if (const auto Mapped = vulkan_wsi::mapStatus(vulkan_wsi::resultFromSystemError(Error)))
+            recordStatus(*Mapped);
         return false;
     }
     catch (...) { return false; }
@@ -203,21 +203,21 @@ ESwapchainStatus VulkanSwapchain::getStatus() const noexcept
 {
     if (Context->isDeviceLost()) return ESwapchainStatus::DeviceLost;
     if (!Surface || Surface != Context->Surface) return ESwapchainStatus::SurfaceLost;
-    const auto persistent = Status.load(std::memory_order_relaxed);
-    if (persistent == ESwapchainStatus::SurfaceLost || persistent == ESwapchainStatus::DeviceLost)
-        return persistent;
-    VkSurfaceCapabilitiesKHR capabilities {};
-    const VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+    const auto Persistent = Status.load(std::memory_order_relaxed);
+    if (Persistent == ESwapchainStatus::SurfaceLost || Persistent == ESwapchainStatus::DeviceLost)
+        return Persistent;
+    VkSurfaceCapabilitiesKHR Capabilities {};
+    const VkResult Result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
         static_cast<VkPhysicalDevice>(Context->PhysicalDevice),
-        static_cast<VkSurfaceKHR>(Surface->Handle), &capabilities);
-    if (const auto mapped = vulkan_wsi::mapStatus(static_cast<vk::Result>(result)))
+        static_cast<VkSurfaceKHR>(Surface->Handle), &Capabilities);
+    if (const auto Mapped = vulkan_wsi::mapStatus(static_cast<vk::Result>(Result)))
     {
-        if (*mapped == ESwapchainStatus::DeviceLost) Context->markDeviceLost();
-        if (*mapped == ESwapchainStatus::SurfaceLost || *mapped == ESwapchainStatus::DeviceLost)
-            Status.store(*mapped, std::memory_order_relaxed);
-        return result == VK_SUCCESS ? persistent : *mapped;
+        if (*Mapped == ESwapchainStatus::DeviceLost) Context->markDeviceLost();
+        if (*Mapped == ESwapchainStatus::SurfaceLost || *Mapped == ESwapchainStatus::DeviceLost)
+            Status.store(*Mapped, std::memory_order_relaxed);
+        return Result == VK_SUCCESS ? Persistent : *Mapped;
     }
-    return persistent;
+    return Persistent;
 }
 
 void VulkanSwapchain::recordStatus(ESwapchainStatus NewStatus) noexcept
@@ -237,9 +237,9 @@ bool VulkanSwapchain::retirePresentGeneration() noexcept
         Context->Device->getQueue(Context->PresentQueueFamilyIndex, 0).waitIdle();
         return true;
     }
-    catch (const vk::SystemError& error)
+    catch (const vk::SystemError& Error)
     {
-        if (vulkan_wsi::resultFromSystemError(error) == vk::Result::eErrorDeviceLost)
+        if (vulkan_wsi::resultFromSystemError(Error) == vk::Result::eErrorDeviceLost)
             Context->markDeviceLost();
         return false;
     }
@@ -252,98 +252,98 @@ void* VulkanSwapchain::getNativeHandle() const noexcept
 
 void VulkanSwapchain::create(vk::SwapchainKHR OldSwapchain)
 {
-    const auto capabilities = Context->PhysicalDevice.getSurfaceCapabilitiesKHR(Surface->Handle);
-    const auto formats = Context->PhysicalDevice.getSurfaceFormatsKHR(Surface->Handle);
-    const auto present_modes = Context->PhysicalDevice.getSurfacePresentModesKHR(Surface->Handle);
-    if (formats.empty() || present_modes.empty())
+    const auto Capabilities = Context->PhysicalDevice.getSurfaceCapabilitiesKHR(Surface->Handle);
+    const auto Formats = Context->PhysicalDevice.getSurfaceFormatsKHR(Surface->Handle);
+    const auto PresentModes = Context->PhysicalDevice.getSurfacePresentModesKHR(Surface->Handle);
+    if (Formats.empty() || PresentModes.empty())
         throw std::runtime_error("The Vulkan surface has no swapchain formats or present modes.");
 
-    auto selected_format = std::ranges::find_if(formats, [&](const vk::SurfaceFormatKHR& candidate)
+    auto SelectedFormat = std::ranges::find_if(Formats, [&](const vk::SurfaceFormatKHR& Candidate)
     {
-        return candidate.format == toVk(Descriptor.PreferredFormat) &&
-            candidate.colorSpace == toVk(Descriptor.ColorSpace);
+        return Candidate.format == toVk(Descriptor.PreferredFormat) &&
+            Candidate.colorSpace == toVk(Descriptor.ColorSpace);
     });
-    if (selected_format == formats.end() &&
+    if (SelectedFormat == Formats.end() &&
         (Descriptor.RequireExactFormatAndColorSpace || Descriptor.HDR))
         throw std::runtime_error("The explicitly required swapchain format/color space is unavailable.");
-    if (selected_format == formats.end())
-        selected_format = std::ranges::find_if(formats, [](const vk::SurfaceFormatKHR& candidate)
+    if (SelectedFormat == Formats.end())
+        SelectedFormat = std::ranges::find_if(Formats, [](const vk::SurfaceFormatKHR& Candidate)
         {
-            return fromVkFormat(candidate.format) != EFormat::Undefined;
+            return fromVkFormat(Candidate.format) != EFormat::Undefined;
         });
-    if (selected_format == formats.end())
+    if (SelectedFormat == Formats.end())
         throw std::runtime_error("No supported swapchain format maps to an RHI format.");
-    Format = fromVkFormat(selected_format->format);
-    ColorSpace = fromVkColorSpace(selected_format->colorSpace).value_or(EColorSpace::SRGB_Nonlinear);
+    Format = fromVkFormat(SelectedFormat->format);
+    ColorSpace = fromVkColorSpace(SelectedFormat->colorSpace).value_or(EColorSpace::SRGB_Nonlinear);
 
-    vk::PresentModeKHR selected_present_mode = vk::PresentModeKHR::eFifo;
-    const vk::PresentModeKHR preferred = toVk(Descriptor.PreferredPresentMode);
-    if (std::ranges::find(present_modes, preferred) != present_modes.end())
-        selected_present_mode = preferred;
+    vk::PresentModeKHR SelectedPresentMode = vk::PresentModeKHR::eFifo;
+    const vk::PresentModeKHR Preferred = toVk(Descriptor.PreferredPresentMode);
+    if (std::ranges::find(PresentModes, Preferred) != PresentModes.end())
+        SelectedPresentMode = Preferred;
 
-    vk::Extent2D extent;
-    if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
-        extent = capabilities.currentExtent;
+    vk::Extent2D Extent;
+    if (Capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
+        Extent = Capabilities.currentExtent;
     else
     {
-        extent.width = std::clamp(Descriptor.Width,
-            capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
-        extent.height = std::clamp(Descriptor.Height,
-            capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+        Extent.width = std::clamp(Descriptor.Width,
+            Capabilities.minImageExtent.width, Capabilities.maxImageExtent.width);
+        Extent.height = std::clamp(Descriptor.Height,
+            Capabilities.minImageExtent.height, Capabilities.maxImageExtent.height);
     }
-    Descriptor.Width = extent.width;
-    Descriptor.Height = extent.height;
+    Descriptor.Width = Extent.width;
+    Descriptor.Height = Extent.height;
 
-    uint32_t image_count = std::max(Descriptor.MinimumImageCount, capabilities.minImageCount);
-    if (capabilities.maxImageCount != 0)
-        image_count = std::min(image_count, capabilities.maxImageCount);
-    const vk::ImageUsageFlags requested_usage = toVk(Descriptor.ImageUsage);
-    if ((capabilities.supportedUsageFlags & requested_usage) != requested_usage)
+    uint32_t ImageCount = std::max(Descriptor.MinimumImageCount, Capabilities.minImageCount);
+    if (Capabilities.maxImageCount != 0)
+        ImageCount = std::min(ImageCount, Capabilities.maxImageCount);
+    const vk::ImageUsageFlags RequestedUsage = toVk(Descriptor.ImageUsage);
+    if ((Capabilities.supportedUsageFlags & RequestedUsage) != RequestedUsage)
         throw std::invalid_argument("Requested swapchain image usage is not supported by the surface.");
 
-    const uint32_t families[] = {
+    const uint32_t Families[] = {
         Context->GraphicsQueueFamilyIndex,
         Context->PresentQueueFamilyIndex };
-    const bool concurrent = families[0] != families[1];
-    vk::SwapchainCreateInfoKHR create_info;
-    create_info.setSurface(Surface->Handle)
-        .setMinImageCount(image_count)
-        .setImageFormat(selected_format->format)
-        .setImageColorSpace(selected_format->colorSpace)
-        .setImageExtent(extent)
+    const bool Concurrent = Families[0] != Families[1];
+    vk::SwapchainCreateInfoKHR CreateInfo;
+    CreateInfo.setSurface(Surface->Handle)
+        .setMinImageCount(ImageCount)
+        .setImageFormat(SelectedFormat->format)
+        .setImageColorSpace(SelectedFormat->colorSpace)
+        .setImageExtent(Extent)
         .setImageArrayLayers(1)
-        .setImageUsage(requested_usage)
-        .setImageSharingMode(concurrent ? vk::SharingMode::eConcurrent : vk::SharingMode::eExclusive)
-        .setPreTransform(capabilities.currentTransform)
-        .setCompositeAlpha(chooseCompositeAlpha(capabilities.supportedCompositeAlpha))
-        .setPresentMode(selected_present_mode)
+        .setImageUsage(RequestedUsage)
+        .setImageSharingMode(Concurrent ? vk::SharingMode::eConcurrent : vk::SharingMode::eExclusive)
+        .setPreTransform(Capabilities.currentTransform)
+        .setCompositeAlpha(chooseCompositeAlpha(Capabilities.supportedCompositeAlpha))
+        .setPresentMode(SelectedPresentMode)
         .setClipped(Descriptor.Clipped)
         .setOldSwapchain(OldSwapchain);
-    if (concurrent)
-        create_info.setQueueFamilyIndices(families);
-    Swapchain = Context->Device->createSwapchainKHRUnique(create_info);
+    if (Concurrent)
+        CreateInfo.setQueueFamilyIndices(Families);
+    Swapchain = Context->Device->createSwapchainKHRUnique(CreateInfo);
     if (++Generation == 0) ++Generation;
     Status.store(ESwapchainStatus::Ready, std::memory_order_relaxed);
 
-    const auto native_images = Context->Device->getSwapchainImagesKHR(Swapchain.get());
-    Images.reserve(native_images.size());
-    ImageViews.reserve(native_images.size());
-    for (const auto image : native_images)
+    const auto NativeImages = Context->Device->getSwapchainImagesKHR(Swapchain.get());
+    Images.reserve(NativeImages.size());
+    ImageViews.reserve(NativeImages.size());
+    for (const auto Image : NativeImages)
     {
-        RImage::Descriptor_t image_desc;
-        image_desc.Format = Format;
-        image_desc.Dimension = EImageDimension::Texture2D;
-        image_desc.Width = Descriptor.Width;
-        image_desc.Height = Descriptor.Height;
-        image_desc.Usage = Descriptor.ImageUsage;
-        auto wrapped = VulkanImage::wrapExternal(*Device, image_desc, image);
-        RImageView::Descriptor_t view_desc;
-        view_desc.Image = wrapped;
-        view_desc.Format = Format;
-        view_desc.Dimension = EImageViewDimension::Texture2D;
-        view_desc.Aspect = EImageAspect::Color;
-        Images.emplace_back(wrapped);
-        ImageViews.emplace_back(Device->createImageView(view_desc));
+        RImage::Descriptor_t ImageDesc;
+        ImageDesc.Format = Format;
+        ImageDesc.Dimension = EImageDimension::Texture2D;
+        ImageDesc.Width = Descriptor.Width;
+        ImageDesc.Height = Descriptor.Height;
+        ImageDesc.Usage = Descriptor.ImageUsage;
+        auto Wrapped = VulkanImage::wrapExternal(*Device, ImageDesc, Image);
+        RImageView::Descriptor_t ViewDesc;
+        ViewDesc.Image = Wrapped;
+        ViewDesc.Format = Format;
+        ViewDesc.Dimension = EImageViewDimension::Texture2D;
+        ViewDesc.Aspect = EImageAspect::Color;
+        Images.emplace_back(Wrapped);
+        ImageViews.emplace_back(Device->createImageView(ViewDesc));
     }
     if (Descriptor.HDR && !setHDRMetadata(*Descriptor.HDR))
         throw std::runtime_error("HDR metadata was explicitly requested but is not supported.");
@@ -354,24 +354,24 @@ bool VulkanSwapchain::setHDRMetadata(const HDRMetadata& Metadata)
     if (!Swapchain || !Context->EnabledFeatures.HDRMetadata ||
         (ColorSpace != EColorSpace::HDR10_ST2084 && ColorSpace != EColorSpace::ExtendedSRGBLinear))
         return false;
-    auto function = reinterpret_cast<PFN_vkSetHdrMetadataEXT>(
+    auto Function = reinterpret_cast<PFN_vkSetHdrMetadataEXT>(
         Context->Device->getProcAddr("vkSetHdrMetadataEXT"));
-    if (!function) return false;
-    VkHdrMetadataEXT native { VK_STRUCTURE_TYPE_HDR_METADATA_EXT };
-    auto chromaticity = [](const std::array<float, 2>& value)
+    if (!Function) return false;
+    VkHdrMetadataEXT Native { VK_STRUCTURE_TYPE_HDR_METADATA_EXT };
+    auto Chromaticity = [](const std::array<float, 2>& Value)
     {
-        return VkXYColorEXT { value[0], value[1] };
+        return VkXYColorEXT { Value[0], Value[1] };
     };
-    native.displayPrimaryRed = chromaticity(Metadata.DisplayPrimaryRed);
-    native.displayPrimaryGreen = chromaticity(Metadata.DisplayPrimaryGreen);
-    native.displayPrimaryBlue = chromaticity(Metadata.DisplayPrimaryBlue);
-    native.whitePoint = chromaticity(Metadata.WhitePoint);
-    native.maxLuminance = Metadata.MaxLuminanceNits;
-    native.minLuminance = Metadata.MinLuminanceNits;
-    native.maxContentLightLevel = Metadata.MaxContentLightLevelNits;
-    native.maxFrameAverageLightLevel = Metadata.MaxFrameAverageLightLevelNits;
-    const VkSwapchainKHR swapchain = static_cast<VkSwapchainKHR>(Swapchain.get());
-    function(static_cast<VkDevice>(Context->Device.get()), 1, &swapchain, &native);
+    Native.displayPrimaryRed = Chromaticity(Metadata.DisplayPrimaryRed);
+    Native.displayPrimaryGreen = Chromaticity(Metadata.DisplayPrimaryGreen);
+    Native.displayPrimaryBlue = Chromaticity(Metadata.DisplayPrimaryBlue);
+    Native.whitePoint = Chromaticity(Metadata.WhitePoint);
+    Native.maxLuminance = Metadata.MaxLuminanceNits;
+    Native.minLuminance = Metadata.MinLuminanceNits;
+    Native.maxContentLightLevel = Metadata.MaxContentLightLevelNits;
+    Native.maxFrameAverageLightLevel = Metadata.MaxFrameAverageLightLevelNits;
+    const VkSwapchainKHR SwapchainHandle = static_cast<VkSwapchainKHR>(Swapchain.get());
+    Function(static_cast<VkDevice>(Context->Device.get()), 1, &SwapchainHandle, &Native);
     return true;
 }
 

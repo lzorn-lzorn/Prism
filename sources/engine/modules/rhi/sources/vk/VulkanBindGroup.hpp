@@ -12,7 +12,7 @@ namespace rhi
 class VulkanDevice;
 class VulkanBindGroupLayout;
 
-/** @brief Descriptor set allocation returned by the shared Vulkan pool arena. */
+/** @brief 由共享的 Vulkan 描述符池 arena 返回的描述符集分配。 */
 struct VulkanDescriptorAllocation
 {
     vk::DescriptorPool Pool;
@@ -20,10 +20,10 @@ struct VulkanDescriptorAllocation
 };
 
 /**
- * @brief Thread-safe, grow-only descriptor-pool arena with per-set reclamation.
+ * @brief 线程安全、只增不减的描述符池 arena，支持按集合回收。
  *
- * Pools are shared by many BindGroups to avoid one native pool allocation per group.
- * Exhausted or fragmented pages are skipped and new pages are added geometrically.
+ * 池由多个 BindGroup 共享，以避免每个分组各做一次原生池分配。
+ * 已耗尽或碎片化的页面会被跳过，并以几何级数添加新页面。
  */
 class VulkanDescriptorAllocator final
 {
@@ -35,12 +35,12 @@ public:
     VulkanDescriptorAllocator& operator=(const VulkanDescriptorAllocator&) = delete;
 
     /**
-     * @brief Allocates one descriptor set.
-     * @param Layout Native descriptor set layout.
-     * @param Entries Normalized RHI layout entries.
-     * @param VariableArrayCount Runtime count of the variable descriptor binding, or zero.
-     * @param UpdateAfterBind Whether the layout requires an update-after-bind pool.
-     * @return Pool and set handles used by the BindGroup.
+     * @brief 分配一个描述符集。
+     * @param Layout 原生描述符集布局。
+     * @param Entries 规范化的 RHI 布局条目。
+     * @param VariableArrayCount 可变描述符绑定的运行时数量，或为零。
+     * @param UpdateAfterBind 该布局是否需要 update-after-bind 池。
+     * @return BindGroup 使用的池与描述符集句柄。
      */
     [[nodiscard]] VulkanDescriptorAllocation allocate(
         vk::DescriptorSetLayout Layout,
@@ -48,7 +48,7 @@ public:
         uint32_t VariableArrayCount,
         bool UpdateAfterBind);
 
-    /** @brief Returns a descriptor set to its owning pool. */
+    /** @brief 将一个描述符集归还给其所属的池。 */
     void release(VulkanDescriptorAllocation Allocation) noexcept;
 
 private:
@@ -72,7 +72,7 @@ private:
     std::vector<PoolPage> Pools;
 };
 
-/** @brief Immutable Vulkan descriptor set and the resources referenced by it. */
+/** @brief 不可变的 Vulkan 描述符集及其引用的资源。 */
 class VulkanBindGroup final : public RBindGroup
 {
 public:

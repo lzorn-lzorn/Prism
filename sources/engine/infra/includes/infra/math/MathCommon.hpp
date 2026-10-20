@@ -35,9 +35,9 @@ template <std::floating_point Number>
     Number Right,
     Number Tolerance = static_cast<Number>(Tiny)) noexcept
 {
-    const Number difference = std::abs(Left - Right);
-    const Number scale = std::max({std::abs(Left), std::abs(Right), Number {1}});
-    return difference <= Tolerance * scale;
+    const Number Difference = std::abs(Left - Right);
+    const Number Scale = std::max({std::abs(Left), std::abs(Right), Number {1}});
+    return Difference <= Tolerance * Scale;
 }
 
 template <std::floating_point Number>

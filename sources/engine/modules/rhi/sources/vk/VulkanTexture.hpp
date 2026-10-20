@@ -20,10 +20,10 @@ public:
     VulkanTexture& operator=(VulkanTexture&&) = delete;
 
     /**
-     * @brief Creates the backing image, default full-range view and default sampler.
-     * @param Device Device that owns the texture and its parts.
-     * @param Desc Immutable texture description.
-     * @return A fully constructed Vulkan texture.
+     * @brief 创建后备 image、默认全范围视图和默认 sampler。
+     * @param Device 拥有该 texture 及其各组成部分的设备。
+     * @param Desc 不可变的 texture 描述。
+     * @return 一个完整构建的 Vulkan texture。
      */
     [[nodiscard]] static std::shared_ptr<VulkanTexture> create(
         VulkanDevice& Device,

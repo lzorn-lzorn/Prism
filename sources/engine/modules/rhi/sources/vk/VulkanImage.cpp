@@ -42,16 +42,16 @@ std::shared_ptr<VulkanImage> VulkanImage::create(
     const Descriptor_t& Desc,
     DeviceMemoryAllocator* Allocator)
 {
-    auto image = createUnbound(Device, Desc);
-    image->allocateAndBindMemory(Allocator);
-    return image;
+    auto Image = createUnbound(Device, Desc);
+    Image->allocateAndBindMemory(Allocator);
+    return Image;
 }
 
 std::shared_ptr<VulkanImage> VulkanImage::createUnbound(VulkanDevice& Device, const Descriptor_t& Desc)
 {
     validateDescriptor(Desc);
-    auto image = Device.getVkDevice().createImageUnique(makeCreateInfo(Desc, false));
-    return std::shared_ptr<VulkanImage>(new VulkanImage(Device, Desc, std::move(image)));
+    auto Image = Device.getVkDevice().createImageUnique(makeCreateInfo(Desc, false));
+    return std::shared_ptr<VulkanImage>(new VulkanImage(Device, Desc, std::move(Image)));
 }
 
 std::shared_ptr<VulkanImage> VulkanImage::createUnboundAliasing(
@@ -60,26 +60,26 @@ std::shared_ptr<VulkanImage> VulkanImage::createUnboundAliasing(
 {
     validateDescriptor(Desc);
     // VK_IMAGE_CREATE_ALIAS_BIT: 允许该 Image 与其它 Image 复用同一段显存.
-    auto image = Device.getVkDevice().createImageUnique(makeCreateInfo(Desc, true));
-    return std::shared_ptr<VulkanImage>(new VulkanImage(Device, Desc, std::move(image)));
+    auto Image = Device.getVkDevice().createImageUnique(makeCreateInfo(Desc, true));
+    return std::shared_ptr<VulkanImage>(new VulkanImage(Device, Desc, std::move(Image)));
 }
 
 MemoryRequirements VulkanImage::getMemoryRequirements() const
 {
     if (isExternal() || !std::get<vk::UniqueImage>(Image))
         throw std::logic_error("Vulkan image is invalid for memory requirements.");
-    vk::MemoryDedicatedRequirements dedicated_requirements;
-    vk::MemoryRequirements2 requirements2;
-    requirements2.pNext = &dedicated_requirements;
-    const vk::ImageMemoryRequirementsInfo2 requirements_info(std::get<vk::UniqueImage>(Image).get());
-    Device->getVkDevice().getImageMemoryRequirements2(&requirements_info, &requirements2);
-    const vk::MemoryRequirements& vk_requirements = requirements2.memoryRequirements;
+    vk::MemoryDedicatedRequirements DedicatedRequirements;
+    vk::MemoryRequirements2 Requirements2;
+    Requirements2.pNext = &DedicatedRequirements;
+    const vk::ImageMemoryRequirementsInfo2 RequirementsInfo(std::get<vk::UniqueImage>(Image).get());
+    Device->getVkDevice().getImageMemoryRequirements2(&RequirementsInfo, &Requirements2);
+    const vk::MemoryRequirements& VkRequirements = Requirements2.memoryRequirements;
     return MemoryRequirements {
-        .Size = vk_requirements.size,
-        .Alignment = vk_requirements.alignment,
-        .MemoryTypeBits = vk_requirements.memoryTypeBits,
-        .PrefersDedicatedAllocation = dedicated_requirements.prefersDedicatedAllocation == VK_TRUE,
-        .RequiresDedicatedAllocation = dedicated_requirements.requiresDedicatedAllocation == VK_TRUE
+        .Size = VkRequirements.size,
+        .Alignment = VkRequirements.alignment,
+        .MemoryTypeBits = VkRequirements.memoryTypeBits,
+        .PrefersDedicatedAllocation = DedicatedRequirements.prefersDedicatedAllocation == VK_TRUE,
+        .RequiresDedicatedAllocation = DedicatedRequirements.requiresDedicatedAllocation == VK_TRUE
     };
 }
 
@@ -107,55 +107,55 @@ void VulkanImage::allocateAndBindMemory(DeviceMemoryAllocator* Allocator)
     {
         throw std::logic_error("External Vulkan images cannot allocate owned memory.");
     }
-    auto& owned_image = std::get<vk::UniqueImage>(Image);
-    if (!owned_image || Memory)
+    auto& OwnedImage = std::get<vk::UniqueImage>(Image);
+    if (!OwnedImage || Memory)
     {
         throw std::logic_error(Memory ? "Vulkan image memory is already bound." : "Vulkan image is invalid.");
     }
 
-    vk::MemoryDedicatedRequirements dedicated_requirements;
-    vk::MemoryRequirements2 requirements2;
-    requirements2.pNext = &dedicated_requirements;
-    const vk::ImageMemoryRequirementsInfo2 requirements_info(owned_image.get());
-    Device->getVkDevice().getImageMemoryRequirements2(&requirements_info, &requirements2);
-    const vk::MemoryRequirements& vk_requirements = requirements2.memoryRequirements;
-    const MemoryRequirements requirements {
-        .Size = vk_requirements.size,
-        .Alignment = vk_requirements.alignment,
-        .MemoryTypeBits = vk_requirements.memoryTypeBits,
-        .PrefersDedicatedAllocation = dedicated_requirements.prefersDedicatedAllocation == VK_TRUE,
-        .RequiresDedicatedAllocation = dedicated_requirements.requiresDedicatedAllocation == VK_TRUE
+    vk::MemoryDedicatedRequirements DedicatedRequirements;
+    vk::MemoryRequirements2 Requirements2;
+    Requirements2.pNext = &DedicatedRequirements;
+    const vk::ImageMemoryRequirementsInfo2 RequirementsInfo(OwnedImage.get());
+    Device->getVkDevice().getImageMemoryRequirements2(&RequirementsInfo, &Requirements2);
+    const vk::MemoryRequirements& VkRequirements = Requirements2.memoryRequirements;
+    const MemoryRequirements Requirements {
+        .Size = VkRequirements.size,
+        .Alignment = VkRequirements.alignment,
+        .MemoryTypeBits = VkRequirements.memoryTypeBits,
+        .PrefersDedicatedAllocation = DedicatedRequirements.prefersDedicatedAllocation == VK_TRUE,
+        .RequiresDedicatedAllocation = DedicatedRequirements.requiresDedicatedAllocation == VK_TRUE
     };
 
-    std::shared_ptr<DeviceMemory> memory;
+    std::shared_ptr<DeviceMemory> Memory;
     if (Allocator)
-        memory = Allocator->allocateMemory(requirements, getDescriptor().MemoryProperty);
+        Memory = Allocator->allocateMemory(Requirements, getDescriptor().MemoryProperty);
     else
-        memory = Device->allocateImageMemory({
-            .Requirements = requirements,
+        Memory = Device->allocateImageMemory({
+            .Requirements = Requirements,
             .Usage = EMemoryUsage::GPUOnly,
             .RequiredProperties = getDescriptor().MemoryProperty,
             .DebugName = "ImageMemory"
-        }, owned_image.get());
+        }, OwnedImage.get());
 
-    vk::DeviceMemory native_memory;
-    DeviceSizeType memory_offset = 0;
-    if (auto suballocation = std::dynamic_pointer_cast<VulkanMemoryAllocation>(memory))
+    vk::DeviceMemory NativeMemory;
+    DeviceSizeType MemoryOffset = 0;
+    if (auto Suballocation = std::dynamic_pointer_cast<VulkanMemoryAllocation>(Memory))
     {
-        native_memory = suballocation->getVkDeviceMemory();
-        memory_offset = suballocation->getAllocationInfo()->Offset;
+        NativeMemory = Suballocation->getVkDeviceMemory();
+        MemoryOffset = Suballocation->getAllocationInfo()->Offset;
     }
-    else if (auto legacy = std::dynamic_pointer_cast<VulkanDeviceMemory>(memory))
+    else if (auto Legacy = std::dynamic_pointer_cast<VulkanDeviceMemory>(Memory))
     {
-        native_memory = legacy->getVkDeviceMemory();
+        NativeMemory = Legacy->getVkDeviceMemory();
     }
     else
     {
         throw std::invalid_argument("Image allocator returned non-Vulkan device memory.");
     }
 
-    Device->getVkDevice().bindImageMemory(owned_image.get(), native_memory, memory_offset);
-    Memory = std::move(memory);
+    Device->getVkDevice().bindImageMemory(OwnedImage.get(), NativeMemory, MemoryOffset);
+    Memory = std::move(Memory);
 }
 
 void* VulkanImage::getNativeHandle() const noexcept
@@ -170,9 +170,9 @@ RDevice& VulkanImage::getDevice() const noexcept
 
 vk::Image VulkanImage::getVkImage() const noexcept
 {
-    if (const auto* external_image = std::get_if<vk::Image>(&Image))
+    if (const auto* ExternalImage = std::get_if<vk::Image>(&Image))
     {
-        return *external_image;
+        return *ExternalImage;
     }
     return std::get<vk::UniqueImage>(Image).get();
 }
@@ -225,11 +225,11 @@ void VulkanImage::validateDescriptor(const Descriptor_t& Desc)
 
 vk::ImageCreateInfo VulkanImage::makeCreateInfo(const Descriptor_t& Desc, bool EnableAliasing)
 {
-    auto flags = getImageCreateFlags(Desc.Dimension);
+    auto Flags = getImageCreateFlags(Desc.Dimension);
     if (EnableAliasing)
-        flags |= vk::ImageCreateFlagBits::eAlias;
+        Flags |= vk::ImageCreateFlagBits::eAlias;
     return vk::ImageCreateInfo()
-        .setFlags(flags)
+        .setFlags(Flags)
         .setImageType(toVk(Desc.Dimension))
         .setFormat(toVk(Desc.Format))
         .setExtent(vk::Extent3D(Desc.Width, Desc.Height, Desc.Depth))

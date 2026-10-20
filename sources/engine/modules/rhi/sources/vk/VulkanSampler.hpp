@@ -8,14 +8,14 @@ namespace rhi
 
 class VulkanDevice;
 
-/** @brief Immutable Vulkan sampler resource. */
+/** @brief 不可变的 Vulkan sampler 资源。 */
 class VulkanSampler final : public RSampler
 {
 public:
     /**
-     * @brief Creates a Vulkan sampler from a backend-neutral descriptor.
-     * @param Device Device that owns the sampler.
-     * @param Desc Sampler filtering, addressing and comparison state.
+     * @brief 根据与后端无关的描述符创建 Vulkan sampler。
+     * @param Device 拥有该 sampler 的设备。
+     * @param Desc sampler 的过滤、寻址与比较状态。
      */
     VulkanSampler(VulkanDevice& Device, const Descriptor_t& Desc);
     ~VulkanSampler() override = default;

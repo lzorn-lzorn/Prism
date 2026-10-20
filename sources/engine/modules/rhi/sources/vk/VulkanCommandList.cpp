@@ -1,4 +1,4 @@
-﻿#include "VulkanCommandList.hpp"
+#include "VulkanCommandList.hpp"
 
 #include "VulkanBindGroup.hpp"
 #include "VulkanBuffer.hpp"
@@ -167,49 +167,49 @@ const VulkanImageView& getVulkanView(const std::shared_ptr<RImageView>& View)
 {
     if (!View || !View->isValid())
         throw std::invalid_argument("Rendering requires a valid image view.");
-    const auto* result = dynamic_cast<const VulkanImageView*>(View.get());
-    if (!result)
+    const auto* Result = dynamic_cast<const VulkanImageView*>(View.get());
+    if (!Result)
         throw std::invalid_argument("Rendering received an image view from another backend.");
-    return *result;
+    return *Result;
 }
 
 const VulkanImage& getVulkanImage(const std::shared_ptr<RImage>& Image)
 {
     if (!Image || !Image->isValid())
         throw std::invalid_argument("Image barrier requires a valid image.");
-    const auto* result = dynamic_cast<const VulkanImage*>(Image.get());
-    if (!result)
+    const auto* Result = dynamic_cast<const VulkanImage*>(Image.get());
+    if (!Result)
         throw std::invalid_argument("Image barrier received an image from another backend.");
-    return *result;
+    return *Result;
 }
 
 const VulkanBuffer& getVulkanBuffer(const std::shared_ptr<RBuffer>& Buffer)
 {
     if (!Buffer || !Buffer->isValid())
         throw std::invalid_argument("Command requires a valid buffer.");
-    const auto* result = dynamic_cast<const VulkanBuffer*>(Buffer.get());
-    if (!result)
+    const auto* Result = dynamic_cast<const VulkanBuffer*>(Buffer.get());
+    if (!Result)
         throw std::invalid_argument("Command received a buffer from another backend.");
-    return *result;
+    return *Result;
 }
 
 const VulkanQueryPool& getVulkanQueryPool(const std::shared_ptr<RQueryPool>& Pool)
 {
-    const auto* result = dynamic_cast<const VulkanQueryPool*>(Pool.get());
-    if (!result)
+    const auto* Result = dynamic_cast<const VulkanQueryPool*>(Pool.get());
+    if (!Result)
         throw std::invalid_argument("Command received a query pool from another backend.");
-    return *result;
+    return *Result;
 }
 
 vk::ImageSubresourceLayers toLayers(const ImageSubresourceRange& Range, EFormat Format)
 {
     if (Range.MipLevelCount != 1 || Range.ArrayLayerCount == 0)
         throw std::invalid_argument("Image copy regions require exactly one mip level and at least one layer.");
-    const EImageAspect aspect = Range.Aspect == EImageAspect::Auto
+    const EImageAspect Aspect = Range.Aspect == EImageAspect::Auto
         ? inferAspect(Format)
         : Range.Aspect;
     return vk::ImageSubresourceLayers(
-        toVk(aspect), Range.BaseMipLevel, Range.BaseArrayLayer, Range.ArrayLayerCount);
+        toVk(Aspect), Range.BaseMipLevel, Range.BaseArrayLayer, Range.ArrayLayerCount);
 }
 
 void validateResolve(
@@ -229,35 +229,35 @@ void validateResolve(
     if (IsColor && Mode != EResolveMode::Average)
         throw std::invalid_argument("Color attachment resolve currently requires Average mode.");
 
-    const auto& source_image = Source->getImage()->getDescriptor();
-    const auto& resolve_image = Resolve->getImage()->getDescriptor();
-    if (source_image.SampleCount == ESampleCount::Count1)
+    const auto& SourceImage = Source->getImage()->getDescriptor();
+    const auto& ResolveImage = Resolve->getImage()->getDescriptor();
+    if (SourceImage.SampleCount == ESampleCount::Count1)
         throw std::invalid_argument("A resolve source must be multisampled.");
-    if (resolve_image.SampleCount != ESampleCount::Count1)
+    if (ResolveImage.SampleCount != ESampleCount::Count1)
         throw std::invalid_argument("A resolve destination must have one sample.");
     if (Source->getDescriptor().Format != Resolve->getDescriptor().Format)
         throw std::invalid_argument("Resolve source and destination formats must match.");
-    if (source_image.Width != resolve_image.Width || source_image.Height != resolve_image.Height)
+    if (SourceImage.Width != ResolveImage.Width || SourceImage.Height != ResolveImage.Height)
         throw std::invalid_argument("Resolve source and destination extents must match.");
 }
 
 RenderingSignature inheritanceSignature(const SecondaryCommandListInheritance& Inheritance)
 {
-    RenderingSignature result {};
-    result.ColorFormats = Inheritance.ColorFormats;
-    result.ColorAttachmentCount = Inheritance.ColorAttachmentCount;
-    result.DepthFormat = Inheritance.DepthFormat;
-    result.StencilFormat = Inheritance.StencilFormat;
-    result.SampleCount = Inheritance.SampleCount;
-    result.ViewMask = Inheritance.ViewMask;
-    return result;
+    RenderingSignature Result {};
+    Result.ColorFormats = Inheritance.ColorFormats;
+    Result.ColorAttachmentCount = Inheritance.ColorAttachmentCount;
+    Result.DepthFormat = Inheritance.DepthFormat;
+    Result.StencilFormat = Inheritance.StencilFormat;
+    Result.SampleCount = Inheritance.SampleCount;
+    Result.ViewMask = Inheritance.ViewMask;
+    return Result;
 }
 
 bool sameTopologyClass(EPrimitiveTopology Left, EPrimitiveTopology Right)
 {
-    auto topology_class = [](EPrimitiveTopology topology)
+    auto TopologyClass = [](EPrimitiveTopology Topology)
     {
-        switch (topology)
+        switch (Topology)
         {
         case EPrimitiveTopology::PointList: return 0;
         case EPrimitiveTopology::LineList:
@@ -268,7 +268,7 @@ bool sameTopologyClass(EPrimitiveTopology Left, EPrimitiveTopology Right)
         }
         return -1;
     };
-    return topology_class(Left) == topology_class(Right);
+    return TopologyClass(Left) == TopologyClass(Right);
 }
 
 vk::Format vertexFormat(EVertexFormat Format)
@@ -301,21 +301,21 @@ VulkanCommandList::VulkanCommandList(
         throw std::invalid_argument("Rendering inheritance requires a secondary graphics command list.");
     if (Desc.RenderingInheritance)
     {
-        const auto& inheritance = *Desc.RenderingInheritance;
-        if (inheritance.ColorAttachmentCount > MaxColorAttachments ||
-            inheritance.ColorAttachmentCount > Device->getLimits().MaxColorAttachments)
+        const auto& Inheritance = *Desc.RenderingInheritance;
+        if (Inheritance.ColorAttachmentCount > MaxColorAttachments ||
+            Inheritance.ColorAttachmentCount > Device->getLimits().MaxColorAttachments)
             throw std::invalid_argument("Secondary rendering inheritance has too many color attachments.");
-        for (uint32_t index = 0; index < MaxColorAttachments; ++index)
+        for (uint32_t Index = 0; Index < MaxColorAttachments; ++Index)
         {
-            const bool used = index < inheritance.ColorAttachmentCount;
-            if (used == (inheritance.ColorFormats[index] == EFormat::Undefined) ||
-                (used && hasDepthAspect(inheritance.ColorFormats[index])))
+            const bool Used = Index < Inheritance.ColorAttachmentCount;
+            if (Used == (Inheritance.ColorFormats[Index] == EFormat::Undefined) ||
+                (Used && hasDepthAspect(Inheritance.ColorFormats[Index])))
                 throw std::invalid_argument("Secondary rendering inheritance has invalid color formats.");
         }
-        if ((inheritance.DepthFormat != EFormat::Undefined && !hasDepthAspect(inheritance.DepthFormat)) ||
-            (inheritance.StencilFormat != EFormat::Undefined && !hasStencilAspect(inheritance.StencilFormat)))
+        if ((Inheritance.DepthFormat != EFormat::Undefined && !hasDepthAspect(Inheritance.DepthFormat)) ||
+            (Inheritance.StencilFormat != EFormat::Undefined && !hasStencilAspect(Inheritance.StencilFormat)))
             throw std::invalid_argument("Secondary rendering inheritance has invalid depth/stencil formats.");
-        if (inheritance.ViewMask != 0 && !Device->getFeatures().Multiview)
+        if (Inheritance.ViewMask != 0 && !Device->getFeatures().Multiview)
             throw std::invalid_argument("Secondary multiview inheritance is unsupported.");
     }
     CommandPool = Device->getVkDevice().createCommandPoolUnique(
@@ -323,14 +323,14 @@ VulkanCommandList::VulkanCommandList(
             vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
             QueueFamilyIndex));
 
-    vk::CommandBufferAllocateInfo allocation_info(
+    vk::CommandBufferAllocateInfo AllocationInfo(
         CommandPool.get(),
         Desc.Level == ECommandListLevel::Primary
             ? vk::CommandBufferLevel::ePrimary
             : vk::CommandBufferLevel::eSecondary,
         1);
-    auto command_buffers = Device->getVkDevice().allocateCommandBuffersUnique(allocation_info);
-    CommandBuffer = std::move(command_buffers.front());
+    auto CommandBuffers = Device->getVkDevice().allocateCommandBuffersUnique(AllocationInfo);
+    CommandBuffer = std::move(CommandBuffers.front());
 }
 
 void* VulkanCommandList::getNativeHandle() const noexcept
@@ -350,38 +350,38 @@ void VulkanCommandList::begin()
 
     try
     {
-        vk::CommandBufferUsageFlags usage;
+        vk::CommandBufferUsageFlags Usage;
         if (Descriptor.OneTimeSubmit)
-            usage |= vk::CommandBufferUsageFlagBits::eOneTimeSubmit;
+            Usage |= vk::CommandBufferUsageFlagBits::eOneTimeSubmit;
 
-        vk::CommandBufferInheritanceRenderingInfo rendering_inheritance {};
-        vk::CommandBufferInheritanceInfo inheritance_info {};
-        std::array<vk::Format, MaxColorAttachments> color_formats {};
-        const vk::CommandBufferInheritanceInfo* inheritance_pointer = nullptr;
+        vk::CommandBufferInheritanceRenderingInfo RenderingInheritance {};
+        vk::CommandBufferInheritanceInfo InheritanceInfo {};
+        std::array<vk::Format, MaxColorAttachments> ColorFormats {};
+        const vk::CommandBufferInheritanceInfo* InheritancePointer = nullptr;
         if (Descriptor.Level == ECommandListLevel::Secondary)
         {
-            inheritance_pointer = &inheritance_info;
+            InheritancePointer = &InheritanceInfo;
             if (Descriptor.RenderingInheritance)
             {
-                const auto& source = *Descriptor.RenderingInheritance;
-                for (uint32_t index = 0; index < source.ColorAttachmentCount; ++index)
-                    color_formats[index] = toVk(source.ColorFormats[index]);
+                const auto& Source = *Descriptor.RenderingInheritance;
+                for (uint32_t Index = 0; Index < Source.ColorAttachmentCount; ++Index)
+                    ColorFormats[Index] = toVk(Source.ColorFormats[Index]);
                 // VkCommandBufferInheritanceRenderingInfo is required by dynamic rendering secondaries.
-                rendering_inheritance
-                    .setViewMask(source.ViewMask)
-                    .setColorAttachmentCount(source.ColorAttachmentCount)
-                    .setPColorAttachmentFormats(color_formats.data())
-                    .setDepthAttachmentFormat(toVk(source.DepthFormat))
-                    .setStencilAttachmentFormat(toVk(source.StencilFormat))
-                    .setRasterizationSamples(toVk(source.SampleCount));
-                inheritance_info.pNext = &rendering_inheritance;
-                usage |= vk::CommandBufferUsageFlagBits::eRenderPassContinue;
+                RenderingInheritance
+                    .setViewMask(Source.ViewMask)
+                    .setColorAttachmentCount(Source.ColorAttachmentCount)
+                    .setPColorAttachmentFormats(ColorFormats.data())
+                    .setDepthAttachmentFormat(toVk(Source.DepthFormat))
+                    .setStencilAttachmentFormat(toVk(Source.StencilFormat))
+                    .setRasterizationSamples(toVk(Source.SampleCount));
+                InheritanceInfo.pNext = &RenderingInheritance;
+                Usage |= vk::CommandBufferUsageFlagBits::eRenderPassContinue;
                 InheritedRendering = true;
                 InsideRendering = true;
-                ActiveRenderingSignature = inheritanceSignature(source);
+                ActiveRenderingSignature = inheritanceSignature(Source);
             }
         }
-        CommandBuffer->begin(vk::CommandBufferBeginInfo(usage, inheritance_pointer));
+        CommandBuffer->begin(vk::CommandBufferBeginInfo(Usage, InheritancePointer));
         State = ECommandListState::Recording;
     }
     catch (...)
@@ -437,8 +437,8 @@ void VulkanCommandList::markSubmitted()
     if (State != ECommandListState::Executable)
         throw std::logic_error("Only executable command lists may become pending.");
     State = ECommandListState::Pending;
-    for (const auto& secondary : ExecutedSecondaries)
-        secondary->markSubmitted();
+    for (const auto& Secondary : ExecutedSecondaries)
+        Secondary->markSubmitted();
 }
 
 void VulkanCommandList::markComplete()
@@ -447,8 +447,8 @@ void VulkanCommandList::markComplete()
         State = Descriptor.OneTimeSubmit
             ? ECommandListState::Completed
             : ECommandListState::Executable;
-    for (const auto& secondary : ExecutedSecondaries)
-        secondary->markComplete();
+    for (const auto& Secondary : ExecutedSecondaries)
+        Secondary->markComplete();
 }
 
 void VulkanCommandList::barriers(
@@ -461,86 +461,86 @@ void VulkanCommandList::barriers(
     if (GlobalBarriers.empty() && BufferBarriers.empty() && ImageBarriers.empty())
         return;
 
-    std::vector<vk::MemoryBarrier2> global_barriers;
-    global_barriers.reserve(GlobalBarriers.size());
-    for (const auto& barrier : GlobalBarriers)
+    std::vector<vk::MemoryBarrier2> VkGlobalBarriers;
+    VkGlobalBarriers.reserve(GlobalBarriers.size());
+    for (const auto& Barrier : GlobalBarriers)
     {
-        const auto before = convertMemoryState(barrier.Before);
-        const auto after = convertMemoryState(barrier.After);
-        global_barriers.emplace_back(before.Stages, before.Access, after.Stages, after.Access);
+        const auto Before = convertMemoryState(Barrier.Before);
+        const auto After = convertMemoryState(Barrier.After);
+        VkGlobalBarriers.emplace_back(Before.Stages, Before.Access, After.Stages, After.Access);
     }
 
-    std::vector<vk::BufferMemoryBarrier2> buffer_barriers;
-    buffer_barriers.reserve(BufferBarriers.size());
-    for (const auto& barrier : BufferBarriers)
+    std::vector<vk::BufferMemoryBarrier2> VkBufferBarriers;
+    VkBufferBarriers.reserve(BufferBarriers.size());
+    for (const auto& Barrier : BufferBarriers)
     {
-        const auto& buffer = getVulkanBuffer(barrier.Buffer);
-        const auto& desc = barrier.Buffer->getDescriptor();
-        const uint64_t size = clampCopySize(barrier.Offset, barrier.Size, desc.Size);
-        const auto before = convertMemoryState(barrier.Before);
-        const auto after = convertMemoryState(barrier.After);
-        if (barrier.SourceQueue.has_value() != barrier.DestinationQueue.has_value())
+        const auto& Buffer = getVulkanBuffer(Barrier.Buffer);
+        const auto& Desc = Barrier.Buffer->getDescriptor();
+        const uint64_t Size = clampCopySize(Barrier.Offset, Barrier.Size, Desc.Size);
+        const auto Before = convertMemoryState(Barrier.Before);
+        const auto After = convertMemoryState(Barrier.After);
+        if (Barrier.SourceQueue.has_value() != Barrier.DestinationQueue.has_value())
             throw std::invalid_argument("Queue ownership transfer requires both source and destination queues.");
-        const uint32_t source_family = barrier.SourceQueue
-            ? Device->getQueueFamilyIndex(*barrier.SourceQueue) : VK_QUEUE_FAMILY_IGNORED;
-        const uint32_t destination_family = barrier.DestinationQueue
-            ? Device->getQueueFamilyIndex(*barrier.DestinationQueue) : VK_QUEUE_FAMILY_IGNORED;
-        buffer_barriers.emplace_back(
-            before.Stages, before.Access, after.Stages, after.Access,
-            source_family, destination_family, buffer.getVkBuffer(), barrier.Offset, size);
-        RetainedResources.emplace_back(barrier.Buffer);
+        const uint32_t SourceFamily = Barrier.SourceQueue
+            ? Device->getQueueFamilyIndex(*Barrier.SourceQueue) : VK_QUEUE_FAMILY_IGNORED;
+        const uint32_t DestinationFamily = Barrier.DestinationQueue
+            ? Device->getQueueFamilyIndex(*Barrier.DestinationQueue) : VK_QUEUE_FAMILY_IGNORED;
+        VkBufferBarriers.emplace_back(
+            Before.Stages, Before.Access, After.Stages, After.Access,
+            SourceFamily, DestinationFamily, Buffer.getVkBuffer(), Barrier.Offset, Size);
+        RetainedResources.emplace_back(Barrier.Buffer);
     }
 
-    std::vector<vk::ImageMemoryBarrier2> vk_barriers;
-    vk_barriers.reserve(ImageBarriers.size());
-    for (const auto& barrier : ImageBarriers)
+    std::vector<vk::ImageMemoryBarrier2> VkBarriers;
+    VkBarriers.reserve(ImageBarriers.size());
+    for (const auto& Barrier : ImageBarriers)
     {
-        const auto& image = getVulkanImage(barrier.Image);
-        const auto& desc = barrier.Image->getDescriptor();
-        if (barrier.Range.MipLevelCount == 0 || barrier.Range.ArrayLayerCount == 0 ||
-            barrier.Range.BaseMipLevel >= desc.MipLevels ||
-            barrier.Range.MipLevelCount > desc.MipLevels - barrier.Range.BaseMipLevel ||
-            barrier.Range.BaseArrayLayer >= desc.ArrayLayers ||
-            barrier.Range.ArrayLayerCount > desc.ArrayLayers - barrier.Range.BaseArrayLayer)
+        const auto& Image = getVulkanImage(Barrier.Image);
+        const auto& Desc = Barrier.Image->getDescriptor();
+        if (Barrier.Range.MipLevelCount == 0 || Barrier.Range.ArrayLayerCount == 0 ||
+            Barrier.Range.BaseMipLevel >= Desc.MipLevels ||
+            Barrier.Range.MipLevelCount > Desc.MipLevels - Barrier.Range.BaseMipLevel ||
+            Barrier.Range.BaseArrayLayer >= Desc.ArrayLayers ||
+            Barrier.Range.ArrayLayerCount > Desc.ArrayLayers - Barrier.Range.BaseArrayLayer)
         {
             throw std::out_of_range("Image barrier subresource range exceeds the image.");
         }
 
-        const EImageAspect aspect = barrier.Range.Aspect == EImageAspect::Auto
-            ? inferAspect(desc.Format)
-            : barrier.Range.Aspect;
-        const auto before = convertResourceState(barrier.Before);
-        const auto after = convertResourceState(barrier.After);
-        if (barrier.SourceQueue.has_value() != barrier.DestinationQueue.has_value())
+        const EImageAspect Aspect = Barrier.Range.Aspect == EImageAspect::Auto
+            ? inferAspect(Desc.Format)
+            : Barrier.Range.Aspect;
+        const auto Before = convertResourceState(Barrier.Before);
+        const auto After = convertResourceState(Barrier.After);
+        if (Barrier.SourceQueue.has_value() != Barrier.DestinationQueue.has_value())
             throw std::invalid_argument("Queue ownership transfer requires both source and destination queues.");
-        const uint32_t source_family = barrier.SourceQueue
-            ? Device->getQueueFamilyIndex(*barrier.SourceQueue) : VK_QUEUE_FAMILY_IGNORED;
-        const uint32_t destination_family = barrier.DestinationQueue
-            ? Device->getQueueFamilyIndex(*barrier.DestinationQueue) : VK_QUEUE_FAMILY_IGNORED;
-        vk_barriers.emplace_back(
-            before.Stages,
-            before.Access,
-            after.Stages,
-            after.Access,
-            before.Layout,
-            after.Layout,
-            source_family,
-            destination_family,
-            image.getVkImage(),
+        const uint32_t SourceFamily = Barrier.SourceQueue
+            ? Device->getQueueFamilyIndex(*Barrier.SourceQueue) : VK_QUEUE_FAMILY_IGNORED;
+        const uint32_t DestinationFamily = Barrier.DestinationQueue
+            ? Device->getQueueFamilyIndex(*Barrier.DestinationQueue) : VK_QUEUE_FAMILY_IGNORED;
+        VkBarriers.emplace_back(
+            Before.Stages,
+            Before.Access,
+            After.Stages,
+            After.Access,
+            Before.Layout,
+            After.Layout,
+            SourceFamily,
+            DestinationFamily,
+            Image.getVkImage(),
             vk::ImageSubresourceRange(
-                toVk(aspect),
-                barrier.Range.BaseMipLevel,
-                barrier.Range.MipLevelCount,
-                barrier.Range.BaseArrayLayer,
-                barrier.Range.ArrayLayerCount));
-        RetainedResources.emplace_back(barrier.Image);
+                toVk(Aspect),
+                Barrier.Range.BaseMipLevel,
+                Barrier.Range.MipLevelCount,
+                Barrier.Range.BaseArrayLayer,
+                Barrier.Range.ArrayLayerCount));
+        RetainedResources.emplace_back(Barrier.Image);
     }
 
-    vk::DependencyInfo dependency;
-    dependency.setMemoryBarriers(global_barriers)
-        .setBufferMemoryBarriers(buffer_barriers)
-        .setImageMemoryBarriers(vk_barriers);
-    CommandBuffer->pipelineBarrier2(dependency);
+    vk::DependencyInfo Dependency;
+    Dependency.setMemoryBarriers(VkGlobalBarriers)
+        .setBufferMemoryBarriers(VkBufferBarriers)
+        .setImageMemoryBarriers(VkBarriers);
+    CommandBuffer->pipelineBarrier2(Dependency);
 }
 
 void VulkanCommandList::beginRendering(const RenderingInfo& Info)
@@ -553,117 +553,117 @@ void VulkanCommandList::beginRendering(const RenderingInfo& Info)
         throw std::logic_error("A secondary command list cannot begin a rendering scope.");
     validateRenderingInfo(Info);
 
-    std::array<vk::RenderingAttachmentInfo, MaxColorAttachments> color_attachments;
+    std::array<vk::RenderingAttachmentInfo, MaxColorAttachments> ColorAttachments;
     ActiveRenderingSignature = {};
     ActiveRenderingSignature.ColorAttachmentCount = static_cast<uint32_t>(Info.ColorAttachments.size());
     ActiveRenderingSignature.ViewMask = Info.ViewMask;
-    bool sample_count_set = false;
+    bool SampleCountSet = false;
 
-    for (size_t index = 0; index < Info.ColorAttachments.size(); ++index)
+    for (size_t Index = 0; Index < Info.ColorAttachments.size(); ++Index)
     {
-        const auto& source = Info.ColorAttachments[index];
-        const auto& view = getVulkanView(source.View);
-        const auto& view_desc = source.View->getDescriptor();
-        const auto& image_desc = source.View->getImage()->getDescriptor();
-        ActiveRenderingSignature.ColorFormats[index] = view_desc.Format;
-        if (!sample_count_set)
+        const auto& Source = Info.ColorAttachments[Index];
+        const auto& View = getVulkanView(Source.View);
+        const auto& ViewDesc = Source.View->getDescriptor();
+        const auto& ImageDesc = Source.View->getImage()->getDescriptor();
+        ActiveRenderingSignature.ColorFormats[Index] = ViewDesc.Format;
+        if (!SampleCountSet)
         {
-            ActiveRenderingSignature.SampleCount = image_desc.SampleCount;
-            sample_count_set = true;
+            ActiveRenderingSignature.SampleCount = ImageDesc.SampleCount;
+            SampleCountSet = true;
         }
 
-        auto& target = color_attachments[index];
-        target
-            .setImageView(view.getVkImageView())
+        auto& Target = ColorAttachments[Index];
+        Target
+            .setImageView(View.getVkImageView())
             .setImageLayout(vk::ImageLayout::eColorAttachmentOptimal)
-            .setLoadOp(convertLoadOp(source.LoadOp))
-            .setStoreOp(convertStoreOp(source.StoreOp))
-            .setClearValue(convertClearColor(source.ClearValue));
-        if (source.ResolveView)
+            .setLoadOp(convertLoadOp(Source.LoadOp))
+            .setStoreOp(convertStoreOp(Source.StoreOp))
+            .setClearValue(convertClearColor(Source.ClearValue));
+        if (Source.ResolveView)
         {
-            const auto& resolve_view = getVulkanView(source.ResolveView);
-            target
-                .setResolveMode(convertResolveMode(source.ResolveMode))
-                .setResolveImageView(resolve_view.getVkImageView())
+            const auto& ResolveView = getVulkanView(Source.ResolveView);
+            Target
+                .setResolveMode(convertResolveMode(Source.ResolveMode))
+                .setResolveImageView(ResolveView.getVkImageView())
                 .setResolveImageLayout(vk::ImageLayout::eColorAttachmentOptimal);
         }
     }
 
-    vk::RenderingAttachmentInfo depth_attachment;
-    vk::RenderingAttachmentInfo stencil_attachment;
-    const vk::RenderingAttachmentInfo* depth_pointer = nullptr;
-    const vk::RenderingAttachmentInfo* stencil_pointer = nullptr;
+    vk::RenderingAttachmentInfo DepthAttachment;
+    vk::RenderingAttachmentInfo StencilAttachment;
+    const vk::RenderingAttachmentInfo* DepthPointer = nullptr;
+    const vk::RenderingAttachmentInfo* StencilPointer = nullptr;
 
     if (Info.DepthStencil)
     {
-        const auto& attachment = *Info.DepthStencil;
-        const auto& view = getVulkanView(attachment.View);
-        const EFormat format = attachment.View->getDescriptor().Format;
-        const auto sample_count = attachment.View->getImage()->getDescriptor().SampleCount;
-        if (!sample_count_set)
-            ActiveRenderingSignature.SampleCount = sample_count;
-        if (hasDepthAspect(format))
+        const auto& Attachment = *Info.DepthStencil;
+        const auto& View = getVulkanView(Attachment.View);
+        const EFormat Format = Attachment.View->getDescriptor().Format;
+        const auto SampleCount = Attachment.View->getImage()->getDescriptor().SampleCount;
+        if (!SampleCountSet)
+            ActiveRenderingSignature.SampleCount = SampleCount;
+        if (hasDepthAspect(Format))
         {
-            ActiveRenderingSignature.DepthFormat = format;
-            depth_attachment
-                .setImageView(view.getVkImageView())
+            ActiveRenderingSignature.DepthFormat = Format;
+            DepthAttachment
+                .setImageView(View.getVkImageView())
                 .setImageLayout(vk::ImageLayout::eDepthStencilAttachmentOptimal)
-                .setLoadOp(convertLoadOp(attachment.Depth.LoadOp))
-                .setStoreOp(convertStoreOp(attachment.Depth.StoreOp))
+                .setLoadOp(convertLoadOp(Attachment.Depth.LoadOp))
+                .setStoreOp(convertStoreOp(Attachment.Depth.StoreOp))
                 .setClearValue(vk::ClearValue(vk::ClearDepthStencilValue(
-                    attachment.ClearValue.Depth,
-                    attachment.ClearValue.Stencil)));
-            depth_pointer = &depth_attachment;
+                    Attachment.ClearValue.Depth,
+                    Attachment.ClearValue.Stencil)));
+            DepthPointer = &DepthAttachment;
         }
-        if (hasStencilAspect(format))
+        if (hasStencilAspect(Format))
         {
-            ActiveRenderingSignature.StencilFormat = format;
-            stencil_attachment
-                .setImageView(view.getVkImageView())
+            ActiveRenderingSignature.StencilFormat = Format;
+            StencilAttachment
+                .setImageView(View.getVkImageView())
                 .setImageLayout(vk::ImageLayout::eDepthStencilAttachmentOptimal)
-                .setLoadOp(convertLoadOp(attachment.Stencil.LoadOp))
-                .setStoreOp(convertStoreOp(attachment.Stencil.StoreOp))
+                .setLoadOp(convertLoadOp(Attachment.Stencil.LoadOp))
+                .setStoreOp(convertStoreOp(Attachment.Stencil.StoreOp))
                 .setClearValue(vk::ClearValue(vk::ClearDepthStencilValue(
-                    attachment.ClearValue.Depth,
-                    attachment.ClearValue.Stencil)));
-            stencil_pointer = &stencil_attachment;
+                    Attachment.ClearValue.Depth,
+                    Attachment.ClearValue.Stencil)));
+            StencilPointer = &StencilAttachment;
         }
-        if (attachment.ResolveView)
+        if (Attachment.ResolveView)
         {
-            const auto& resolve_view = getVulkanView(attachment.ResolveView);
-            if (depth_pointer && attachment.Depth.ResolveMode != EResolveMode::None)
-                depth_attachment
-                    .setResolveMode(convertResolveMode(attachment.Depth.ResolveMode))
-                    .setResolveImageView(resolve_view.getVkImageView())
+            const auto& ResolveView = getVulkanView(Attachment.ResolveView);
+            if (DepthPointer && Attachment.Depth.ResolveMode != EResolveMode::None)
+                DepthAttachment
+                    .setResolveMode(convertResolveMode(Attachment.Depth.ResolveMode))
+                    .setResolveImageView(ResolveView.getVkImageView())
                     .setResolveImageLayout(vk::ImageLayout::eDepthStencilAttachmentOptimal);
-            if (stencil_pointer && attachment.Stencil.ResolveMode != EResolveMode::None)
-                stencil_attachment
-                    .setResolveMode(convertResolveMode(attachment.Stencil.ResolveMode))
-                    .setResolveImageView(resolve_view.getVkImageView())
+            if (StencilPointer && Attachment.Stencil.ResolveMode != EResolveMode::None)
+                StencilAttachment
+                    .setResolveMode(convertResolveMode(Attachment.Stencil.ResolveMode))
+                    .setResolveImageView(ResolveView.getVkImageView())
                     .setResolveImageLayout(vk::ImageLayout::eDepthStencilAttachmentOptimal);
         }
     }
 
-    vk::RenderingInfo rendering_info;
-    rendering_info
+    vk::RenderingInfo RenderingInfo;
+    RenderingInfo
         .setRenderArea(vk::Rect2D(
             vk::Offset2D(Info.Area.X, Info.Area.Y),
             vk::Extent2D(Info.Area.Width, Info.Area.Height)))
         .setLayerCount(Info.LayerCount)
         .setViewMask(Info.ViewMask)
         .setColorAttachmentCount(static_cast<uint32_t>(Info.ColorAttachments.size()))
-        .setPColorAttachments(color_attachments.data())
-        .setPDepthAttachment(depth_pointer)
-        .setPStencilAttachment(stencil_pointer);
+        .setPColorAttachments(ColorAttachments.data())
+        .setPDepthAttachment(DepthPointer)
+        .setPStencilAttachment(StencilPointer);
     if (Info.SecondaryCommandBuffers)
     {
         // VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT makes this scope secondary-only.
-        rendering_info.flags |= vk::RenderingFlagBits::eContentsSecondaryCommandBuffers;
+        RenderingInfo.flags |= vk::RenderingFlagBits::eContentsSecondaryCommandBuffers;
     }
 
     if (BoundGraphicsPipeline)
         validateRenderingCompatibility(*BoundGraphicsPipeline);
-    CommandBuffer->beginRendering(rendering_info);
+    CommandBuffer->beginRendering(RenderingInfo);
     InsideRendering = true;
     RenderingUsesSecondaryCommandBuffers = Info.SecondaryCommandBuffers;
     retainRenderingResources(Info);
@@ -686,25 +686,25 @@ void VulkanCommandList::setViewports(std::span<const Viewport> Viewports)
     requireRecording("setViewports");
     if (Viewports.empty() || Viewports.size() > Device->getLimits().MaxViewports)
         throw std::invalid_argument("Viewport count is invalid for this device.");
-    std::vector<vk::Viewport> vk_viewports;
-    vk_viewports.reserve(Viewports.size());
-    for (const auto& viewport : Viewports)
+    std::vector<vk::Viewport> VkViewports;
+    VkViewports.reserve(Viewports.size());
+    for (const auto& Viewport : Viewports)
     {
-        if (viewport.Width <= 0.0f || viewport.Height <= 0.0f ||
-            viewport.MinDepth < 0.0f || viewport.MaxDepth > 1.0f ||
-            viewport.MinDepth > viewport.MaxDepth)
+        if (Viewport.Width <= 0.0f || Viewport.Height <= 0.0f ||
+            Viewport.MinDepth < 0.0f || Viewport.MaxDepth > 1.0f ||
+            Viewport.MinDepth > Viewport.MaxDepth)
         {
             throw std::invalid_argument("Viewport dimensions or depth range are invalid.");
         }
-        vk_viewports.emplace_back(
-            viewport.X,
-            viewport.Y,
-            viewport.Width,
-            viewport.Height,
-            viewport.MinDepth,
-            viewport.MaxDepth);
+        VkViewports.emplace_back(
+            Viewport.X,
+            Viewport.Y,
+            Viewport.Width,
+            Viewport.Height,
+            Viewport.MinDepth,
+            Viewport.MaxDepth);
     }
-    CommandBuffer->setViewport(0, vk_viewports);
+    CommandBuffer->setViewport(0, VkViewports);
     InitializedDynamicStates.set(EDynamicState_t::Viewport);
 }
 
@@ -713,17 +713,17 @@ void VulkanCommandList::setScissors(std::span<const RenderArea> Scissors)
     requireRecording("setScissors");
     if (Scissors.empty() || Scissors.size() > Device->getLimits().MaxViewports)
         throw std::invalid_argument("Scissor count is invalid for this device.");
-    std::vector<vk::Rect2D> vk_scissors;
-    vk_scissors.reserve(Scissors.size());
-    for (const auto& scissor : Scissors)
+    std::vector<vk::Rect2D> VkScissors;
+    VkScissors.reserve(Scissors.size());
+    for (const auto& Scissor : Scissors)
     {
-        if (scissor.X < 0 || scissor.Y < 0 || scissor.Width == 0 || scissor.Height == 0)
+        if (Scissor.X < 0 || Scissor.Y < 0 || Scissor.Width == 0 || Scissor.Height == 0)
             throw std::invalid_argument("Scissor rectangle is invalid.");
-        vk_scissors.emplace_back(
-            vk::Offset2D(scissor.X, scissor.Y),
-            vk::Extent2D(scissor.Width, scissor.Height));
+        VkScissors.emplace_back(
+            vk::Offset2D(Scissor.X, Scissor.Y),
+            vk::Extent2D(Scissor.Width, Scissor.Height));
     }
-    CommandBuffer->setScissor(0, vk_scissors);
+    CommandBuffer->setScissor(0, VkScissors);
     InitializedDynamicStates.set(EDynamicState_t::Scissor);
 }
 
@@ -778,9 +778,9 @@ bool VulkanCommandList::setFrontFace(EFrontFace Face)
     if (State != ECommandListState::Recording || Descriptor.QueueType != ECommandQueueType::Graphics ||
         !Device->getFeatures().ExtendedDynamicState)
         return false;
-    const vk::FrontFace face = Face == EFrontFace::Clockwise
+    const vk::FrontFace FrontFace = Face == EFrontFace::Clockwise
         ? vk::FrontFace::eClockwise : vk::FrontFace::eCounterClockwise;
-    try { CommandBuffer->setFrontFace(face); }
+    try { CommandBuffer->setFrontFace(FrontFace); }
     catch (...) { return false; }
     InitializedDynamicStates.set(EDynamicState_t::FrontFace);
     return true;
@@ -900,44 +900,44 @@ bool VulkanCommandList::setVertexInput(const VertexInputState& Input)
         Input.Attributes.size() > Device->getLimits().MaxVertexInputAttributes)
         return false;
 
-    const auto properties = Device->getVkPhysicalDevice().getProperties();
-    std::unordered_set<uint32_t> bindings;
-    std::vector<VkVertexInputBindingDescription2EXT> vk_bindings;
-    vk_bindings.reserve(Input.Buffers.size());
-    for (const auto& binding : Input.Buffers)
+    const auto Properties = Device->getVkPhysicalDevice().getProperties();
+    std::unordered_set<uint32_t> Bindings;
+    std::vector<VkVertexInputBindingDescription2EXT> VkBindings;
+    VkBindings.reserve(Input.Buffers.size());
+    for (const auto& Binding : Input.Buffers)
     {
-        if (binding.Binding >= Device->getLimits().MaxVertexInputBindings || binding.Stride == 0 ||
-            binding.Stride > properties.limits.maxVertexInputBindingStride ||
-            !bindings.emplace(binding.Binding).second)
+        if (Binding.Binding >= Device->getLimits().MaxVertexInputBindings || Binding.Stride == 0 ||
+            Binding.Stride > Properties.limits.maxVertexInputBindingStride ||
+            !Bindings.emplace(Binding.Binding).second)
             return false;
-        vk_bindings.push_back({ VK_STRUCTURE_TYPE_VERTEX_INPUT_BINDING_DESCRIPTION_2_EXT, nullptr,
-            binding.Binding, binding.Stride,
-            binding.InputRate == EVertexInputRate::PerInstance
+        VkBindings.push_back({ VK_STRUCTURE_TYPE_VERTEX_INPUT_BINDING_DESCRIPTION_2_EXT, nullptr,
+            Binding.Binding, Binding.Stride,
+            Binding.InputRate == EVertexInputRate::PerInstance
                 ? VK_VERTEX_INPUT_RATE_INSTANCE : VK_VERTEX_INPUT_RATE_VERTEX, 1 });
     }
 
-    std::unordered_set<uint32_t> locations;
-    std::vector<VkVertexInputAttributeDescription2EXT> vk_attributes;
-    vk_attributes.reserve(Input.Attributes.size());
-    for (const auto& attribute : Input.Attributes)
+    std::unordered_set<uint32_t> Locations;
+    std::vector<VkVertexInputAttributeDescription2EXT> VkAttributes;
+    VkAttributes.reserve(Input.Attributes.size());
+    for (const auto& Attribute : Input.Attributes)
     {
-        const vk::Format format = vertexFormat(attribute.Format);
-        if (!bindings.contains(attribute.Binding) ||
-            attribute.Location >= Device->getLimits().MaxVertexInputAttributes ||
-            attribute.Offset > properties.limits.maxVertexInputAttributeOffset ||
-            format == vk::Format::eUndefined || !locations.emplace(attribute.Location).second)
+        const vk::Format Format = vertexFormat(Attribute.Format);
+        if (!Bindings.contains(Attribute.Binding) ||
+            Attribute.Location >= Device->getLimits().MaxVertexInputAttributes ||
+            Attribute.Offset > Properties.limits.maxVertexInputAttributeOffset ||
+            Format == vk::Format::eUndefined || !Locations.emplace(Attribute.Location).second)
             return false;
-        vk_attributes.push_back({ VK_STRUCTURE_TYPE_VERTEX_INPUT_ATTRIBUTE_DESCRIPTION_2_EXT, nullptr,
-            attribute.Location, attribute.Binding, static_cast<VkFormat>(format), attribute.Offset });
+        VkAttributes.push_back({ VK_STRUCTURE_TYPE_VERTEX_INPUT_ATTRIBUTE_DESCRIPTION_2_EXT, nullptr,
+            Attribute.Location, Attribute.Binding, static_cast<VkFormat>(Format), Attribute.Offset });
     }
 
-    const auto function = reinterpret_cast<PFN_vkCmdSetVertexInputEXT>(
+    const auto Function = reinterpret_cast<PFN_vkCmdSetVertexInputEXT>(
         Device->getVkDevice().getProcAddr("vkCmdSetVertexInputEXT"));
-    if (!function)
+    if (!Function)
         return false;
-    function(static_cast<VkCommandBuffer>(CommandBuffer.get()),
-        static_cast<uint32_t>(vk_bindings.size()), vk_bindings.data(),
-        static_cast<uint32_t>(vk_attributes.size()), vk_attributes.data());
+    Function(static_cast<VkCommandBuffer>(CommandBuffer.get()),
+        static_cast<uint32_t>(VkBindings.size()), VkBindings.data(),
+        static_cast<uint32_t>(VkAttributes.size()), VkAttributes.data());
     InitializedDynamicStates.set(EDynamicState_t::VertexInput);
     return true;
 }
@@ -949,8 +949,8 @@ void VulkanCommandList::pushConstants(
     std::span<const std::byte> Data)
 {
     requireRecording("pushConstants");
-    auto vk_layout = std::dynamic_pointer_cast<VulkanPipelineLayout>(Layout);
-    if (!vk_layout || &vk_layout->getDevice() != Device || !vk_layout->isValid())
+    auto VkLayout = std::dynamic_pointer_cast<VulkanPipelineLayout>(Layout);
+    if (!VkLayout || &VkLayout->getDevice() != Device || !VkLayout->isValid())
         throw std::invalid_argument("Push constant layout belongs to another backend or device.");
     if (!Stages || Data.empty() || Offset % 4 != 0 || Data.size() % 4 != 0 ||
         Data.size() > Device->getLimits().MaxPushConstantSize ||
@@ -958,10 +958,10 @@ void VulkanCommandList::pushConstants(
     {
         throw std::invalid_argument("Push constant update is empty, unaligned or exceeds device limits.");
     }
-    if (!vk_layout->supportsPushConstants(Stages, Offset, static_cast<uint32_t>(Data.size())))
+    if (!VkLayout->supportsPushConstants(Stages, Offset, static_cast<uint32_t>(Data.size())))
         throw std::invalid_argument("Push constant update is not covered by the pipeline layout.");
     CommandBuffer->pushConstants(
-        vk_layout->getVkPipelineLayout(),
+        VkLayout->getVkPipelineLayout(),
         toVk(Stages),
         Offset,
         static_cast<uint32_t>(Data.size()),
@@ -972,28 +972,28 @@ void VulkanCommandList::pushConstants(
 void VulkanCommandList::bindPipeline(const std::shared_ptr<RPipeline>& Pipeline)
 {
     requireRecording("bindPipeline");
-    auto vk_pipeline = std::dynamic_pointer_cast<VulkanPipeline>(Pipeline);
-    if (!vk_pipeline || &vk_pipeline->getDevice() != Device || !vk_pipeline->isValid())
+    auto VkPipeline = std::dynamic_pointer_cast<VulkanPipeline>(Pipeline);
+    if (!VkPipeline || &VkPipeline->getDevice() != Device || !VkPipeline->isValid())
         throw std::invalid_argument("Cannot bind an invalid pipeline.");
-    const vk::Pipeline native_pipeline = vk_pipeline->getVkPipeline();
+    const vk::Pipeline NativePipeline = VkPipeline->getVkPipeline();
     switch (Pipeline->getType())
     {
     case EPipelineType::Graphics:
         if (InsideRendering)
             validateRenderingCompatibility(*Pipeline);
-        CommandBuffer->bindPipeline(vk::PipelineBindPoint::eGraphics, native_pipeline);
+        CommandBuffer->bindPipeline(vk::PipelineBindPoint::eGraphics, NativePipeline);
         BoundGraphicsPipeline = Pipeline;
         break;
     case EPipelineType::Compute:
         requireOutsideRendering("bind compute pipeline");
-        CommandBuffer->bindPipeline(vk::PipelineBindPoint::eCompute, native_pipeline);
+        CommandBuffer->bindPipeline(vk::PipelineBindPoint::eCompute, NativePipeline);
         BoundComputePipeline = Pipeline;
         break;
     case EPipelineType::RayTracing:
         requireOutsideRendering("bind ray-tracing pipeline");
         if (!Device->getFeatures().RayTracingPipeline)
             throw std::invalid_argument("Ray-tracing pipelines are unsupported by this device.");
-        CommandBuffer->bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, native_pipeline);
+        CommandBuffer->bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, NativePipeline);
         BoundRayTracingPipeline = Pipeline;
         break;
     case EPipelineType::None:
@@ -1011,83 +1011,83 @@ void VulkanCommandList::bindBindGroups(
     std::span<const uint32_t> DynamicOffsets)
 {
     requireRecording("bindBindGroups");
-    auto vk_layout = std::dynamic_pointer_cast<VulkanPipelineLayout>(Layout);
-    if (!vk_layout || &vk_layout->getDevice() != Device || !vk_layout->isValid())
+    auto VkLayout = std::dynamic_pointer_cast<VulkanPipelineLayout>(Layout);
+    if (!VkLayout || &VkLayout->getDevice() != Device || !VkLayout->isValid())
         throw std::invalid_argument("BindGroup pipeline layout belongs to another backend or device.");
     if (PipelineType != EPipelineType::Graphics && PipelineType != EPipelineType::Compute &&
         PipelineType != EPipelineType::RayTracing)
         throw std::invalid_argument("BindGroups require a graphics, compute, or ray-tracing bind point.");
     if (PipelineType != EPipelineType::Graphics)
         requireOutsideRendering("bind non-graphics BindGroups");
-    if (FirstGroup > vk_layout->getBindGroupLayoutCount() ||
-        Groups.size() > vk_layout->getBindGroupLayoutCount() - FirstGroup)
+    if (FirstGroup > VkLayout->getBindGroupLayoutCount() ||
+        Groups.size() > VkLayout->getBindGroupLayoutCount() - FirstGroup)
         throw std::out_of_range("BindGroup range exceeds the pipeline layout.");
 
-    std::vector<vk::DescriptorSet> descriptor_sets;
-    descriptor_sets.reserve(Groups.size());
-    size_t dynamic_offset_index = 0;
-    for (size_t group_index = 0; group_index < Groups.size(); ++group_index)
+    std::vector<vk::DescriptorSet> DescriptorSets;
+    DescriptorSets.reserve(Groups.size());
+    size_t DynamicOffsetIndex = 0;
+    for (size_t GroupIndex = 0; GroupIndex < Groups.size(); ++GroupIndex)
     {
-        auto group = std::dynamic_pointer_cast<VulkanBindGroup>(Groups[group_index]);
-        if (!group || &group->getDevice() != Device || !group->isValid())
+        auto Group = std::dynamic_pointer_cast<VulkanBindGroup>(Groups[GroupIndex]);
+        if (!Group || &Group->getDevice() != Device || !Group->isValid())
             throw std::invalid_argument("Cannot bind an invalid or foreign BindGroup.");
-        const auto& expected_layout = vk_layout->getBindGroupLayout(
-            FirstGroup + static_cast<uint32_t>(group_index));
-        const auto expected_key = expected_layout->getCompatibilityKey();
-        const auto actual_key = group->getLayout()->getCompatibilityKey();
-        if (!std::ranges::equal(expected_key, actual_key))
+        const auto& ExpectedLayout = VkLayout->getBindGroupLayout(
+            FirstGroup + static_cast<uint32_t>(GroupIndex));
+        const auto ExpectedKey = ExpectedLayout->getCompatibilityKey();
+        const auto ActualKey = Group->getLayout()->getCompatibilityKey();
+        if (!std::ranges::equal(ExpectedKey, ActualKey))
             throw std::invalid_argument("BindGroup layout is incompatible with the pipeline layout slot.");
 
-        for (const auto& layout_entry : group->getLayout()->getEntries())
+        for (const auto& LayoutEntry : Group->getLayout()->getEntries())
         {
-            if (!layout_entry.Flags.has(EDescriptorBindingFlag_t::DynamicOffset))
+            if (!LayoutEntry.Flags.has(EDescriptorBindingFlag_t::DynamicOffset))
                 continue;
-            for (uint32_t element = 0; element < group->getDescriptorCount(layout_entry); ++element)
+            for (uint32_t Element = 0; Element < Group->getDescriptorCount(LayoutEntry); ++Element)
             {
-                if (dynamic_offset_index >= DynamicOffsets.size())
+                if (DynamicOffsetIndex >= DynamicOffsets.size())
                     throw std::invalid_argument("Too few dynamic offsets for the bound BindGroups.");
-                const uint32_t dynamic_offset = DynamicOffsets[dynamic_offset_index++];
-                const uint64_t alignment = layout_entry.Type == EDescriptorType::UniformBuffer
+                const uint32_t DynamicOffset = DynamicOffsets[DynamicOffsetIndex++];
+                const uint64_t Alignment = LayoutEntry.Type == EDescriptorType::UniformBuffer
                     ? Device->getLimits().MinUniformBufferOffsetAlignment
                     : Device->getLimits().MinStorageBufferOffsetAlignment;
-                if (dynamic_offset % alignment != 0)
+                if (DynamicOffset % Alignment != 0)
                     throw std::invalid_argument("A dynamic buffer offset violates device alignment.");
 
-                const auto resource = std::ranges::find_if(group->getEntries(), [&](const BindGroupEntry& entry)
+                const auto Resource = std::ranges::find_if(Group->getEntries(), [&](const BindGroupEntry& Entry)
                 {
-                    return entry.Binding == layout_entry.Binding && entry.ArrayElement == element;
+                    return Entry.Binding == LayoutEntry.Binding && Entry.ArrayElement == Element;
                 });
-                if (resource != group->getEntries().end())
+                if (Resource != Group->getEntries().end())
                 {
-                    const auto* buffer_binding = std::get_if<BufferBinding>(&resource->Resource);
-                    if (!buffer_binding || !buffer_binding->Buffer)
+                    const auto* Binding = std::get_if<BufferBinding>(&Resource->Resource);
+                    if (!Binding || !Binding->Buffer)
                         throw std::logic_error("Dynamic descriptor does not reference a buffer.");
-                    const auto& desc = buffer_binding->Buffer->getDescriptor();
-                    const uint64_t range = buffer_binding->Size == 0
-                        ? desc.Size - buffer_binding->Offset
-                        : buffer_binding->Size;
-                    if (dynamic_offset > desc.Size - buffer_binding->Offset ||
-                        range > desc.Size - buffer_binding->Offset - dynamic_offset)
+                    const auto& Desc = Binding->Buffer->getDescriptor();
+                    const uint64_t Range = Binding->Size == 0
+                        ? Desc.Size - Binding->Offset
+                        : Binding->Size;
+                    if (DynamicOffset > Desc.Size - Binding->Offset ||
+                        Range > Desc.Size - Binding->Offset - DynamicOffset)
                         throw std::out_of_range("Dynamic buffer offset moves the descriptor range out of bounds.");
                 }
             }
         }
-        descriptor_sets.emplace_back(group->getVkDescriptorSet());
-        RetainedResources.emplace_back(std::move(group));
+        DescriptorSets.emplace_back(Group->getVkDescriptorSet());
+        RetainedResources.emplace_back(std::move(Group));
     }
-    if (dynamic_offset_index != DynamicOffsets.size())
+    if (DynamicOffsetIndex != DynamicOffsets.size())
         throw std::invalid_argument("Too many dynamic offsets for the bound BindGroups.");
-    if (descriptor_sets.empty())
+    if (DescriptorSets.empty())
         return;
 
-    vk::PipelineBindPoint bind_point = vk::PipelineBindPoint::eGraphics;
-    if (PipelineType == EPipelineType::Compute) bind_point = vk::PipelineBindPoint::eCompute;
-    if (PipelineType == EPipelineType::RayTracing) bind_point = vk::PipelineBindPoint::eRayTracingKHR;
+    vk::PipelineBindPoint BindPoint = vk::PipelineBindPoint::eGraphics;
+    if (PipelineType == EPipelineType::Compute) BindPoint = vk::PipelineBindPoint::eCompute;
+    if (PipelineType == EPipelineType::RayTracing) BindPoint = vk::PipelineBindPoint::eRayTracingKHR;
     CommandBuffer->bindDescriptorSets(
-        bind_point,
-        vk_layout->getVkPipelineLayout(),
+        BindPoint,
+        VkLayout->getVkPipelineLayout(),
         FirstGroup,
-        descriptor_sets,
+        DescriptorSets,
         DynamicOffsets);
     RetainedResources.emplace_back(Layout);
 }
@@ -1101,21 +1101,21 @@ void VulkanCommandList::bindVertexBuffers(
     if (FirstBinding > Device->getLimits().MaxVertexInputBindings ||
         Bindings.size() > Device->getLimits().MaxVertexInputBindings - FirstBinding)
         throw std::out_of_range("Vertex buffer bindings exceed the device limit.");
-    std::vector<vk::Buffer> buffers;
-    std::vector<vk::DeviceSize> offsets;
-    buffers.reserve(Bindings.size());
-    offsets.reserve(Bindings.size());
-    for (const auto& binding : Bindings)
+    std::vector<vk::Buffer> Buffers;
+    std::vector<vk::DeviceSize> Offsets;
+    Buffers.reserve(Bindings.size());
+    Offsets.reserve(Bindings.size());
+    for (const auto& Binding : Bindings)
     {
-        const auto& buffer = getVulkanBuffer(binding.Buffer);
-        const auto& desc = binding.Buffer->getDescriptor();
-        if (!desc.Usage.has(EBufferUsage::Vertex) || binding.Offset >= desc.Size)
+        const auto& Buffer = getVulkanBuffer(Binding.Buffer);
+        const auto& Desc = Binding.Buffer->getDescriptor();
+        if (!Desc.Usage.has(EBufferUsage::Vertex) || Binding.Offset >= Desc.Size)
             throw std::invalid_argument("Vertex binding requires Vertex usage and a valid offset.");
-        buffers.emplace_back(buffer.getVkBuffer());
-        offsets.emplace_back(binding.Offset);
-        RetainedResources.emplace_back(binding.Buffer);
+        Buffers.emplace_back(Buffer.getVkBuffer());
+        Offsets.emplace_back(Binding.Offset);
+        RetainedResources.emplace_back(Binding.Buffer);
     }
-    CommandBuffer->bindVertexBuffers(FirstBinding, buffers, offsets);
+    CommandBuffer->bindVertexBuffers(FirstBinding, Buffers, Offsets);
 }
 
 void VulkanCommandList::bindIndexBuffer(
@@ -1124,11 +1124,11 @@ void VulkanCommandList::bindIndexBuffer(
     EIndexFormat Format)
 {
     requireRecording("bindIndexBuffer");
-    const auto& buffer = getVulkanBuffer(Buffer);
-    const auto& desc = Buffer->getDescriptor();
-    if (!desc.Usage.has(EBufferUsage::Index) || Format == EIndexFormat::None || Offset >= desc.Size)
+    const auto& VkBuffer = getVulkanBuffer(Buffer);
+    const auto& Desc = VkBuffer.getDescriptor();
+    if (!Desc.Usage.has(EBufferUsage::Index) || Format == EIndexFormat::None || Offset >= Desc.Size)
         throw std::invalid_argument("Index binding requires Index usage, a format, and a valid offset.");
-    CommandBuffer->bindIndexBuffer(buffer.getVkBuffer(), Offset, toVk(Format));
+    CommandBuffer->bindIndexBuffer(VkBuffer.getVkBuffer(), Offset, toVk(Format));
     RetainedResources.emplace_back(Buffer);
 }
 
@@ -1139,23 +1139,23 @@ void VulkanCommandList::copyBuffer(
 {
     requireRecording("copyBuffer");
     requireOutsideRendering("copyBuffer");
-    const auto& source = getVulkanBuffer(Source);
-    const auto& destination = getVulkanBuffer(Destination);
-    if (!Source->getDescriptor().Usage.has(EBufferUsage::TransferSrc) ||
-        !Destination->getDescriptor().Usage.has(EBufferUsage::TransferDst))
+    const auto& SourceBuffer = getVulkanBuffer(Source);
+    const auto& DestinationBuffer = getVulkanBuffer(Destination);
+    if (!SourceBuffer.getDescriptor().Usage.has(EBufferUsage::TransferSrc) ||
+        !DestinationBuffer.getDescriptor().Usage.has(EBufferUsage::TransferDst))
         throw std::invalid_argument("Buffer copy resources require TransferSrc/TransferDst usage.");
-    std::vector<vk::BufferCopy> regions;
-    regions.reserve(Regions.size());
-    for (const auto& region : Regions)
+    std::vector<vk::BufferCopy> VkRegions;
+    VkRegions.reserve(Regions.size());
+    for (const auto& Region : Regions)
     {
-        if (region.Size == 0 || region.Size > Source->getDescriptor().Size ||
-            region.Size > Destination->getDescriptor().Size ||
-            region.SourceOffset > Source->getDescriptor().Size - region.Size ||
-            region.DestinationOffset > Destination->getDescriptor().Size - region.Size)
+        if (Region.Size == 0 || Region.Size > SourceBuffer.getDescriptor().Size ||
+            Region.Size > DestinationBuffer.getDescriptor().Size ||
+            Region.SourceOffset > SourceBuffer.getDescriptor().Size - Region.Size ||
+            Region.DestinationOffset > DestinationBuffer.getDescriptor().Size - Region.Size)
             throw std::out_of_range("Buffer copy region exceeds a resource.");
-        regions.emplace_back(region.SourceOffset, region.DestinationOffset, region.Size);
+        VkRegions.emplace_back(Region.SourceOffset, Region.DestinationOffset, Region.Size);
     }
-    if (!regions.empty()) CommandBuffer->copyBuffer(source.getVkBuffer(), destination.getVkBuffer(), regions);
+    if (!VkRegions.empty()) CommandBuffer->copyBuffer(SourceBuffer.getVkBuffer(), DestinationBuffer.getVkBuffer(), VkRegions);
     RetainedResources.emplace_back(Source);
     RetainedResources.emplace_back(Destination);
 }
@@ -1167,21 +1167,21 @@ void VulkanCommandList::copyBufferToImage(
 {
     requireRecording("copyBufferToImage");
     requireOutsideRendering("copyBufferToImage");
-    const auto& source = getVulkanBuffer(Source);
-    const auto& destination = getVulkanImage(Destination);
-    if (!Source->getDescriptor().Usage.has(EBufferUsage::TransferSrc) ||
-        !Destination->getDescriptor().Usage.has(EImageUsage_t::TransferDst))
+    const auto& SourceBuffer = getVulkanBuffer(Source);
+    const auto& DestinationImage = getVulkanImage(Destination);
+    if (!SourceBuffer.getDescriptor().Usage.has(EBufferUsage::TransferSrc) ||
+        !DestinationImage.getDescriptor().Usage.has(EImageUsage_t::TransferDst))
         throw std::invalid_argument("Buffer-to-image copy requires TransferSrc/TransferDst usage.");
-    std::vector<vk::BufferImageCopy> regions;
-    regions.reserve(Regions.size());
-    for (const auto& region : Regions)
-        regions.emplace_back(
-            region.BufferOffset, region.BufferRowLength, region.BufferImageHeight,
-            toLayers(region.Image, Destination->getDescriptor().Format),
-            vk::Offset3D(region.ImageOffset.X, region.ImageOffset.Y, region.ImageOffset.Z),
-            vk::Extent3D(region.ImageExtent.Width, region.ImageExtent.Height, region.ImageExtent.Depth));
-    if (!regions.empty()) CommandBuffer->copyBufferToImage(
-        source.getVkBuffer(), destination.getVkImage(), vk::ImageLayout::eTransferDstOptimal, regions);
+    std::vector<vk::BufferImageCopy> VkRegions;
+    VkRegions.reserve(Regions.size());
+    for (const auto& Region : Regions)
+        VkRegions.emplace_back(
+            Region.BufferOffset, Region.BufferRowLength, Region.BufferImageHeight,
+            toLayers(Region.Image, DestinationImage.getDescriptor().Format),
+            vk::Offset3D(Region.ImageOffset.X, Region.ImageOffset.Y, Region.ImageOffset.Z),
+            vk::Extent3D(Region.ImageExtent.Width, Region.ImageExtent.Height, Region.ImageExtent.Depth));
+    if (!VkRegions.empty()) CommandBuffer->copyBufferToImage(
+        SourceBuffer.getVkBuffer(), DestinationImage.getVkImage(), vk::ImageLayout::eTransferDstOptimal, VkRegions);
     RetainedResources.emplace_back(Source);
     RetainedResources.emplace_back(Destination);
 }
@@ -1193,21 +1193,21 @@ void VulkanCommandList::copyImageToBuffer(
 {
     requireRecording("copyImageToBuffer");
     requireOutsideRendering("copyImageToBuffer");
-    const auto& source = getVulkanImage(Source);
-    const auto& destination = getVulkanBuffer(Destination);
-    if (!Source->getDescriptor().Usage.has(EImageUsage_t::TransferSrc) ||
-        !Destination->getDescriptor().Usage.has(EBufferUsage::TransferDst))
+    const auto& SourceImage = getVulkanImage(Source);
+    const auto& DestinationBuffer = getVulkanBuffer(Destination);
+    if (!SourceImage.getDescriptor().Usage.has(EImageUsage_t::TransferSrc) ||
+        !DestinationBuffer.getDescriptor().Usage.has(EBufferUsage::TransferDst))
         throw std::invalid_argument("Image-to-buffer copy requires TransferSrc/TransferDst usage.");
-    std::vector<vk::BufferImageCopy> regions;
-    regions.reserve(Regions.size());
-    for (const auto& region : Regions)
-        regions.emplace_back(
-            region.BufferOffset, region.BufferRowLength, region.BufferImageHeight,
-            toLayers(region.Image, Source->getDescriptor().Format),
-            vk::Offset3D(region.ImageOffset.X, region.ImageOffset.Y, region.ImageOffset.Z),
-            vk::Extent3D(region.ImageExtent.Width, region.ImageExtent.Height, region.ImageExtent.Depth));
-    if (!regions.empty()) CommandBuffer->copyImageToBuffer(
-        source.getVkImage(), vk::ImageLayout::eTransferSrcOptimal, destination.getVkBuffer(), regions);
+    std::vector<vk::BufferImageCopy> VkRegions;
+    VkRegions.reserve(Regions.size());
+    for (const auto& Region : Regions)
+        VkRegions.emplace_back(
+            Region.BufferOffset, Region.BufferRowLength, Region.BufferImageHeight,
+            toLayers(Region.Image, SourceImage.getDescriptor().Format),
+            vk::Offset3D(Region.ImageOffset.X, Region.ImageOffset.Y, Region.ImageOffset.Z),
+            vk::Extent3D(Region.ImageExtent.Width, Region.ImageExtent.Height, Region.ImageExtent.Depth));
+    if (!VkRegions.empty()) CommandBuffer->copyImageToBuffer(
+        SourceImage.getVkImage(), vk::ImageLayout::eTransferSrcOptimal, DestinationBuffer.getVkBuffer(), VkRegions);
     RetainedResources.emplace_back(Source);
     RetainedResources.emplace_back(Destination);
 }
@@ -1219,23 +1219,23 @@ void VulkanCommandList::copyImage(
 {
     requireRecording("copyImage");
     requireOutsideRendering("copyImage");
-    const auto& source = getVulkanImage(Source);
-    const auto& destination = getVulkanImage(Destination);
-    if (!Source->getDescriptor().Usage.has(EImageUsage_t::TransferSrc) ||
-        !Destination->getDescriptor().Usage.has(EImageUsage_t::TransferDst))
+    const auto& SourceImage = getVulkanImage(Source);
+    const auto& DestinationImage = getVulkanImage(Destination);
+    if (!SourceImage.getDescriptor().Usage.has(EImageUsage_t::TransferSrc) ||
+        !DestinationImage.getDescriptor().Usage.has(EImageUsage_t::TransferDst))
         throw std::invalid_argument("Image copy requires TransferSrc/TransferDst usage.");
-    std::vector<vk::ImageCopy> regions;
-    regions.reserve(Regions.size());
-    for (const auto& region : Regions)
-        regions.emplace_back(
-            toLayers(region.Source, Source->getDescriptor().Format),
-            vk::Offset3D(region.SourceOffset.X, region.SourceOffset.Y, region.SourceOffset.Z),
-            toLayers(region.Destination, Destination->getDescriptor().Format),
-            vk::Offset3D(region.DestinationOffset.X, region.DestinationOffset.Y, region.DestinationOffset.Z),
-            vk::Extent3D(region.Extent.Width, region.Extent.Height, region.Extent.Depth));
-    if (!regions.empty()) CommandBuffer->copyImage(
-        source.getVkImage(), vk::ImageLayout::eTransferSrcOptimal,
-        destination.getVkImage(), vk::ImageLayout::eTransferDstOptimal, regions);
+    std::vector<vk::ImageCopy> VkRegions;
+    VkRegions.reserve(Regions.size());
+    for (const auto& Region : Regions)
+        VkRegions.emplace_back(
+            toLayers(Region.Source, SourceImage.getDescriptor().Format),
+            vk::Offset3D(Region.SourceOffset.X, Region.SourceOffset.Y, Region.SourceOffset.Z),
+            toLayers(Region.Destination, DestinationImage.getDescriptor().Format),
+            vk::Offset3D(Region.DestinationOffset.X, Region.DestinationOffset.Y, Region.DestinationOffset.Z),
+            vk::Extent3D(Region.Extent.Width, Region.Extent.Height, Region.Extent.Depth));
+    if (!VkRegions.empty()) CommandBuffer->copyImage(
+        SourceImage.getVkImage(), vk::ImageLayout::eTransferSrcOptimal,
+        DestinationImage.getVkImage(), vk::ImageLayout::eTransferDstOptimal, VkRegions);
     RetainedResources.emplace_back(Source);
     RetainedResources.emplace_back(Destination);
 }
@@ -1248,36 +1248,36 @@ void VulkanCommandList::blitImage(
 {
     requireRecording("blitImage");
     requireOutsideRendering("blitImage");
-    const auto& source = getVulkanImage(Source);
-    const auto& destination = getVulkanImage(Destination);
-    if (!Source->getDescriptor().Usage.has(EImageUsage_t::TransferSrc) ||
-        !Destination->getDescriptor().Usage.has(EImageUsage_t::TransferDst))
+    const auto& SourceImage = getVulkanImage(Source);
+    const auto& DestinationImage = getVulkanImage(Destination);
+    if (!SourceImage.getDescriptor().Usage.has(EImageUsage_t::TransferSrc) ||
+        !DestinationImage.getDescriptor().Usage.has(EImageUsage_t::TransferDst))
         throw std::invalid_argument("Image blit requires TransferSrc/TransferDst usage.");
-    std::vector<vk::ImageBlit> regions;
-    regions.reserve(Regions.size());
-    for (const auto& region : Regions)
+    std::vector<vk::ImageBlit> VkRegions;
+    VkRegions.reserve(Regions.size());
+    for (const auto& Region : Regions)
     {
-        std::array<vk::Offset3D, 2> source_offsets;
-        std::array<vk::Offset3D, 2> destination_offsets;
-        for (size_t index = 0; index < 2; ++index)
+        std::array<vk::Offset3D, 2> SourceOffsets;
+        std::array<vk::Offset3D, 2> DestinationOffsets;
+        for (size_t Index = 0; Index < 2; ++Index)
         {
-            source_offsets[index] = vk::Offset3D(
-                region.SourceOffsets[index].X,
-                region.SourceOffsets[index].Y,
-                region.SourceOffsets[index].Z);
-            destination_offsets[index] = vk::Offset3D(
-                region.DestinationOffsets[index].X,
-                region.DestinationOffsets[index].Y,
-                region.DestinationOffsets[index].Z);
+            SourceOffsets[Index] = vk::Offset3D(
+                Region.SourceOffsets[Index].X,
+                Region.SourceOffsets[Index].Y,
+                Region.SourceOffsets[Index].Z);
+            DestinationOffsets[Index] = vk::Offset3D(
+                Region.DestinationOffsets[Index].X,
+                Region.DestinationOffsets[Index].Y,
+                Region.DestinationOffsets[Index].Z);
         }
-        regions.emplace_back(
-            toLayers(region.Source, Source->getDescriptor().Format), source_offsets,
-            toLayers(region.Destination, Destination->getDescriptor().Format), destination_offsets);
+        VkRegions.emplace_back(
+            toLayers(Region.Source, SourceImage.getDescriptor().Format), SourceOffsets,
+            toLayers(Region.Destination, DestinationImage.getDescriptor().Format), DestinationOffsets);
     }
-    if (!regions.empty()) CommandBuffer->blitImage(
-        source.getVkImage(), vk::ImageLayout::eTransferSrcOptimal,
-        destination.getVkImage(), vk::ImageLayout::eTransferDstOptimal,
-        regions, toVk(Filter));
+    if (!VkRegions.empty()) CommandBuffer->blitImage(
+        SourceImage.getVkImage(), vk::ImageLayout::eTransferSrcOptimal,
+        DestinationImage.getVkImage(), vk::ImageLayout::eTransferDstOptimal,
+        VkRegions, toVk(Filter));
     RetainedResources.emplace_back(Source);
     RetainedResources.emplace_back(Destination);
 }
@@ -1290,13 +1290,13 @@ void VulkanCommandList::fillBuffer(
 {
     requireRecording("fillBuffer");
     requireOutsideRendering("fillBuffer");
-    const auto& buffer = getVulkanBuffer(Buffer);
-    if (!Buffer->getDescriptor().Usage.has(EBufferUsage::TransferDst) || (Offset & 3u) != 0)
+    const auto& VkBuffer = getVulkanBuffer(Buffer);
+    if (!VkBuffer.getDescriptor().Usage.has(EBufferUsage::TransferDst) || (Offset & 3u) != 0)
         throw std::invalid_argument("Buffer fill requires TransferDst usage and a 4-byte aligned offset.");
-    const uint64_t size = clampCopySize(Offset, Size, Buffer->getDescriptor().Size);
-    if ((size & 3u) != 0)
+    const uint64_t ResolvedSize = clampCopySize(Offset, Size, VkBuffer.getDescriptor().Size);
+    if ((ResolvedSize & 3u) != 0)
         throw std::invalid_argument("Buffer fill size must be a multiple of four.");
-    CommandBuffer->fillBuffer(buffer.getVkBuffer(), Offset, size, Value);
+    CommandBuffer->fillBuffer(VkBuffer.getVkBuffer(), Offset, ResolvedSize, Value);
     RetainedResources.emplace_back(Buffer);
 }
 
@@ -1347,11 +1347,11 @@ void VulkanCommandList::drawMeshTasks(
         throw std::logic_error("Mesh shaders are not enabled on this device.");
     if (GroupCountX == 0 || GroupCountY == 0 || GroupCountZ == 0)
         return;
-    const auto draw_mesh_tasks = reinterpret_cast<PFN_vkCmdDrawMeshTasksEXT>(
+    const auto DrawMeshTasks = reinterpret_cast<PFN_vkCmdDrawMeshTasksEXT>(
         Device->getVkDevice().getProcAddr("vkCmdDrawMeshTasksEXT"));
-    if (!draw_mesh_tasks)
+    if (!DrawMeshTasks)
         throw std::runtime_error("vkCmdDrawMeshTasksEXT is unavailable on the logical device.");
-    draw_mesh_tasks(
+    DrawMeshTasks(
         static_cast<VkCommandBuffer>(CommandBuffer.get()),
         GroupCountX,
         GroupCountY,
@@ -1381,10 +1381,10 @@ void VulkanCommandList::drawIndirect(
     requireRecording("drawIndirect");
     requireInsideRendering("drawIndirect");
     validateGraphicsPipeline();
-    const auto& buffer = getVulkanBuffer(Buffer);
-    if (!Buffer->getDescriptor().Usage.has(EBufferUsage::Indirect))
+    const auto& VkBuffer = getVulkanBuffer(Buffer);
+    if (!VkBuffer.getDescriptor().Usage.has(EBufferUsage::Indirect))
         throw std::invalid_argument("Indirect draw requires Indirect buffer usage.");
-    CommandBuffer->drawIndirect(buffer.getVkBuffer(), Offset, DrawCount, Stride);
+    CommandBuffer->drawIndirect(VkBuffer.getVkBuffer(), Offset, DrawCount, Stride);
     RetainedResources.emplace_back(Buffer);
 }
 
@@ -1397,10 +1397,10 @@ void VulkanCommandList::drawIndexedIndirect(
     requireRecording("drawIndexedIndirect");
     requireInsideRendering("drawIndexedIndirect");
     validateGraphicsPipeline();
-    const auto& buffer = getVulkanBuffer(Buffer);
-    if (!Buffer->getDescriptor().Usage.has(EBufferUsage::Indirect))
+    const auto& VkBuffer = getVulkanBuffer(Buffer);
+    if (!VkBuffer.getDescriptor().Usage.has(EBufferUsage::Indirect))
         throw std::invalid_argument("Indexed indirect draw requires Indirect buffer usage.");
-    CommandBuffer->drawIndexedIndirect(buffer.getVkBuffer(), Offset, DrawCount, Stride);
+    CommandBuffer->drawIndexedIndirect(VkBuffer.getVkBuffer(), Offset, DrawCount, Stride);
     RetainedResources.emplace_back(Buffer);
 }
 
@@ -1412,10 +1412,10 @@ void VulkanCommandList::dispatchIndirect(
     requireOutsideRendering("dispatchIndirect");
     if (!BoundComputePipeline)
         throw std::logic_error("Indirect dispatch requires a bound compute pipeline.");
-    const auto& buffer = getVulkanBuffer(Buffer);
-    if (!Buffer->getDescriptor().Usage.has(EBufferUsage::Indirect))
+    const auto& VkBuffer = getVulkanBuffer(Buffer);
+    if (!VkBuffer.getDescriptor().Usage.has(EBufferUsage::Indirect))
         throw std::invalid_argument("Indirect dispatch requires Indirect buffer usage.");
-    CommandBuffer->dispatchIndirect(buffer.getVkBuffer(), Offset);
+    CommandBuffer->dispatchIndirect(VkBuffer.getVkBuffer(), Offset);
     RetainedResources.emplace_back(Buffer);
 }
 
@@ -1426,22 +1426,22 @@ void VulkanCommandList::resetQueries(
 {
     requireRecording("resetQueries");
     requireOutsideRendering("resetQueries");
-    const auto& pool = getVulkanQueryPool(Pool);
-    if (&pool.getDevice() != Device || Count == 0 || Count > Pool->getDescriptor().Count ||
-        First > Pool->getDescriptor().Count - Count)
+    const auto& VkPool = getVulkanQueryPool(Pool);
+    if (&VkPool.getDevice() != Device || Count == 0 || Count > VkPool.getDescriptor().Count ||
+        First > VkPool.getDescriptor().Count - Count)
         throw std::out_of_range("Query reset range exceeds the query pool.");
-    CommandBuffer->resetQueryPool(pool.getVkQueryPool(), First, Count);
+    CommandBuffer->resetQueryPool(VkPool.getVkQueryPool(), First, Count);
     RetainedResources.emplace_back(Pool);
 }
 
 void VulkanCommandList::beginQuery(const std::shared_ptr<RQueryPool>& Pool, uint32_t Query)
 {
     requireRecording("beginQuery");
-    const auto& pool = getVulkanQueryPool(Pool);
-    if (&pool.getDevice() != Device || ActiveQueryPool ||
-        Pool->getDescriptor().Type == EQueryType::Timestamp || Query >= Pool->getDescriptor().Count)
+    const auto& VkPool = getVulkanQueryPool(Pool);
+    if (&VkPool.getDevice() != Device || ActiveQueryPool ||
+        VkPool.getDescriptor().Type == EQueryType::Timestamp || Query >= VkPool.getDescriptor().Count)
         throw std::invalid_argument("beginQuery requires a valid non-timestamp query.");
-    CommandBuffer->beginQuery(pool.getVkQueryPool(), Query, {});
+    CommandBuffer->beginQuery(VkPool.getVkQueryPool(), Query, {});
     ActiveQueryPool = Pool;
     ActiveQuery = Query;
     RetainedResources.emplace_back(Pool);
@@ -1450,11 +1450,11 @@ void VulkanCommandList::beginQuery(const std::shared_ptr<RQueryPool>& Pool, uint
 void VulkanCommandList::endQuery(const std::shared_ptr<RQueryPool>& Pool, uint32_t Query)
 {
     requireRecording("endQuery");
-    const auto& pool = getVulkanQueryPool(Pool);
-    if (&pool.getDevice() != Device || Pool->getDescriptor().Type == EQueryType::Timestamp ||
-        Query >= Pool->getDescriptor().Count || ActiveQueryPool.get() != Pool.get() || ActiveQuery != Query)
+    const auto& VkPool = getVulkanQueryPool(Pool);
+    if (&VkPool.getDevice() != Device || VkPool.getDescriptor().Type == EQueryType::Timestamp ||
+        Query >= VkPool.getDescriptor().Count || ActiveQueryPool.get() != Pool.get() || ActiveQuery != Query)
         throw std::invalid_argument("endQuery must match the active query pool and slot.");
-    CommandBuffer->endQuery(pool.getVkQueryPool(), Query);
+    CommandBuffer->endQuery(VkPool.getVkQueryPool(), Query);
     ActiveQueryPool.reset();
     RetainedResources.emplace_back(Pool);
 }
@@ -1462,13 +1462,13 @@ void VulkanCommandList::endQuery(const std::shared_ptr<RQueryPool>& Pool, uint32
 void VulkanCommandList::writeTimestamp(const std::shared_ptr<RQueryPool>& Pool, uint32_t Query)
 {
     requireRecording("writeTimestamp");
-    const auto& pool = getVulkanQueryPool(Pool);
-    const auto queue_families = Device->getVkPhysicalDevice().getQueueFamilyProperties();
-    if (&pool.getDevice() != Device || Pool->getDescriptor().Type != EQueryType::Timestamp ||
-        Query >= Pool->getDescriptor().Count ||
-        queue_families[Device->getQueueFamilyIndex(Descriptor.QueueType)].timestampValidBits == 0)
+    const auto& VkPool = getVulkanQueryPool(Pool);
+    const auto QueueFamilies = Device->getVkPhysicalDevice().getQueueFamilyProperties();
+    if (&VkPool.getDevice() != Device || VkPool.getDescriptor().Type != EQueryType::Timestamp ||
+        Query >= VkPool.getDescriptor().Count ||
+        QueueFamilies[Device->getQueueFamilyIndex(Descriptor.QueueType)].timestampValidBits == 0)
         throw std::invalid_argument("writeTimestamp requires a valid timestamp query.");
-    CommandBuffer->writeTimestamp2(vk::PipelineStageFlagBits2::eAllCommands, pool.getVkQueryPool(), Query);
+    CommandBuffer->writeTimestamp2(vk::PipelineStageFlagBits2::eAllCommands, VkPool.getVkQueryPool(), Query);
     RetainedResources.emplace_back(Pool);
 }
 
@@ -1486,35 +1486,35 @@ bool VulkanCommandList::copyQueryResults(
         return false;
     try
     {
-        const auto& pool = getVulkanQueryPool(Pool);
-        const auto& buffer = getVulkanBuffer(Destination);
-        if (&pool.getDevice() != Device || &buffer.getDevice() != Device ||
-            First >= Pool->getDescriptor().Count || Count > Pool->getDescriptor().Count - First ||
-            !Destination->getDescriptor().Usage.has(EBufferUsage::TransferDst) ||
-            (Pool->getDescriptor().Type == EQueryType::Timestamp &&
+        const auto& VkPool = getVulkanQueryPool(Pool);
+        const auto& DestinationBuffer = getVulkanBuffer(Destination);
+        if (&VkPool.getDevice() != Device || &DestinationBuffer.getDevice() != Device ||
+            First >= VkPool.getDescriptor().Count || Count > VkPool.getDescriptor().Count - First ||
+            !DestinationBuffer.getDescriptor().Usage.has(EBufferUsage::TransferDst) ||
+            (VkPool.getDescriptor().Type == EQueryType::Timestamp &&
                 Flags.has(EQueryResultFlag_t::Partial)) ||
             (Flags.Value & ~((1u << 4) - 1)) != 0)
             return false;
-        const DeviceSizeType word_size = Flags.has(EQueryResultFlag_t::Result64) ? 8u : 4u;
-        const DeviceSizeType value_count = pool.getResultValuesPerQuery() +
+        const DeviceSizeType WordSize = Flags.has(EQueryResultFlag_t::Result64) ? 8u : 4u;
+        const DeviceSizeType ValueCount = VkPool.getResultValuesPerQuery() +
             (Flags.has(EQueryResultFlag_t::WithAvailability) ? 1u : 0u);
-        const DeviceSizeType record_size = word_size * value_count;
-        if (Stride < record_size || Stride % word_size != 0 || Offset % word_size != 0)
+        const DeviceSizeType RecordSize = WordSize * ValueCount;
+        if (Stride < RecordSize || Stride % WordSize != 0 || Offset % WordSize != 0)
             return false;
-        const DeviceSizeType required_size = record_size + static_cast<DeviceSizeType>(Count - 1) * Stride;
-        if (Offset > Destination->getDescriptor().Size ||
-            required_size > Destination->getDescriptor().Size - Offset)
+        const DeviceSizeType RequiredSize = RecordSize + static_cast<DeviceSizeType>(Count - 1) * Stride;
+        if (Offset > DestinationBuffer.getDescriptor().Size ||
+            RequiredSize > DestinationBuffer.getDescriptor().Size - Offset)
             return false;
 
-        vk::QueryResultFlags vk_flags;
-        if (Flags.has(EQueryResultFlag_t::Result64)) vk_flags |= vk::QueryResultFlagBits::e64;
-        if (Flags.has(EQueryResultFlag_t::Wait)) vk_flags |= vk::QueryResultFlagBits::eWait;
+        vk::QueryResultFlags VkFlags;
+        if (Flags.has(EQueryResultFlag_t::Result64)) VkFlags |= vk::QueryResultFlagBits::e64;
+        if (Flags.has(EQueryResultFlag_t::Wait)) VkFlags |= vk::QueryResultFlagBits::eWait;
         if (Flags.has(EQueryResultFlag_t::WithAvailability))
-            vk_flags |= vk::QueryResultFlagBits::eWithAvailability;
-        if (Flags.has(EQueryResultFlag_t::Partial)) vk_flags |= vk::QueryResultFlagBits::ePartial;
+            VkFlags |= vk::QueryResultFlagBits::eWithAvailability;
+        if (Flags.has(EQueryResultFlag_t::Partial)) VkFlags |= vk::QueryResultFlagBits::ePartial;
         // vkCmdCopyQueryPoolResults writes one result record per query at the supplied stride.
         CommandBuffer->copyQueryPoolResults(
-            pool.getVkQueryPool(), First, Count, buffer.getVkBuffer(), Offset, Stride, vk_flags);
+            VkPool.getVkQueryPool(), First, Count, DestinationBuffer.getVkBuffer(), Offset, Stride, VkFlags);
         RetainedResources.emplace_back(Pool);
         RetainedResources.emplace_back(Destination);
         return true;
@@ -1542,50 +1542,50 @@ bool VulkanCommandList::traceRays(const TraceRaysDescriptor& Desc)
         !Device->getFeatures().RayTracingPipeline || !BoundRayTracingPipeline ||
         Desc.Width == 0 || Desc.Height == 0 || Desc.Depth == 0)
         return false;
-    const auto& limits = Device->getLimits();
-    if (Desc.Width > limits.MaxRayDispatchInvocationCount ||
-        Desc.Height > limits.MaxRayDispatchInvocationCount / Desc.Width ||
-        Desc.Depth > limits.MaxRayDispatchInvocationCount /
+    const auto& Limits = Device->getLimits();
+    if (Desc.Width > Limits.MaxRayDispatchInvocationCount ||
+        Desc.Height > Limits.MaxRayDispatchInvocationCount / Desc.Width ||
+        Desc.Depth > Limits.MaxRayDispatchInvocationCount /
             (static_cast<uint64_t>(Desc.Width) * Desc.Height))
         return false;
-    const uint64_t invocations = static_cast<uint64_t>(Desc.Width) * Desc.Height * Desc.Depth;
-    if (invocations > limits.MaxRayDispatchInvocationCount) return false;
-    const auto properties = Device->getVkPhysicalDevice().getProperties();
-    for (uint32_t index = 0; index < 3; ++index)
+    const uint64_t Invocations = static_cast<uint64_t>(Desc.Width) * Desc.Height * Desc.Depth;
+    if (Invocations > Limits.MaxRayDispatchInvocationCount) return false;
+    const auto Properties = Device->getVkPhysicalDevice().getProperties();
+    for (uint32_t Index = 0; Index < 3; ++Index)
     {
-        const uint64_t dimension_limit =
-            static_cast<uint64_t>(properties.limits.maxComputeWorkGroupCount[index]) *
-            properties.limits.maxComputeWorkGroupSize[index];
-        const uint32_t dimension = index == 0 ? Desc.Width : index == 1 ? Desc.Height : Desc.Depth;
-        if (dimension > dimension_limit) return false;
+        const uint64_t DimensionLimit =
+            static_cast<uint64_t>(Properties.limits.maxComputeWorkGroupCount[Index]) *
+            Properties.limits.maxComputeWorkGroupSize[Index];
+        const uint32_t Dimension = Index == 0 ? Desc.Width : Index == 1 ? Desc.Height : Desc.Depth;
+        if (Dimension > DimensionLimit) return false;
     }
 
-    auto valid_region = [&](const ShaderBindingTableRegion& region, bool ray_generation)
+    auto ValidRegion = [&](const ShaderBindingTableRegion& Region, bool RayGeneration)
     {
-        if (region.Size == 0) return region.Address == 0 && region.Stride == 0 && !ray_generation;
-        if (region.Address == 0 || region.Address % limits.ShaderBindingTableAlignment != 0 ||
-            region.Stride < limits.ShaderGroupHandleSize ||
-            region.Stride % limits.ShaderGroupHandleAlignment != 0 ||
-            region.Stride > limits.MaxShaderGroupStride)
+        if (Region.Size == 0) return Region.Address == 0 && Region.Stride == 0 && !RayGeneration;
+        if (Region.Address == 0 || Region.Address % Limits.ShaderBindingTableAlignment != 0 ||
+            Region.Stride < Limits.ShaderGroupHandleSize ||
+            Region.Stride % Limits.ShaderGroupHandleAlignment != 0 ||
+            Region.Stride > Limits.MaxShaderGroupStride)
             return false;
         // VkStridedDeviceAddressRegionKHR requires one record for raygen and whole records elsewhere.
-        return ray_generation ? region.Size == region.Stride : region.Size % region.Stride == 0;
+        return RayGeneration ? Region.Size == Region.Stride : Region.Size % Region.Stride == 0;
     };
-    if (!valid_region(Desc.RayGeneration, true) || !valid_region(Desc.Miss, false) ||
-        !valid_region(Desc.Hit, false) || !valid_region(Desc.Callable, false))
+    if (!ValidRegion(Desc.RayGeneration, true) || !ValidRegion(Desc.Miss, false) ||
+        !ValidRegion(Desc.Hit, false) || !ValidRegion(Desc.Callable, false))
         return false;
 
-    const VkStridedDeviceAddressRegionKHR ray_generation {
+    const VkStridedDeviceAddressRegionKHR RayGeneration {
         Desc.RayGeneration.Address, Desc.RayGeneration.Stride, Desc.RayGeneration.Size };
-    const VkStridedDeviceAddressRegionKHR miss { Desc.Miss.Address, Desc.Miss.Stride, Desc.Miss.Size };
-    const VkStridedDeviceAddressRegionKHR hit { Desc.Hit.Address, Desc.Hit.Stride, Desc.Hit.Size };
-    const VkStridedDeviceAddressRegionKHR callable { Desc.Callable.Address, Desc.Callable.Stride, Desc.Callable.Size };
-    auto function = reinterpret_cast<PFN_vkCmdTraceRaysKHR>(
+    const VkStridedDeviceAddressRegionKHR Miss { Desc.Miss.Address, Desc.Miss.Stride, Desc.Miss.Size };
+    const VkStridedDeviceAddressRegionKHR Hit { Desc.Hit.Address, Desc.Hit.Stride, Desc.Hit.Size };
+    const VkStridedDeviceAddressRegionKHR Callable { Desc.Callable.Address, Desc.Callable.Stride, Desc.Callable.Size };
+    auto Function = reinterpret_cast<PFN_vkCmdTraceRaysKHR>(
         Device->getVkDevice().getProcAddr("vkCmdTraceRaysKHR"));
-    if (!function) return false;
+    if (!Function) return false;
     // vkCmdTraceRaysKHR consumes four VkStridedDeviceAddressRegionKHR SBT regions.
-    function(static_cast<VkCommandBuffer>(CommandBuffer.get()), &ray_generation, &miss, &hit,
-        &callable, Desc.Width, Desc.Height, Desc.Depth);
+    Function(static_cast<VkCommandBuffer>(CommandBuffer.get()), &RayGeneration, &Miss, &Hit,
+        &Callable, Desc.Width, Desc.Height, Desc.Depth);
     return true;
 }
 
@@ -1595,22 +1595,22 @@ void VulkanCommandList::beginDebugLabel(
 {
     requireRecording("beginDebugLabel");
     if (Name.empty()) return;
-    const auto function = reinterpret_cast<PFN_vkCmdBeginDebugUtilsLabelEXT>(
+    const auto Function = reinterpret_cast<PFN_vkCmdBeginDebugUtilsLabelEXT>(
         Device->getVkDevice().getProcAddr("vkCmdBeginDebugUtilsLabelEXT"));
-    if (!function) return;
-    const std::string name(Name);
-    VkDebugUtilsLabelEXT label { VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT };
-    label.pLabelName = name.c_str();
-    std::copy(Color.begin(), Color.end(), label.color);
-    function(static_cast<VkCommandBuffer>(CommandBuffer.get()), &label);
+    if (!Function) return;
+    const std::string LabelName(Name);
+    VkDebugUtilsLabelEXT Label { VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT };
+    Label.pLabelName = LabelName.c_str();
+    std::copy(Color.begin(), Color.end(), Label.color);
+    Function(static_cast<VkCommandBuffer>(CommandBuffer.get()), &Label);
 }
 
 void VulkanCommandList::endDebugLabel()
 {
     requireRecording("endDebugLabel");
-    const auto function = reinterpret_cast<PFN_vkCmdEndDebugUtilsLabelEXT>(
+    const auto Function = reinterpret_cast<PFN_vkCmdEndDebugUtilsLabelEXT>(
         Device->getVkDevice().getProcAddr("vkCmdEndDebugUtilsLabelEXT"));
-    if (function) function(static_cast<VkCommandBuffer>(CommandBuffer.get()));
+    if (Function) Function(static_cast<VkCommandBuffer>(CommandBuffer.get()));
 }
 
 void VulkanCommandList::insertDebugLabel(
@@ -1619,14 +1619,14 @@ void VulkanCommandList::insertDebugLabel(
 {
     requireRecording("insertDebugLabel");
     if (Name.empty()) return;
-    const auto function = reinterpret_cast<PFN_vkCmdInsertDebugUtilsLabelEXT>(
+    const auto Function = reinterpret_cast<PFN_vkCmdInsertDebugUtilsLabelEXT>(
         Device->getVkDevice().getProcAddr("vkCmdInsertDebugUtilsLabelEXT"));
-    if (!function) return;
-    const std::string name(Name);
-    VkDebugUtilsLabelEXT label { VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT };
-    label.pLabelName = name.c_str();
-    std::copy(Color.begin(), Color.end(), label.color);
-    function(static_cast<VkCommandBuffer>(CommandBuffer.get()), &label);
+    if (!Function) return;
+    const std::string LabelName(Name);
+    VkDebugUtilsLabelEXT Label { VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT };
+    Label.pLabelName = LabelName.c_str();
+    std::copy(Color.begin(), Color.end(), Label.color);
+    Function(static_cast<VkCommandBuffer>(CommandBuffer.get()), &Label);
 }
 
 void VulkanCommandList::executeSecondary(
@@ -1637,35 +1637,35 @@ void VulkanCommandList::executeSecondary(
         throw std::logic_error("Only a primary command list can execute secondary command lists.");
     if (InsideRendering && !RenderingUsesSecondaryCommandBuffers)
         throw std::logic_error("The active rendering scope was not declared for secondary command buffers.");
-    std::vector<vk::CommandBuffer> native;
-    native.reserve(CommandLists.size());
-    for (const auto& command : CommandLists)
+    std::vector<vk::CommandBuffer> Native;
+    Native.reserve(CommandLists.size());
+    for (const auto& Command : CommandLists)
     {
-        auto* secondary = dynamic_cast<VulkanCommandList*>(command.get());
-        if (!secondary || &secondary->getDevice() != Device ||
-            secondary->getLevel() != ECommandListLevel::Secondary ||
-            secondary->getQueueType() != Descriptor.QueueType ||
-            secondary->getState() != ECommandListState::Executable)
+        auto* Secondary = dynamic_cast<VulkanCommandList*>(Command.get());
+        if (!Secondary || &Secondary->getDevice() != Device ||
+            Secondary->getLevel() != ECommandListLevel::Secondary ||
+            Secondary->getQueueType() != Descriptor.QueueType ||
+            Secondary->getState() != ECommandListState::Executable)
             throw std::invalid_argument("executeSecondary received an incompatible command list.");
         if (InsideRendering)
         {
-            if (!secondary->Descriptor.RenderingInheritance ||
+            if (!Secondary->Descriptor.RenderingInheritance ||
                 !isRenderingCompatible(
-                    inheritanceSignature(*secondary->Descriptor.RenderingInheritance),
+                    inheritanceSignature(*Secondary->Descriptor.RenderingInheritance),
                     ActiveRenderingSignature))
                 throw std::invalid_argument("Secondary rendering inheritance is incompatible with the active scope.");
         }
-        else if (secondary->Descriptor.RenderingInheritance)
+        else if (Secondary->Descriptor.RenderingInheritance)
         {
             throw std::invalid_argument("A rendering-inherited secondary cannot execute outside rendering.");
         }
-        native.emplace_back(secondary->getVkCommandBuffer());
-        if (std::ranges::find_if(ExecutedSecondaries, [secondary](const auto& item)
-            { return item.get() == secondary; }) == ExecutedSecondaries.end())
-            ExecutedSecondaries.emplace_back(secondary);
-        RetainedResources.emplace_back(command);
+        Native.emplace_back(Secondary->getVkCommandBuffer());
+        if (std::ranges::find_if(ExecutedSecondaries, [Secondary](const auto& Item)
+            { return Item.get() == Secondary; }) == ExecutedSecondaries.end())
+            ExecutedSecondaries.emplace_back(Secondary);
+        RetainedResources.emplace_back(Command);
     }
-    if (!native.empty()) CommandBuffer->executeCommands(native);
+    if (!Native.empty()) CommandBuffer->executeCommands(Native);
 }
 
 void VulkanCommandList::requireRecording(const char* Operation) const
@@ -1702,70 +1702,70 @@ void VulkanCommandList::validateRenderingInfo(const RenderingInfo& Info) const
     if (Info.ViewMask != 0 && !Device->getFeatures().Multiview)
         throw std::invalid_argument("Multiview rendering is not supported by this device.");
 
-    ESampleCount common_samples = ESampleCount::Count1;
-    bool samples_set = false;
-    auto validate_view = [&](const std::shared_ptr<RImageView>& view, bool color)
+    ESampleCount CommonSamples = ESampleCount::Count1;
+    bool SamplesSet = false;
+    auto ValidateView = [&](const std::shared_ptr<RImageView>& View, bool Color)
     {
-        getVulkanView(view);
-        const auto& view_desc = view->getDescriptor();
-        const auto& image_desc = view->getImage()->getDescriptor();
-        if (color ? hasDepthAspect(view_desc.Format) : !hasDepthAspect(view_desc.Format))
-            throw std::invalid_argument(color
+        getVulkanView(View);
+        const auto& ViewDesc = View->getDescriptor();
+        const auto& ImageDesc = View->getImage()->getDescriptor();
+        if (Color ? hasDepthAspect(ViewDesc.Format) : !hasDepthAspect(ViewDesc.Format))
+            throw std::invalid_argument(Color
                 ? "A color attachment cannot use a depth/stencil format."
                 : "A depth attachment requires a depth/stencil format.");
-        if (view_desc.MipLevelCount != 1)
+        if (ViewDesc.MipLevelCount != 1)
             throw std::invalid_argument("A rendering attachment view must select exactly one mip level.");
-        const uint32_t required_layers = Info.ViewMask == 0
+        const uint32_t RequiredLayers = Info.ViewMask == 0
             ? Info.LayerCount
             : std::bit_width(Info.ViewMask);
-        if (view_desc.ArrayLayerCount < required_layers)
+        if (ViewDesc.ArrayLayerCount < RequiredLayers)
             throw std::invalid_argument("An attachment view does not contain enough array layers.");
-        if (color && !image_desc.Usage.has(EImageUsage_t::Target))
+        if (Color && !ImageDesc.Usage.has(EImageUsage_t::Target))
             throw std::invalid_argument("A color attachment image requires Target usage.");
-        if (!color && !image_desc.Usage.has(EImageUsage_t::DepthStencil))
+        if (!Color && !ImageDesc.Usage.has(EImageUsage_t::DepthStencil))
             throw std::invalid_argument("A depth/stencil attachment image requires DepthStencil usage.");
-        const uint32_t width = mipExtent(image_desc.Width, view_desc.BaseMipLevel);
-        const uint32_t height = mipExtent(image_desc.Height, view_desc.BaseMipLevel);
-        const uint64_t right = static_cast<uint64_t>(Info.Area.X) + Info.Area.Width;
-        const uint64_t bottom = static_cast<uint64_t>(Info.Area.Y) + Info.Area.Height;
-        if (right > width || bottom > height)
+        const uint32_t Width = mipExtent(ImageDesc.Width, ViewDesc.BaseMipLevel);
+        const uint32_t Height = mipExtent(ImageDesc.Height, ViewDesc.BaseMipLevel);
+        const uint64_t Right = static_cast<uint64_t>(Info.Area.X) + Info.Area.Width;
+        const uint64_t Bottom = static_cast<uint64_t>(Info.Area.Y) + Info.Area.Height;
+        if (Right > Width || Bottom > Height)
             throw std::out_of_range("Rendering area exceeds an attachment extent.");
-        if (!samples_set)
+        if (!SamplesSet)
         {
-            common_samples = image_desc.SampleCount;
-            samples_set = true;
+            CommonSamples = ImageDesc.SampleCount;
+            SamplesSet = true;
         }
-        else if (common_samples != image_desc.SampleCount)
+        else if (CommonSamples != ImageDesc.SampleCount)
         {
             throw std::invalid_argument("All rendering attachments must use the same sample count.");
         }
     };
 
-    for (const auto& attachment : Info.ColorAttachments)
+    for (const auto& Attachment : Info.ColorAttachments)
     {
-        validate_view(attachment.View, true);
-        validateResolve(attachment.View, attachment.ResolveView, attachment.ResolveMode, true);
-        if (attachment.ResolveView)
-            getVulkanView(attachment.ResolveView);
+        ValidateView(Attachment.View, true);
+        validateResolve(Attachment.View, Attachment.ResolveView, Attachment.ResolveMode, true);
+        if (Attachment.ResolveView)
+            getVulkanView(Attachment.ResolveView);
     }
     if (Info.DepthStencil)
     {
-        validate_view(Info.DepthStencil->View, false);
-        const EFormat format = Info.DepthStencil->View->getDescriptor().Format;
-        if (!hasDepthAspect(format) && Info.DepthStencil->Depth.ResolveMode != EResolveMode::None)
+        ValidateView(Info.DepthStencil->View, false);
+        const EFormat Format = Info.DepthStencil->View->getDescriptor().Format;
+        if (!hasDepthAspect(Format) && Info.DepthStencil->Depth.ResolveMode != EResolveMode::None)
             throw std::invalid_argument("Depth resolve requires a depth aspect.");
-        if (!hasStencilAspect(format) && Info.DepthStencil->Stencil.ResolveMode != EResolveMode::None)
+        if (!hasStencilAspect(Format) && Info.DepthStencil->Stencil.ResolveMode != EResolveMode::None)
             throw std::invalid_argument("Stencil resolve requires a stencil aspect.");
         if (Info.DepthStencil->ResolveView)
         {
             getVulkanView(Info.DepthStencil->ResolveView);
-            const EResolveMode mode = Info.DepthStencil->Depth.ResolveMode != EResolveMode::None
+            const EResolveMode Mode = Info.DepthStencil->Depth.ResolveMode != EResolveMode::None
                 ? Info.DepthStencil->Depth.ResolveMode
                 : Info.DepthStencil->Stencil.ResolveMode;
             validateResolve(
                 Info.DepthStencil->View,
                 Info.DepthStencil->ResolveView,
-                mode,
+                Mode,
                 false);
         }
         else if (Info.DepthStencil->Depth.ResolveMode != EResolveMode::None ||
@@ -1792,27 +1792,27 @@ void VulkanCommandList::validateGraphicsPipeline() const
 
 void VulkanCommandList::validateRenderingCompatibility(const RPipeline& Pipeline) const
 {
-    const auto* signature = Pipeline.getRenderingSignature();
-    if (!signature)
+    const auto* Signature = Pipeline.getRenderingSignature();
+    if (!Signature)
         throw std::logic_error("A graphics pipeline must expose a rendering signature.");
-    if (!isRenderingCompatible(*signature, ActiveRenderingSignature))
+    if (!isRenderingCompatible(*Signature, ActiveRenderingSignature))
         throw std::logic_error("The graphics pipeline is incompatible with the active rendering attachments.");
 }
 
 void VulkanCommandList::validateDynamicStates(const RPipeline& Pipeline) const
 {
-    const EDynamicStates missing = Pipeline.getDynamicStates() & ~InitializedDynamicStates;
-    if (missing)
+    const EDynamicStates Missing = Pipeline.getDynamicStates() & ~InitializedDynamicStates;
+    if (Missing)
         throw std::logic_error("Draw requires every dynamic pipeline state to be initialized.");
 }
 
 void VulkanCommandList::retainRenderingResources(const RenderingInfo& Info)
 {
-    for (const auto& attachment : Info.ColorAttachments)
+    for (const auto& Attachment : Info.ColorAttachments)
     {
-        RetainedResources.emplace_back(attachment.View);
-        if (attachment.ResolveView)
-            RetainedResources.emplace_back(attachment.ResolveView);
+        RetainedResources.emplace_back(Attachment.View);
+        if (Attachment.ResolveView)
+            RetainedResources.emplace_back(Attachment.ResolveView);
     }
     if (Info.DepthStencil)
     {

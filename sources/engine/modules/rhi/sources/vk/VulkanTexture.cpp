@@ -31,38 +31,38 @@ std::shared_ptr<VulkanTexture> VulkanTexture::create(
         throw std::invalid_argument("Vulkan texture image format must be defined.");
 
     // 规范化为后端实际使用的描述, 使 getDescriptor() 能反映真实创建参数.
-    Descriptor_t normalized = Desc;
-    if (!normalized.Image.Usage)
+    Descriptor_t Normalized = Desc;
+    if (!Normalized.Image.Usage)
     {
         // 纹理本质上是可采样的; 同时默认允许作为拷贝目标, 方便后续上传.
-        normalized.Image.Usage.set(EImageUsage_t::Sampled);
-        normalized.Image.Usage.set(EImageUsage_t::TransferDst);
+        Normalized.Image.Usage.set(EImageUsage_t::Sampled);
+        Normalized.Image.Usage.set(EImageUsage_t::TransferDst);
     }
-    if (!normalized.Image.Usage.has(EImageUsage_t::Sampled))
+    if (!Normalized.Image.Usage.has(EImageUsage_t::Sampled))
         throw std::invalid_argument("A texture image must declare the Sampled usage.");
 
-    auto image = Device.createImage(normalized.Image);
+    auto Image = Device.createImage(Normalized.Image);
 
     // 默认视图覆盖完整 mip/layer 范围; 格式/维度/aspect 均由后端从图像推导.
-    RImageView::Descriptor_t view_desc;
-    view_desc.Image = image;
-    view_desc.Format = EFormat::Undefined;
-    view_desc.Dimension = EImageViewDimension::Auto;
-    view_desc.Aspect = EImageAspect::Auto;
-    view_desc.BaseMipLevel = 0;
-    view_desc.MipLevelCount = normalized.Image.MipLevels;
-    view_desc.BaseArrayLayer = 0;
-    view_desc.ArrayLayerCount = normalized.Image.ArrayLayers;
-    auto image_view = Device.createImageView(view_desc);
+    RImageView::Descriptor_t ViewDesc;
+    ViewDesc.Image = Image;
+    ViewDesc.Format = EFormat::Undefined;
+    ViewDesc.Dimension = EImageViewDimension::Auto;
+    ViewDesc.Aspect = EImageAspect::Auto;
+    ViewDesc.BaseMipLevel = 0;
+    ViewDesc.MipLevelCount = Normalized.Image.MipLevels;
+    ViewDesc.BaseArrayLayer = 0;
+    ViewDesc.ArrayLayerCount = Normalized.Image.ArrayLayers;
+    auto ImageView = Device.createImageView(ViewDesc);
 
-    auto sampler = Device.createSampler(normalized.Sampler);
+    auto Sampler = Device.createSampler(Normalized.Sampler);
 
     return std::shared_ptr<VulkanTexture>(new VulkanTexture(
         Device,
-        std::move(normalized),
-        std::move(image),
-        std::move(image_view),
-        std::move(sampler)));
+        std::move(Normalized),
+        std::move(Image),
+        std::move(ImageView),
+        std::move(Sampler)));
 }
 
 RDevice& VulkanTexture::getDevice() const noexcept

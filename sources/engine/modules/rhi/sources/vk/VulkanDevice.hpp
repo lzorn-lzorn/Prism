@@ -21,35 +21,35 @@ struct QueueFamilyIndices {
     }
     
     static QueueFamilyIndices findQueueFamilies(vk::PhysicalDevice InDevice, vk::SurfaceKHR Surface) {
-        QueueFamilyIndices indices;
+        QueueFamilyIndices Indices;
 
-        uint32_t queueFamilyCount = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(InDevice, &queueFamilyCount, nullptr);
+        uint32_t QueueFamilyCount = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(InDevice, &QueueFamilyCount, nullptr);
 
-        std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-        vkGetPhysicalDeviceQueueFamilyProperties(InDevice, &queueFamilyCount, queueFamilies.data());
+        std::vector<VkQueueFamilyProperties> QueueFamilies(QueueFamilyCount);
+        vkGetPhysicalDeviceQueueFamilyProperties(InDevice, &QueueFamilyCount, QueueFamilies.data());
 
-        int i = 0;
-        for (const auto& queueFamily : queueFamilies) {
-            if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-                indices.GraphicsFamily = i;
+        int I = 0;
+        for (const auto& QueueFamily : QueueFamilies) {
+            if (QueueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+                Indices.GraphicsFamily = I;
             }
 
-            VkBool32 presentSupport = false;
-            vkGetPhysicalDeviceSurfaceSupportKHR(InDevice, i, Surface, &presentSupport);
+            VkBool32 PresentSupport = false;
+            vkGetPhysicalDeviceSurfaceSupportKHR(InDevice, I, Surface, &PresentSupport);
 
-            if (presentSupport) {
-                indices.PresentFamily = i;
+            if (PresentSupport) {
+                Indices.PresentFamily = I;
             }
 
-            if (indices.isComplete()) {
+            if (Indices.isComplete()) {
                 break;
             }
 
-            i++;
+            I++;
         }
 
-        return indices;
+        return Indices;
     }
 };
 

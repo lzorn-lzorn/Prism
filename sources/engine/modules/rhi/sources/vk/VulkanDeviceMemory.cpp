@@ -25,23 +25,23 @@ vk::DeviceSize alignUp(vk::DeviceSize Value, vk::DeviceSize Alignment)
 {
     if (Alignment <= 1)
         return Value;
-    const auto remainder = Value % Alignment;
-    if (remainder == 0)
+    const auto Remainder = Value % Alignment;
+    if (Remainder == 0)
         return Value;
-    if (Value > std::numeric_limits<vk::DeviceSize>::max() - (Alignment - remainder))
+    if (Value > std::numeric_limits<vk::DeviceSize>::max() - (Alignment - Remainder))
         throw std::overflow_error("Vulkan allocation alignment overflow.");
-    return Value + Alignment - remainder;
+    return Value + Alignment - Remainder;
 }
 
 EMemoryPropertyFlags fromVk(vk::MemoryPropertyFlags Properties)
 {
-    EMemoryPropertyFlags result;
-    if (Properties & vk::MemoryPropertyFlagBits::eDeviceLocal) result.set(EMemoryProperty::DeviceLocal);
-    if (Properties & vk::MemoryPropertyFlagBits::eHostVisible) result.set(EMemoryProperty::HostVisible);
-    if (Properties & vk::MemoryPropertyFlagBits::eHostCoherent) result.set(EMemoryProperty::HostCoherent);
-    if (Properties & vk::MemoryPropertyFlagBits::eHostCached) result.set(EMemoryProperty::HostCached);
-    if (Properties & vk::MemoryPropertyFlagBits::eLazilyAllocated) result.set(EMemoryProperty::LazilyAllocated);
-    return result;
+    EMemoryPropertyFlags Result;
+    if (Properties & vk::MemoryPropertyFlagBits::eDeviceLocal) Result.set(EMemoryProperty::DeviceLocal);
+    if (Properties & vk::MemoryPropertyFlagBits::eHostVisible) Result.set(EMemoryProperty::HostVisible);
+    if (Properties & vk::MemoryPropertyFlagBits::eHostCoherent) Result.set(EMemoryProperty::HostCoherent);
+    if (Properties & vk::MemoryPropertyFlagBits::eHostCached) Result.set(EMemoryProperty::HostCached);
+    if (Properties & vk::MemoryPropertyFlagBits::eLazilyAllocated) Result.set(EMemoryProperty::LazilyAllocated);
+    return Result;
 }
 } // namespace
 
@@ -70,19 +70,19 @@ public:
         , DeviceAddress(InDeviceAddress)
         , Dedicated(InDedicated)
     {
-        vk::MemoryDedicatedAllocateInfo dedicated_info;
-        dedicated_info.buffer = InDedicatedBuffer;
-        dedicated_info.image = InDedicatedImage;
-        vk::MemoryAllocateFlagsInfo flags_info;
+        vk::MemoryDedicatedAllocateInfo DedicatedInfo;
+        DedicatedInfo.buffer = InDedicatedBuffer;
+        DedicatedInfo.image = InDedicatedImage;
+        vk::MemoryAllocateFlagsInfo FlagsInfo;
         if (DeviceAddress)
-            flags_info.flags = vk::MemoryAllocateFlagBits::eDeviceAddress;
-        const bool has_dedicated_resource = static_cast<bool>(InDedicatedBuffer) || static_cast<bool>(InDedicatedImage);
-        flags_info.pNext = has_dedicated_resource ? &dedicated_info : nullptr;
-        vk::MemoryAllocateInfo allocation_info(Size, MemoryTypeIndex);
-        allocation_info.pNext = DeviceAddress
-            ? static_cast<void*>(&flags_info)
-            : has_dedicated_resource ? static_cast<void*>(&dedicated_info) : nullptr;
-        Memory = Context->Device->allocateMemory(allocation_info);
+            FlagsInfo.flags = vk::MemoryAllocateFlagBits::eDeviceAddress;
+        const bool HasDedicatedResource = static_cast<bool>(InDedicatedBuffer) || static_cast<bool>(InDedicatedImage);
+        FlagsInfo.pNext = HasDedicatedResource ? &DedicatedInfo : nullptr;
+        vk::MemoryAllocateInfo AllocationInfo(Size, MemoryTypeIndex);
+        AllocationInfo.pNext = DeviceAddress
+            ? static_cast<void*>(&FlagsInfo)
+            : HasDedicatedResource ? static_cast<void*>(&DedicatedInfo) : nullptr;
+        Memory = Context->Device->allocateMemory(AllocationInfo);
         FreeRanges.push_back({ 0, Size });
 
         if (Properties & vk::MemoryPropertyFlagBits::eHostVisible)
@@ -106,61 +106,61 @@ public:
         vk::DeviceSize AllocationSize,
         vk::DeviceSize Alignment)
     {
-        std::scoped_lock lock(Mutex);
-        size_t best_index = FreeRanges.size();
-        vk::DeviceSize best_offset = 0;
-        vk::DeviceSize best_waste = std::numeric_limits<vk::DeviceSize>::max();
-        for (size_t index = 0; index < FreeRanges.size(); ++index)
+        std::scoped_lock Lock(Mutex);
+        size_t BestIndex = FreeRanges.size();
+        vk::DeviceSize BestOffset = 0;
+        vk::DeviceSize BestWaste = std::numeric_limits<vk::DeviceSize>::max();
+        for (size_t Index = 0; Index < FreeRanges.size(); ++Index)
         {
-            const auto& range = FreeRanges[index];
-            const auto offset = alignUp(range.Offset, Alignment);
-            if (offset < range.Offset || offset - range.Offset > range.Size ||
-                AllocationSize > range.Size - (offset - range.Offset))
+            const auto& Range = FreeRanges[Index];
+            const auto Offset = alignUp(Range.Offset, Alignment);
+            if (Offset < Range.Offset || Offset - Range.Offset > Range.Size ||
+                AllocationSize > Range.Size - (Offset - Range.Offset))
                 continue;
-            const auto waste = range.Size - (offset - range.Offset) - AllocationSize;
-            if (waste < best_waste)
+            const auto Waste = Range.Size - (Offset - Range.Offset) - AllocationSize;
+            if (Waste < BestWaste)
             {
-                best_index = index;
-                best_offset = offset;
-                best_waste = waste;
+                BestIndex = Index;
+                BestOffset = Offset;
+                BestWaste = Waste;
             }
         }
-        if (best_index == FreeRanges.size())
+        if (BestIndex == FreeRanges.size())
             return std::nullopt;
 
-        const Range original = FreeRanges[best_index];
-        FreeRanges.erase(FreeRanges.begin() + static_cast<std::ptrdiff_t>(best_index));
-        if (best_offset > original.Offset)
-            FreeRanges.push_back({ original.Offset, best_offset - original.Offset });
-        const auto end = best_offset + AllocationSize;
-        const auto original_end = original.Offset + original.Size;
-        if (end < original_end)
-            FreeRanges.push_back({ end, original_end - end });
+        const Range Original = FreeRanges[BestIndex];
+        FreeRanges.erase(FreeRanges.begin() + static_cast<std::ptrdiff_t>(BestIndex));
+        if (BestOffset > Original.Offset)
+            FreeRanges.push_back({ Original.Offset, BestOffset - Original.Offset });
+        const auto End = BestOffset + AllocationSize;
+        const auto OriginalEnd = Original.Offset + Original.Size;
+        if (End < OriginalEnd)
+            FreeRanges.push_back({ End, OriginalEnd - End });
         std::ranges::sort(FreeRanges, {}, &Range::Offset);
-        return best_offset;
+        return BestOffset;
     }
 
     void free(vk::DeviceSize Offset, vk::DeviceSize AllocationSize)
     {
-        std::scoped_lock lock(Mutex);
+        std::scoped_lock Lock(Mutex);
         FreeRanges.push_back({ Offset, AllocationSize });
         std::ranges::sort(FreeRanges, {}, &Range::Offset);
-        std::vector<Range> coalesced;
-        coalesced.reserve(FreeRanges.size());
-        for (const auto& range : FreeRanges)
+        std::vector<Range> Coalesced;
+        Coalesced.reserve(FreeRanges.size());
+        for (const auto& Range : FreeRanges)
         {
-            if (!coalesced.empty() &&
-                coalesced.back().Offset + coalesced.back().Size == range.Offset)
-                coalesced.back().Size += range.Size;
+            if (!Coalesced.empty() &&
+                Coalesced.back().Offset + Coalesced.back().Size == Range.Offset)
+                Coalesced.back().Size += Range.Size;
             else
-                coalesced.push_back(range);
+                Coalesced.push_back(Range);
         }
-        FreeRanges = std::move(coalesced);
+        FreeRanges = std::move(Coalesced);
     }
 
     [[nodiscard]] bool isEmpty() const
     {
-        std::scoped_lock lock(Mutex);
+        std::scoped_lock Lock(Mutex);
         return FreeRanges.size() == 1 && FreeRanges.front().Offset == 0 &&
             FreeRanges.front().Size == Size;
     }
@@ -179,18 +179,18 @@ public:
     {
         if (Properties & vk::MemoryPropertyFlagBits::eHostCoherent)
             return;
-        const auto begin = Offset - Offset % AtomSize;
-        const auto end = std::min(Size, alignUp(Offset + RangeSize, AtomSize));
-        Context->Device->flushMappedMemoryRanges(vk::MappedMemoryRange(Memory, begin, end - begin));
+        const auto Begin = Offset - Offset % AtomSize;
+        const auto End = std::min(Size, alignUp(Offset + RangeSize, AtomSize));
+        Context->Device->flushMappedMemoryRanges(vk::MappedMemoryRange(Memory, Begin, End - Begin));
     }
 
     void invalidate(vk::DeviceSize Offset, vk::DeviceSize RangeSize)
     {
         if (Properties & vk::MemoryPropertyFlagBits::eHostCoherent)
             return;
-        const auto begin = Offset - Offset % AtomSize;
-        const auto end = std::min(Size, alignUp(Offset + RangeSize, AtomSize));
-        Context->Device->invalidateMappedMemoryRanges(vk::MappedMemoryRange(Memory, begin, end - begin));
+        const auto Begin = Offset - Offset % AtomSize;
+        const auto End = std::min(Size, alignUp(Offset + RangeSize, AtomSize));
+        Context->Device->invalidateMappedMemoryRanges(vk::MappedMemoryRange(Memory, Begin, End - Begin));
     }
 
     VulkanContextPtr Context;
@@ -226,7 +226,7 @@ VulkanMemoryAllocation::~VulkanMemoryAllocation()
 
 void* VulkanMemoryAllocation::map(DeviceSizeType Offset, DeviceSizeType Size)
 {
-    std::scoped_lock lock(MapMutex);
+    std::scoped_lock Lock(MapMutex);
     if (!Block || !Info.Properties.has(EMemoryProperty::HostVisible))
         throw std::logic_error("Cannot map non-host-visible Vulkan memory.");
     if (IsMapped)
@@ -239,7 +239,7 @@ void* VulkanMemoryAllocation::map(DeviceSizeType Offset, DeviceSizeType Size)
 
 void VulkanMemoryAllocation::unmap()
 {
-    std::scoped_lock lock(MapMutex);
+    std::scoped_lock Lock(MapMutex);
     if (!IsMapped)
         throw std::logic_error("Vulkan allocation is not mapped.");
     // Host-visible suballocation pages stay mapped for their lifetime; this ends client access only.
@@ -248,7 +248,7 @@ void VulkanMemoryAllocation::unmap()
 
 void VulkanMemoryAllocation::flush(DeviceSizeType Offset, DeviceSizeType Size)
 {
-    std::scoped_lock lock(MapMutex);
+    std::scoped_lock Lock(MapMutex);
     if (!Block || !IsMapped || Offset >= Info.Size || (Size != 0 && Size > Info.Size - Offset))
         throw std::out_of_range("Vulkan allocation flush range is invalid.");
     Block->flush(Info.Offset + Offset, Size == 0 ? Info.Size - Offset : Size);
@@ -256,7 +256,7 @@ void VulkanMemoryAllocation::flush(DeviceSizeType Offset, DeviceSizeType Size)
 
 void VulkanMemoryAllocation::invalidate(DeviceSizeType Offset, DeviceSizeType Size)
 {
-    std::scoped_lock lock(MapMutex);
+    std::scoped_lock Lock(MapMutex);
     if (!Block || !IsMapped || Offset >= Info.Size || (Size != 0 && Size > Info.Size - Offset))
         throw std::out_of_range("Vulkan allocation invalidate range is invalid.");
     Block->invalidate(Info.Offset + Offset, Size == 0 ? Info.Size - Offset : Size);
@@ -264,16 +264,16 @@ void VulkanMemoryAllocation::invalidate(DeviceSizeType Offset, DeviceSizeType Si
 
 void VulkanMemoryAllocation::release()
 {
-    std::shared_ptr<VulkanMemoryBlock> block;
+    std::shared_ptr<VulkanMemoryBlock> Block;
     {
-        std::scoped_lock lock(MapMutex);
+        std::scoped_lock Lock(MapMutex);
         if (!Block)
             return;
         IsMapped = false;
-        block = std::move(Block);
+        Block = std::move(Block);
         OwnershipState = EState::InValid;
     }
-    block->free(Info.Offset, ReservedSize);
+    Block->free(Info.Offset, ReservedSize);
 }
 
 vk::DeviceMemory VulkanMemoryAllocation::getVkDeviceMemory() const noexcept
@@ -297,121 +297,121 @@ std::shared_ptr<VulkanMemoryAllocation> VulkanMemoryAllocator::allocate(
     if (!Device || Desc.Requirements.Size == 0 || Desc.Requirements.MemoryTypeBits == 0)
         throw std::invalid_argument("Vulkan memory allocation requirements are invalid.");
 
-    auto required = toVk(Desc.RequiredProperties);
-    auto preferred = toVk(Desc.PreferredProperties);
+    auto Required = toVk(Desc.RequiredProperties);
+    auto Preferred = toVk(Desc.PreferredProperties);
     switch (Desc.Usage)
     {
     case EMemoryUsage::GPUOnly:
-        required |= vk::MemoryPropertyFlagBits::eDeviceLocal;
+        Required |= vk::MemoryPropertyFlagBits::eDeviceLocal;
         break;
     case EMemoryUsage::CPUToGPU:
-        required |= vk::MemoryPropertyFlagBits::eHostVisible;
-        preferred |= vk::MemoryPropertyFlagBits::eHostCoherent;
+        Required |= vk::MemoryPropertyFlagBits::eHostVisible;
+        Preferred |= vk::MemoryPropertyFlagBits::eHostCoherent;
         break;
     case EMemoryUsage::GPUToCPU:
-        required |= vk::MemoryPropertyFlagBits::eHostVisible;
-        preferred |= vk::MemoryPropertyFlagBits::eHostCached;
+        Required |= vk::MemoryPropertyFlagBits::eHostVisible;
+        Preferred |= vk::MemoryPropertyFlagBits::eHostCached;
         break;
     case EMemoryUsage::CPUOnly:
-        required |= vk::MemoryPropertyFlagBits::eHostVisible;
-        preferred |= vk::MemoryPropertyFlagBits::eHostCoherent | vk::MemoryPropertyFlagBits::eHostCached;
+        Required |= vk::MemoryPropertyFlagBits::eHostVisible;
+        Preferred |= vk::MemoryPropertyFlagBits::eHostCoherent | vk::MemoryPropertyFlagBits::eHostCached;
         break;
     case EMemoryUsage::Auto:
     default:
         break;
     }
-    if (Desc.PersistentlyMapped && !(required & vk::MemoryPropertyFlagBits::eHostVisible))
+    if (Desc.PersistentlyMapped && !(Required & vk::MemoryPropertyFlagBits::eHostVisible))
         throw std::invalid_argument("Persistently mapped Vulkan memory must be host-visible.");
 
-    const auto memory_properties = Device->getVkPhysicalDevice().getMemoryProperties();
-    uint32_t selected_type = UINT32_MAX;
-    int selected_score = -1;
-    for (uint32_t index = 0; index < memory_properties.memoryTypeCount; ++index)
+    const auto MemoryProperties = Device->getVkPhysicalDevice().getMemoryProperties();
+    uint32_t SelectedType = UINT32_MAX;
+    int SelectedScore = -1;
+    for (uint32_t Index = 0; Index < MemoryProperties.memoryTypeCount; ++Index)
     {
-        if (!(Desc.Requirements.MemoryTypeBits & (1u << index)))
+        if (!(Desc.Requirements.MemoryTypeBits & (1u << Index)))
             continue;
-        const auto properties = memory_properties.memoryTypes[index].propertyFlags;
-        if ((properties & required) != required)
+        const auto Properties = MemoryProperties.memoryTypes[Index].propertyFlags;
+        if ((Properties & Required) != Required)
             continue;
-        const int score = std::popcount(static_cast<uint32_t>(properties & preferred));
-        if (score > selected_score)
+        const int Score = std::popcount(static_cast<uint32_t>(Properties & Preferred));
+        if (Score > SelectedScore)
         {
-            selected_type = index;
-            selected_score = score;
+            SelectedType = Index;
+            SelectedScore = Score;
         }
     }
-    if (selected_type == UINT32_MAX)
+    if (SelectedType == UINT32_MAX)
         throw std::runtime_error("Failed to find a suitable Vulkan memory type.");
 
-    const auto actual_properties = memory_properties.memoryTypes[selected_type].propertyFlags;
-    const vk::DeviceSize page_size = actual_properties & vk::MemoryPropertyFlagBits::eHostVisible
+    const auto ActualProperties = MemoryProperties.memoryTypes[SelectedType].propertyFlags;
+    const vk::DeviceSize PageSize = ActualProperties & vk::MemoryPropertyFlagBits::eHostVisible
         ? HostVisiblePageSize : DeviceLocalPageSize;
-    const bool dedicated = Desc.Requirements.RequiresDedicatedAllocation ||
-        Desc.Requirements.PrefersDedicatedAllocation || Desc.Requirements.Size >= page_size / 2;
-    const auto atom_size = std::max<vk::DeviceSize>(
+    const bool Dedicated = Desc.Requirements.RequiresDedicatedAllocation ||
+        Desc.Requirements.PrefersDedicatedAllocation || Desc.Requirements.Size >= PageSize / 2;
+    const auto AtomSize = std::max<vk::DeviceSize>(
         1, Device->getVkPhysicalDevice().getProperties().limits.nonCoherentAtomSize);
-    const bool non_coherent_host =
-        (actual_properties & vk::MemoryPropertyFlagBits::eHostVisible) &&
-        !(actual_properties & vk::MemoryPropertyFlagBits::eHostCoherent);
-    const auto allocation_alignment = std::max<vk::DeviceSize>(
+    const bool NonCoherentHost =
+        (ActualProperties & vk::MemoryPropertyFlagBits::eHostVisible) &&
+        !(ActualProperties & vk::MemoryPropertyFlagBits::eHostCoherent);
+    const auto AllocationAlignment = std::max<vk::DeviceSize>(
         std::max<uint64_t>(1, Desc.Requirements.Alignment),
-        non_coherent_host && !dedicated ? atom_size : 1);
-    const auto reserved_size = non_coherent_host && !dedicated
-        ? alignUp(Desc.Requirements.Size, atom_size)
+        NonCoherentHost && !Dedicated ? AtomSize : 1);
+    const auto ReservedSize = NonCoherentHost && !Dedicated
+        ? alignUp(Desc.Requirements.Size, AtomSize)
         : Desc.Requirements.Size;
 
-    std::scoped_lock lock(Mutex);
-    std::shared_ptr<VulkanMemoryBlock> block;
-    std::optional<vk::DeviceSize> offset;
-    if (!dedicated)
+    std::scoped_lock Lock(Mutex);
+    std::shared_ptr<VulkanMemoryBlock> Block;
+    std::optional<vk::DeviceSize> Offset;
+    if (!Dedicated)
     {
-        for (const auto& page : Pages)
+        for (const auto& Page : Pages)
         {
-            if (!page->isCompatible(selected_type, RequireDeviceAddress))
+            if (!Page->isCompatible(SelectedType, RequireDeviceAddress))
                 continue;
-            offset = page->allocate(reserved_size, allocation_alignment);
-            if (offset)
+            Offset = Page->allocate(ReservedSize, AllocationAlignment);
+            if (Offset)
             {
-                block = page;
+                Block = Page;
                 break;
             }
         }
     }
-    if (!block)
+    if (!Block)
     {
-        const auto block_size = dedicated
-            ? reserved_size
-            : std::max<vk::DeviceSize>(page_size, alignUp(reserved_size, allocation_alignment));
-        block = std::make_shared<VulkanMemoryBlock>(
-            Device->getContext(), selected_type, actual_properties, block_size,
-            RequireDeviceAddress, dedicated,
-            dedicated ? DedicatedBuffer : vk::Buffer {},
-            dedicated ? DedicatedImage : vk::Image {});
-        offset = block->allocate(reserved_size, allocation_alignment);
-        if (!dedicated)
-            Pages.push_back(block);
+        const auto BlockSize = Dedicated
+            ? ReservedSize
+            : std::max<vk::DeviceSize>(PageSize, alignUp(ReservedSize, AllocationAlignment));
+        Block = std::make_shared<VulkanMemoryBlock>(
+            Device->getContext(), SelectedType, ActualProperties, BlockSize,
+            RequireDeviceAddress, Dedicated,
+            Dedicated ? DedicatedBuffer : vk::Buffer {},
+            Dedicated ? DedicatedImage : vk::Image {});
+        Offset = Block->allocate(ReservedSize, AllocationAlignment);
+        if (!Dedicated)
+            Pages.push_back(Block);
     }
-    if (!offset)
+    if (!Offset)
         throw std::runtime_error("Vulkan memory page could not satisfy a validated allocation.");
 
-    MemoryAllocationInfo info {
+    MemoryAllocationInfo Info {
         .Size = Desc.Requirements.Size,
-        .Offset = *offset,
-        .MemoryTypeIndex = selected_type,
-        .Properties = fromVk(actual_properties),
-        .Dedicated = dedicated,
-        .PersistentlyMapped = static_cast<bool>(actual_properties & vk::MemoryPropertyFlagBits::eHostVisible)
+        .Offset = *Offset,
+        .MemoryTypeIndex = SelectedType,
+        .Properties = fromVk(ActualProperties),
+        .Dedicated = Dedicated,
+        .PersistentlyMapped = static_cast<bool>(ActualProperties & vk::MemoryPropertyFlagBits::eHostVisible)
     };
     return std::shared_ptr<VulkanMemoryAllocation>(new VulkanMemoryAllocation(
-        block, Desc.Requirements, info, reserved_size));
+        Block, Desc.Requirements, Info, ReservedSize));
 }
 
 void VulkanMemoryAllocator::releaseCachedPages()
 {
-    std::scoped_lock lock(Mutex);
-    std::erase_if(Pages, [](const auto& page)
+    std::scoped_lock Lock(Mutex);
+    std::erase_if(Pages, [](const auto& Page)
     {
-        return page.use_count() == 1 && page->isEmpty();
+        return Page.use_count() == 1 && Page->isEmpty();
     });
 }
 
@@ -469,18 +469,18 @@ void* VulkanDeviceMemory::map(DeviceSizeType Offset, DeviceSizeType Size)
     {
         throw std::out_of_range("Vulkan device memory map range is out of bounds.");
     }
-    void* data = nullptr;
-    vk::Result result = OwnerDevice.mapMemory(
+    void* Data = nullptr;
+    vk::Result Result = OwnerDevice.mapMemory(
         VkDeviceMemory,
         Offset,
         Size == 0 ? VK_WHOLE_SIZE : Size,
         vk::MemoryMapFlags(),
-        &data);
-    if (result != vk::Result::eSuccess) {
+        &Data);
+    if (Result != vk::Result::eSuccess) {
         // TODO: 处理映射失败的情况
         throw std::runtime_error("Failed to map Vulkan device memory.");
     }
-    return data;
+    return Data;
 }
 void VulkanDeviceMemory::unmap()
 {
@@ -489,27 +489,27 @@ void VulkanDeviceMemory::unmap()
 }
 void VulkanDeviceMemory::flush(DeviceSizeType Offset, DeviceSizeType Size)
 {
-    vk::Device device = OwnerDevice;
+    vk::Device Device = OwnerDevice;
 
-    vk::MappedMemoryRange range;
-    range.setMemory(VkDeviceMemory);
-    range.setOffset(Offset);
-    range.setSize(Size == 0 ? VK_WHOLE_SIZE : Size);
+    vk::MappedMemoryRange Range;
+    Range.setMemory(VkDeviceMemory);
+    Range.setOffset(Offset);
+    Range.setSize(Size == 0 ? VK_WHOLE_SIZE : Size);
 
     // 刷新 CPU 写入的数据, 使其对 GPU 可见
-    device.flushMappedMemoryRanges({ range });
+    Device.flushMappedMemoryRanges({ Range });
 }
 void VulkanDeviceMemory::invalidate(DeviceSizeType Offset, DeviceSizeType Size)
 {
-    vk::Device device = OwnerDevice;
+    vk::Device Device = OwnerDevice;
 
-    vk::MappedMemoryRange range;
-    range.setMemory(VkDeviceMemory);
-    range.setOffset(Offset);
-    range.setSize(Size == 0 ? VK_WHOLE_SIZE : Size);
+    vk::MappedMemoryRange Range;
+    Range.setMemory(VkDeviceMemory);
+    Range.setOffset(Offset);
+    Range.setSize(Size == 0 ? VK_WHOLE_SIZE : Size);
 
     // 使 GPU 写入的数据对 CPU 可见
-    device.invalidateMappedMemoryRanges({ range });
+    Device.invalidateMappedMemoryRanges({ Range });
 }
 MemoryRequirements VulkanDeviceMemory::getMemoryRequirements() const
 {
@@ -524,17 +524,17 @@ EMemoryPropertyFlags VulkanDeviceMemory::getMemoryProperty() const
 
 VulkanDeviceMemoryPool::VulkanDeviceMemoryPool()
 {
-    pointer new_memory = static_cast<pointer>(std::malloc(sizeof(VulkanDeviceMemory) * InitialSize));
-    if (!new_memory)
+    pointer NewMemory = static_cast<pointer>(std::malloc(sizeof(VulkanDeviceMemory) * InitialSize));
+    if (!NewMemory)
     {
         throw std::bad_alloc();
     }
-    Blocks.emplace_back(new_memory, InitialSize);
+    Blocks.emplace_back(NewMemory, InitialSize);
 
     // 对每个对象执行 placement new，并放入 FreeList
-    for (int32_t i = 0; i < InitialSize; ++i) {
-        pointer obj = new (&new_memory[i]) VulkanDeviceMemory(); // 调用默认构造函数
-        FreeList.push_back(obj);
+    for (int32_t I = 0; I < InitialSize; ++I) {
+        pointer Obj = new (&NewMemory[I]) VulkanDeviceMemory(); // 调用默认构造函数
+        FreeList.push_back(Obj);
     }
 }
 
@@ -545,15 +545,15 @@ VulkanDeviceMemoryPool::~VulkanDeviceMemoryPool()
     FreeList.clear();
 
     // 对每个内存块中的每个对象调用析构函数
-    for (auto& block : Blocks) 
+    for (auto& Block : Blocks) 
     {
-        pointer raw = block.MemoryBlock;
-        size_t count = block.Count;
-        for (size_t i = 0; i < count; ++i) 
+        pointer Raw = Block.MemoryBlock;
+        size_t Count = Block.Count;
+        for (size_t I = 0; I < Count; ++I) 
         {
-            raw[i].~VulkanDeviceMemory(); // 显式析构
+            Raw[I].~VulkanDeviceMemory(); // 显式析构
         }
-        std::free(raw); // 释放原始内存
+        std::free(Raw); // 释放原始内存
     }
 }
 
@@ -563,12 +563,12 @@ void VulkanDeviceMemoryPool::reclaim(VulkanDeviceMemory* Memory)
     {
         return;
     }
-    auto used = std::find(UsedList.begin(), UsedList.end(), Memory);
-    if (used == UsedList.end())
+    auto Used = std::find(UsedList.begin(), UsedList.end(), Memory);
+    if (Used == UsedList.end())
     {
         return;
     }
-    UsedList.erase(used);
+    UsedList.erase(Used);
     FreeList.push_back(Memory);
 }
 
@@ -576,23 +576,23 @@ void VulkanDeviceMemoryPool::expand()
 {
     // 使用两倍扩容策略:
     // TODO: 使用自定义的内存分配器接口, 而不是直接使用 malloc
-    const size_t new_size = Capacity;
+    const size_t NewSize = Capacity;
 
-    pointer raw = static_cast<pointer>(
-        std::malloc(sizeof(VulkanDeviceMemory) * new_size)
+    pointer Raw = static_cast<pointer>(
+        std::malloc(sizeof(VulkanDeviceMemory) * NewSize)
     );
-    if (!raw) {
+    if (!Raw) {
         throw std::bad_alloc();
     }
 
-    Blocks.emplace_back(raw, new_size);
+    Blocks.emplace_back(Raw, NewSize);
 
-    for (size_t i = 0; i < new_size; ++i) {
-        pointer obj = new (&raw[i]) VulkanDeviceMemory();
-        FreeList.push_back(obj);
+    for (size_t I = 0; I < NewSize; ++I) {
+        pointer Obj = new (&Raw[I]) VulkanDeviceMemory();
+        FreeList.push_back(Obj);
     }
 
-    Capacity += new_size;
+    Capacity += NewSize;
 }
 VulkanDeviceMemory& VulkanDeviceMemoryPool::allocateMemory()
 {
@@ -600,25 +600,25 @@ VulkanDeviceMemory& VulkanDeviceMemoryPool::allocateMemory()
         expand();
     }
     // 从 FreeList 取出一个指针
-    pointer mem = FreeList.front();
+    pointer Mem = FreeList.front();
     FreeList.pop_front();
 
-    UsedList.push_back(mem);
+    UsedList.push_back(Mem);
 
-    return *mem;
+    return *Mem;
 }
 
-void VulkanDeviceMemoryDeleter::operator()(VulkanDeviceMemory* ptr) const
+void VulkanDeviceMemoryDeleter::operator()(VulkanDeviceMemory* Ptr) const
 {
-    if (!ptr)
+    if (!Ptr)
     {
         return;
     }
-    ptr->release();
+    Ptr->release();
 
     if (Pool)
     {
-        Pool->reclaim(ptr);
+        Pool->reclaim(Ptr);
     }
 }
 
@@ -644,9 +644,9 @@ void VulkanDeviceMemoryAllocator::freeMemory(std::shared_ptr<DeviceMemory> Memor
 
 void VulkanHeapSubAllocation::release()
 {
-    std::shared_ptr<VulkanTransientHeap> heap = std::move(Heap);
-    if (heap && Size != 0)
-        heap->release(Offset, Size);
+    std::shared_ptr<VulkanTransientHeap> Heap = std::move(Heap);
+    if (Heap && Size != 0)
+        Heap->release(Offset, Size);
     Size = 0;
     Offset = 0;
     OwnershipState = DeviceMemory::EState::InValid;

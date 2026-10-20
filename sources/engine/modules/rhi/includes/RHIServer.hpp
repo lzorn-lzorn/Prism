@@ -12,8 +12,8 @@ public:
     /** @brief Returns the process-wide RHI service. @return Stable singleton reference. */
     static RHIServer& self() 
     {
-        static RHIServer instance;
-        return instance;
+        static RHIServer Instance;
+        return Instance;
     }
     RHIServer(const RHIServer&) = delete;
     RHIServer& operator=(const RHIServer&) = delete;

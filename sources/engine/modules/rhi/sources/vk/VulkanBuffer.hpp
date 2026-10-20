@@ -9,15 +9,15 @@ namespace rhi
 
 class VulkanDevice;
 
-/** @brief Owns a Vulkan buffer and its bound device memory. */
+/** @brief 持有 Vulkan buffer 及其绑定的显存。 */
 class VulkanBuffer final : public RBuffer
 {
 public:
     /**
-     * @brief Creates a buffer and allocates compatible memory.
-     * @param Device Device that owns the resource.
-     * @param Desc Immutable buffer description.
-     * @return A fully bound Vulkan buffer.
+     * @brief 创建 buffer 并分配兼容的显存。
+     * @param Device 拥有该资源的设备。
+     * @param Desc 不可变的 buffer 描述。
+     * @return 一个完整绑定的 Vulkan buffer。
      */
     [[nodiscard]] static std::shared_ptr<VulkanBuffer> create(VulkanDevice& Device, const Descriptor_t& Desc);
 

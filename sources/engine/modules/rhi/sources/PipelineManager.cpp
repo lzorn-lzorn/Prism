@@ -22,33 +22,33 @@ template <typename ValueType>
 void append(PipelineKey& OutKey, const ValueType& Value)
 {
     static_assert(std::is_trivially_copyable_v<ValueType>);
-    const auto* begin = reinterpret_cast<const std::byte*>(&Value);
-    OutKey.insert(OutKey.end(), begin, begin + sizeof(Value));
+    const auto* Begin = reinterpret_cast<const std::byte*>(&Value);
+    OutKey.insert(OutKey.end(), Begin, Begin + sizeof(Value));
 }
 
 void appendBytes(PipelineKey& OutKey, std::span<const std::byte> Bytes)
 {
-    const uint64_t size = Bytes.size();
-    append(OutKey, size);
+    const uint64_t Size = Bytes.size();
+    append(OutKey, Size);
     OutKey.insert(OutKey.end(), Bytes.begin(), Bytes.end());
 }
 
 void appendStage(PipelineKey& OutKey, const PipelineShaderStage& Stage)
 {
-    const uint64_t shader_hash = Stage.Shader ? Stage.Shader->getContentHash() : 0;
-    append(OutKey, shader_hash);
-    const auto shader_stage = Stage.Shader ? Stage.Shader->getStage() : EShaderStage_t::Vertex;
-    append(OutKey, shader_stage);
-    const std::string_view entry_point = Stage.Shader ? Stage.Shader->getEntryPoint() : std::string_view {};
-    appendBytes(OutKey, std::as_bytes(std::span(entry_point)));
-    auto constants = Stage.SpecializationConstants;
-    std::ranges::sort(constants, {}, &SpecializationConstant::Id);
-    const uint64_t count = constants.size();
-    append(OutKey, count);
-    for (const auto& constant : constants)
+    const uint64_t ShaderHash = Stage.Shader ? Stage.Shader->getContentHash() : 0;
+    append(OutKey, ShaderHash);
+    const auto ShaderStage = Stage.Shader ? Stage.Shader->getStage() : EShaderStage_t::Vertex;
+    append(OutKey, ShaderStage);
+    const std::string_view EntryPoint = Stage.Shader ? Stage.Shader->getEntryPoint() : std::string_view {};
+    appendBytes(OutKey, std::as_bytes(std::span(EntryPoint)));
+    auto Constants = Stage.SpecializationConstants;
+    std::ranges::sort(Constants, {}, &SpecializationConstant::Id);
+    const uint64_t Count = Constants.size();
+    append(OutKey, Count);
+    for (const auto& Constant : Constants)
     {
-        append(OutKey, constant.Id);
-        appendBytes(OutKey, constant.Data);
+        append(OutKey, Constant.Id);
+        appendBytes(OutKey, Constant.Data);
     }
 }
 
@@ -64,99 +64,99 @@ PipelineKey makeGraphicsKey(const GraphicsPipelineDescriptor& Desc)
 {
     if (!Desc.Layout)
         throw std::invalid_argument("Graphics pipeline requires a layout.");
-    PipelineKey key;
-    appendBytes(key, Desc.Layout->getCompatibilityKey());
-    for (const auto* stage : { &Desc.Vertex, &Desc.Pixel, &Desc.Geometry, &Desc.Hull,
+    PipelineKey Key;
+    appendBytes(Key, Desc.Layout->getCompatibilityKey());
+    for (const auto* Stage : { &Desc.Vertex, &Desc.Pixel, &Desc.Geometry, &Desc.Hull,
         &Desc.Domain, &Desc.Task, &Desc.Mesh })
-        appendStage(key, *stage);
+        appendStage(Key, *Stage);
 
-    const uint64_t buffer_count = Desc.VertexInput.Buffers.size();
-    const uint64_t attribute_count = Desc.VertexInput.Attributes.size();
-    append(key, buffer_count);
-    for (const auto& value : Desc.VertexInput.Buffers)
+    const uint64_t BufferCount = Desc.VertexInput.Buffers.size();
+    const uint64_t AttributeCount = Desc.VertexInput.Attributes.size();
+    append(Key, BufferCount);
+    for (const auto& Value : Desc.VertexInput.Buffers)
     {
-        append(key, value.Binding); append(key, value.Stride); append(key, value.InputRate);
+        append(Key, Value.Binding); append(Key, Value.Stride); append(Key, Value.InputRate);
     }
-    append(key, attribute_count);
-    for (const auto& value : Desc.VertexInput.Attributes)
+    append(Key, AttributeCount);
+    for (const auto& Value : Desc.VertexInput.Attributes)
     {
-        append(key, value.Location); append(key, value.Binding);
-        append(key, value.Format); append(key, value.Offset);
+        append(Key, Value.Location); append(Key, Value.Binding);
+        append(Key, Value.Format); append(Key, Value.Offset);
     }
-    append(key, Desc.InputAssembly.Topology); append(key, Desc.InputAssembly.PrimitiveRestartEnable);
-    append(key, Desc.InputAssembly.PatchControlPoints);
-    append(key, Desc.Rasterizer.FillMode); append(key, Desc.Rasterizer.CullMode);
-    append(key, Desc.Rasterizer.FrontFace); append(key, Desc.Rasterizer.DepthClampEnable);
-    append(key, Desc.Rasterizer.RasterizerDiscardEnable); append(key, Desc.Rasterizer.DepthBiasEnable);
-    append(key, Desc.Rasterizer.DepthBiasConstantFactor); append(key, Desc.Rasterizer.DepthBiasClamp);
-    append(key, Desc.Rasterizer.DepthBiasSlopeFactor); append(key, Desc.Rasterizer.LineWidth);
-    append(key, Desc.Multisample.SampleShadingEnable); append(key, Desc.Multisample.MinSampleShading);
-    append(key, Desc.Multisample.SampleMask); append(key, Desc.Multisample.AlphaToCoverageEnable);
-    append(key, Desc.Multisample.AlphaToOneEnable);
-    append(key, Desc.DepthStencil.DepthTestEnable); append(key, Desc.DepthStencil.DepthWriteEnable);
-    append(key, Desc.DepthStencil.DepthCompareOp); append(key, Desc.DepthStencil.DepthBoundsTestEnable);
-    append(key, Desc.DepthStencil.MinDepthBounds); append(key, Desc.DepthStencil.MaxDepthBounds);
-    append(key, Desc.DepthStencil.StencilTestEnable);
-    appendStencil(key, Desc.DepthStencil.Front); appendStencil(key, Desc.DepthStencil.Back);
-    for (const auto& attachment : Desc.Blend.Attachments)
+    append(Key, Desc.InputAssembly.Topology); append(Key, Desc.InputAssembly.PrimitiveRestartEnable);
+    append(Key, Desc.InputAssembly.PatchControlPoints);
+    append(Key, Desc.Rasterizer.FillMode); append(Key, Desc.Rasterizer.CullMode);
+    append(Key, Desc.Rasterizer.FrontFace); append(Key, Desc.Rasterizer.DepthClampEnable);
+    append(Key, Desc.Rasterizer.RasterizerDiscardEnable); append(Key, Desc.Rasterizer.DepthBiasEnable);
+    append(Key, Desc.Rasterizer.DepthBiasConstantFactor); append(Key, Desc.Rasterizer.DepthBiasClamp);
+    append(Key, Desc.Rasterizer.DepthBiasSlopeFactor); append(Key, Desc.Rasterizer.LineWidth);
+    append(Key, Desc.Multisample.SampleShadingEnable); append(Key, Desc.Multisample.MinSampleShading);
+    append(Key, Desc.Multisample.SampleMask); append(Key, Desc.Multisample.AlphaToCoverageEnable);
+    append(Key, Desc.Multisample.AlphaToOneEnable);
+    append(Key, Desc.DepthStencil.DepthTestEnable); append(Key, Desc.DepthStencil.DepthWriteEnable);
+    append(Key, Desc.DepthStencil.DepthCompareOp); append(Key, Desc.DepthStencil.DepthBoundsTestEnable);
+    append(Key, Desc.DepthStencil.MinDepthBounds); append(Key, Desc.DepthStencil.MaxDepthBounds);
+    append(Key, Desc.DepthStencil.StencilTestEnable);
+    appendStencil(Key, Desc.DepthStencil.Front); appendStencil(Key, Desc.DepthStencil.Back);
+    for (const auto& Attachment : Desc.Blend.Attachments)
     {
-        append(key, attachment.BlendEnable);
-        append(key, attachment.Color.SrcFactor); append(key, attachment.Color.DstFactor);
-        append(key, attachment.Color.Operation); append(key, attachment.Alpha.SrcFactor);
-        append(key, attachment.Alpha.DstFactor); append(key, attachment.Alpha.Operation);
-        append(key, attachment.WriteMask.Value);
+        append(Key, Attachment.BlendEnable);
+        append(Key, Attachment.Color.SrcFactor); append(Key, Attachment.Color.DstFactor);
+        append(Key, Attachment.Color.Operation); append(Key, Attachment.Alpha.SrcFactor);
+        append(Key, Attachment.Alpha.DstFactor); append(Key, Attachment.Alpha.Operation);
+        append(Key, Attachment.WriteMask.Value);
     }
-    append(key, Desc.Rendering.ColorAttachmentCount);
-    for (const auto format : Desc.Rendering.ColorFormats) append(key, format);
-    append(key, Desc.Rendering.DepthFormat); append(key, Desc.Rendering.StencilFormat);
-    append(key, Desc.Rendering.SampleCount); append(key, Desc.Rendering.ViewMask);
-    append(key, Desc.DynamicStates.Value); append(key, Desc.Compile.Flags.Value);
-    return key;
+    append(Key, Desc.Rendering.ColorAttachmentCount);
+    for (const auto Format : Desc.Rendering.ColorFormats) append(Key, Format);
+    append(Key, Desc.Rendering.DepthFormat); append(Key, Desc.Rendering.StencilFormat);
+    append(Key, Desc.Rendering.SampleCount); append(Key, Desc.Rendering.ViewMask);
+    append(Key, Desc.DynamicStates.Value); append(Key, Desc.Compile.Flags.Value);
+    return Key;
 }
 
 PipelineKey makeComputeKey(const ComputePipelineDescriptor& Desc)
 {
     if (!Desc.Layout)
         throw std::invalid_argument("Compute pipeline requires a layout.");
-    PipelineKey key;
-    appendBytes(key, Desc.Layout->getCompatibilityKey());
-    appendStage(key, Desc.Compute);
-    append(key, Desc.Compile.Flags.Value);
-    return key;
+    PipelineKey Key;
+    appendBytes(Key, Desc.Layout->getCompatibilityKey());
+    appendStage(Key, Desc.Compute);
+    append(Key, Desc.Compile.Flags.Value);
+    return Key;
 }
 
 PipelineKey makeRayTracingKey(const RayTracingPipelineDescriptor& Desc)
 {
     if (!Desc.Layout) throw std::invalid_argument("Ray-tracing pipeline requires a layout.");
-    PipelineKey key;
-    appendBytes(key, Desc.Layout->getCompatibilityKey());
-    const uint64_t stage_count = Desc.Stages.size();
-    append(key, stage_count);
-    for (const auto& stage : Desc.Stages) appendStage(key, stage);
-    const uint64_t group_count = Desc.Groups.size();
-    append(key, group_count);
-    for (const auto& group : Desc.Groups)
+    PipelineKey Key;
+    appendBytes(Key, Desc.Layout->getCompatibilityKey());
+    const uint64_t StageCount = Desc.Stages.size();
+    append(Key, StageCount);
+    for (const auto& Stage : Desc.Stages) appendStage(Key, Stage);
+    const uint64_t GroupCount = Desc.Groups.size();
+    append(Key, GroupCount);
+    for (const auto& Group : Desc.Groups)
     {
-        append(key, group.Type); append(key, group.GeneralShader);
-        append(key, group.ClosestHitShader); append(key, group.AnyHitShader);
-        append(key, group.IntersectionShader);
+        append(Key, Group.Type); append(Key, Group.GeneralShader);
+        append(Key, Group.ClosestHitShader); append(Key, Group.AnyHitShader);
+        append(Key, Group.IntersectionShader);
     }
-    append(key, Desc.MaxRecursionDepth);
-    append(key, Desc.Compile.Flags.Value);
-    return key;
+    append(Key, Desc.MaxRecursionDepth);
+    append(Key, Desc.Compile.Flags.Value);
+    return Key;
 }
 
 struct PipelineKeyHash
 {
     size_t operator()(const PipelineKey& Key) const noexcept
     {
-        size_t result = sizeof(size_t) == 8 ? 1469598103934665603ull : 2166136261u;
-        for (const auto byte : Key)
+        size_t Result = sizeof(size_t) == 8 ? 1469598103934665603ull : 2166136261u;
+        for (const auto Byte : Key)
         {
-            result ^= static_cast<size_t>(std::to_integer<uint8_t>(byte));
-            result *= sizeof(size_t) == 8 ? 1099511628211ull : 16777619u;
+            Result ^= static_cast<size_t>(std::to_integer<uint8_t>(Byte));
+            Result *= sizeof(size_t) == 8 ? 1099511628211ull : 16777619u;
         }
-        return result;
+        return Result;
     }
 };
 } // namespace
@@ -169,15 +169,15 @@ public:
     {
         if (!Device)
             throw std::invalid_argument("PipelineManager requires a device.");
-        const uint32_t worker_count = std::max(1u, WorkerCount);
-        Workers.reserve(worker_count);
-        for (uint32_t index = 0; index < worker_count; ++index)
-            Workers.emplace_back([this](std::stop_token token) { workerLoop(token); });
+        const uint32_t NumWorkers = std::max(1u, WorkerCount);
+        Workers.reserve(NumWorkers);
+        for (uint32_t Index = 0; Index < NumWorkers; ++Index)
+            Workers.emplace_back([this](std::stop_token Token) { workerLoop(Token); });
     }
 
     ~Impl()
     {
-        for (auto& worker : Workers) worker.request_stop();
+        for (auto& Worker : Workers) Worker.request_stop();
         QueueCondition.notify_all();
         Workers.clear();
     }
@@ -188,53 +188,53 @@ public:
         Descriptor Desc,
         CreateFunction Create)
     {
-        std::shared_ptr<std::promise<std::shared_ptr<RPipeline>>> promise;
-        std::shared_future<std::shared_ptr<RPipeline>> future;
-        uint64_t request_generation = 0;
+        std::shared_ptr<std::promise<std::shared_ptr<RPipeline>>> Promise;
+        std::shared_future<std::shared_ptr<RPipeline>> Future;
+        uint64_t RequestGeneration = 0;
         {
-            std::scoped_lock lock(CacheMutex);
-            if (const auto found = Cache.find(Key); found != Cache.end())
+            std::scoped_lock Lock(CacheMutex);
+            if (const auto Found = Cache.find(Key); Found != Cache.end())
             {
                 ++CacheHits;
-                return found->second;
+                return Found->second;
             }
             ++CacheMisses;
-            promise = std::make_shared<std::promise<std::shared_ptr<RPipeline>>>();
-            future = promise->get_future().share();
-            Cache.emplace(Key, future);
-            request_generation = Generation;
+            Promise = std::make_shared<std::promise<std::shared_ptr<RPipeline>>>();
+            Future = Promise->get_future().share();
+            Cache.emplace(Key, Future);
+            RequestGeneration = Generation;
             ++PendingCompilations;
         }
 
-        enqueue([this, key = std::move(Key), desc = std::move(Desc), promise,
-            create = std::move(Create), request_generation]() mutable
+        enqueue([this, Key = std::move(Key), Desc = std::move(Desc), Promise,
+            Create = std::move(Create), RequestGeneration]() mutable
         {
             try
             {
-                auto pipeline = create(*Device, desc);
-                promise->set_value(std::move(pipeline));
+                auto Pipeline = Create(*Device, Desc);
+                Promise->set_value(std::move(Pipeline));
             }
             catch (...)
             {
-                promise->set_exception(std::current_exception());
-                std::scoped_lock lock(CacheMutex);
-                if (Generation == request_generation) Cache.erase(key);
+                Promise->set_exception(std::current_exception());
+                std::scoped_lock Lock(CacheMutex);
+                if (Generation == RequestGeneration) Cache.erase(Key);
             }
             --PendingCompilations;
         });
-        return future;
+        return Future;
     }
 
     void clear()
     {
-        std::scoped_lock lock(CacheMutex);
+        std::scoped_lock Lock(CacheMutex);
         ++Generation;
         Cache.clear();
     }
 
     PipelineManagerStatistics statistics() const noexcept
     {
-        std::scoped_lock lock(CacheMutex);
+        std::scoped_lock Lock(CacheMutex);
         return { CacheHits.load(), CacheMisses.load(), PendingCompilations.load(), Cache.size() };
     }
 
@@ -242,7 +242,7 @@ private:
     void enqueue(std::function<void()> Work)
     {
         {
-            std::scoped_lock lock(QueueMutex);
+            std::scoped_lock Lock(QueueMutex);
             Queue.emplace_back(std::move(Work));
         }
         QueueCondition.notify_one();
@@ -252,19 +252,19 @@ private:
     {
         while (true)
         {
-            std::function<void()> work;
+            std::function<void()> Work;
             {
-                std::unique_lock lock(QueueMutex);
-                QueueCondition.wait(lock, Token, [this] { return !Queue.empty(); });
+                std::unique_lock Lock(QueueMutex);
+                QueueCondition.wait(Lock, Token, [this] { return !Queue.empty(); });
                 if (Queue.empty())
                 {
                     if (Token.stop_requested()) return;
                     continue;
                 }
-                work = std::move(Queue.front());
+                Work = std::move(Queue.front());
                 Queue.pop_front();
             }
-            work();
+            Work();
         }
     }
 
@@ -313,9 +313,9 @@ std::shared_future<std::shared_ptr<RPipeline>> PipelineManager::getOrCreateGraph
 {
     return Implementation->request(
         makeGraphicsKey(Desc), std::move(Desc),
-        [](RDevice& device, const GraphicsPipelineDescriptor& descriptor)
+        [](RDevice& Device, const GraphicsPipelineDescriptor& Descriptor)
         {
-            return device.createGraphicsPipeline(descriptor);
+            return Device.createGraphicsPipeline(Descriptor);
         });
 }
 
@@ -324,9 +324,9 @@ std::shared_future<std::shared_ptr<RPipeline>> PipelineManager::getOrCreateCompu
 {
     return Implementation->request(
         makeComputeKey(Desc), std::move(Desc),
-        [](RDevice& device, const ComputePipelineDescriptor& descriptor)
+        [](RDevice& Device, const ComputePipelineDescriptor& Descriptor)
         {
-            return device.createComputePipeline(descriptor);
+            return Device.createComputePipeline(Descriptor);
         });
 }
 
@@ -335,9 +335,9 @@ std::shared_future<std::shared_ptr<RPipeline>> PipelineManager::getOrCreateRayTr
 {
     return Implementation->request(
         makeRayTracingKey(Desc), std::move(Desc),
-        [](RDevice& device, const RayTracingPipelineDescriptor& descriptor)
+        [](RDevice& Device, const RayTracingPipelineDescriptor& Descriptor)
         {
-            return device.createRayTracingPipeline(descriptor);
+            return Device.createRayTracingPipeline(Descriptor);
         });
 }
 

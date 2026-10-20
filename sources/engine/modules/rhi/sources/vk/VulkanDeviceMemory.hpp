@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include <RHI.hpp>
 #include <list>
 #include <memory>
@@ -13,7 +13,7 @@ class VulkanDevice;
 class VulkanMemoryBlock;
 class VulkanTransientHeap;
 
-/** @brief A buffer allocation backed by a device-owned best-fit memory page. */
+/** @brief 由设备所拥有的 best-fit 内存页支撑的 buffer 分配。 */
 class VulkanMemoryAllocation final : public DeviceMemory
 {
 public:
@@ -48,10 +48,10 @@ private:
 };
 
 /**
- * @brief Device-owned Vulkan memory page allocator used by buffers.
+ * @brief 由设备所拥有、供 buffer 使用的 Vulkan 内存页分配器。
  *
- * Pages use aligned best-fit placement and sorted free ranges that coalesce on free.
- * Large, required-dedicated, and preferred-dedicated resources receive private blocks.
+ * 页面使用对齐的 best-fit 放置策略和已排序的空闲区间，释放时会进行合并。
+ * 大型、必须专用和偏好专用的资源会获得私有块。
  */
 class VulkanMemoryAllocator final
 {
@@ -127,8 +127,8 @@ class VulkanDeviceMemoryPool final
     constexpr static int32_t InitialSize = 512;
 public:
     static VulkanDeviceMemoryPool& self() {
-        static VulkanDeviceMemoryPool instance;
-        return instance;
+        static VulkanDeviceMemoryPool Instance;
+        return Instance;
     }
 
     ~VulkanDeviceMemoryPool();
@@ -159,7 +159,7 @@ public:
     VulkanDeviceMemoryDeleter() = default;
     explicit VulkanDeviceMemoryDeleter(VulkanDeviceMemoryPool* InPool) : Pool(InPool) {}
 
-    void operator()(VulkanDeviceMemory* ptr) const;
+    void operator()(VulkanDeviceMemory* Ptr) const;
 
 private:
     VulkanDeviceMemoryPool* Pool = nullptr;

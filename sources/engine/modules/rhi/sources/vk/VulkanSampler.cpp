@@ -18,8 +18,8 @@ VulkanSampler::VulkanSampler(VulkanDevice& InDevice, const RSampler::Descriptor_
     if (Desc.MaxAnisotropy > 1.0f && !Device->getFeatures().SamplerAnisotropy)
         throw std::invalid_argument("Sampler anisotropy is unsupported by this device.");
 
-    vk::SamplerCreateInfo create_info;
-    create_info
+    vk::SamplerCreateInfo CreateInfo;
+    CreateInfo
         .setMagFilter(toVk(Desc.MagFilter))
         .setMinFilter(toVk(Desc.MinFilter))
         .setMipmapMode(toVkMipmapMode(Desc.MipmapFilter))
@@ -35,7 +35,7 @@ VulkanSampler::VulkanSampler(VulkanDevice& InDevice, const RSampler::Descriptor_
         .setMaxLod(Desc.MaxLod)
         .setBorderColor(vk::BorderColor::eFloatTransparentBlack)
         .setUnnormalizedCoordinates(false);
-    Sampler = Device->getVkDevice().createSamplerUnique(create_info);
+    Sampler = Device->getVkDevice().createSamplerUnique(CreateInfo);
 }
 
 RDevice& VulkanSampler::getDevice() const noexcept

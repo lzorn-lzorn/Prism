@@ -18,9 +18,9 @@ namespace runtime::renderer
 using ResourceId = uint64_t;
 
 /**
- * @brief Produces a deterministic identifier for a shader resource name.
- * @param Name UTF-8 resource name emitted by the shader compiler.
- * @return Stable FNV-1a identifier. Collisions are checked by ResourceBindingTable.
+ * @brief 为着色器资源名生成确定性标识符。
+ * @param Name 着色器编译器输出的 UTF-8 资源名。
+ * @return 稳定的 FNV-1a 标识符。冲突由 ResourceBindingTable 检查。
  */
 [[nodiscard]] constexpr ResourceId makeResourceId(std::string_view Name) noexcept
 {
@@ -33,7 +33,7 @@ using ResourceId = uint64_t;
     return hash;
 }
 
-/** @brief One shader-visible descriptor discovered through reflection. */
+/** @brief 通过反射发现的一个着色器可见描述符。 */
 struct ShaderResourceBinding
 {
     ResourceId Id { 0 };
@@ -47,7 +47,7 @@ struct ShaderResourceBinding
     bool RuntimeArray { false };
 };
 
-/** @brief Reflection result for one SPIR-V entry point. */
+/** @brief 一个 SPIR-V 入口点的反射结果。 */
 struct ShaderInterface
 {
     rhi::EShaderStage_t Stage { rhi::EShaderStage_t::Vertex };
@@ -56,7 +56,7 @@ struct ShaderInterface
     std::vector<rhi::PushConstantRange> PushConstants;
 };
 
-/** @brief Controls conversion from reflected runtime arrays to finite RHI layouts. */
+/** @brief 控制从反射得到的运行时数组到有限 RHI 布局的转换。 */
 struct PipelineInterfaceBuildOptions
 {
     uint32_t RuntimeArrayMaxCount { 1024 };
@@ -65,10 +65,10 @@ struct PipelineInterfaceBuildOptions
 };
 
 /**
- * @brief Merged shader ABI used to create RHI layouts and resolve concrete resources.
+ * @brief 合并后的着色器 ABI，用于创建 RHI 布局并解析具体资源。
  *
- * BindGroups are indexed by shader set/space. Empty groups are retained when shader
- * sets are sparse so that all following set numbers preserve their ABI position.
+ * BindGroups 按着色器 set/space 索引。当着色器 set 稀疏时保留空组，
+ * 使后续所有 set 编号保持其 ABI 位置。
  */
 struct PipelineInterface
 {
@@ -77,17 +77,17 @@ struct PipelineInterface
     std::vector<rhi::PushConstantRange> PushConstants;
 };
 
-/** @brief SPIR-V reflection front-end owned by Renderer rather than the low-level RHI. */
+/** @brief 由 Renderer 而非底层 RHI 持有的 SPIR-V 反射前端。 */
 class SpirvShaderReflector final
 {
 public:
     /**
-     * @brief Reflects descriptors and push constants used by one entry point.
-     * @param ByteCode Complete SPIR-V module bytes.
-     * @param Stage RHI stage expected for EntryPoint.
-     * @param EntryPoint Entry-point name to inspect.
-     * @return Normalized renderer-side shader ABI.
-     * @throws std::invalid_argument if SPIR-V or entry-point metadata is invalid.
+     * @brief 反射某个入口点使用的描述符和 push constant。
+     * @param ByteCode 完整的 SPIR-V 模块字节。
+     * @param Stage EntryPoint 期望的 RHI 阶段。
+     * @param EntryPoint 要检查的入口点名称。
+     * @return 归一化的渲染器侧着色器 ABI。
+     * @throws std::invalid_argument 如果 SPIR-V 或入口点元数据无效。
      */
     [[nodiscard]] static ShaderInterface reflect(
         std::span<const std::byte> ByteCode,
@@ -95,15 +95,15 @@ public:
         std::string_view EntryPoint = "main");
 };
 
-/** @brief Validates and merges several shader-stage interfaces into one pipeline ABI. */
+/** @brief 校验并合并多个着色器阶段接口为一个管线 ABI。 */
 class PipelineInterfaceBuilder final
 {
 public:
     /**
-     * @brief Merges descriptor visibility and push-constant visibility across stages.
-     * @param Interfaces Stage interfaces belonging to one pipeline.
-     * @param Options Policy for unbounded descriptor arrays.
-     * @return Canonical interface sorted by group, binding and push-constant offset.
+     * @brief 跨阶段合并描述符可见性与 push-constant 可见性。
+     * @param Interfaces 属于同一管线的各阶段接口。
+     * @param Options 无界描述符数组的策略。
+     * @return 按 group、binding 与 push-constant 偏移排序的规范接口。
      */
     [[nodiscard]] static PipelineInterface merge(
         std::span<const ShaderInterface> Interfaces,
@@ -111,28 +111,28 @@ public:
 };
 
 /**
- * @brief Semantic table mapping reflected resource names to concrete RHI resources.
+ * @brief 将反射得到的资源名映射到具体 RHI 资源的语义表。
  *
- * The table is independent of descriptor set numbers. This keeps material and frame
- * code stable when shader bindings are reassigned during asset compilation.
+ * 该表与描述符集编号无关。这样当着色器绑定在资源编译期间被重新分配时，
+ * 材质与帧代码能保持稳定。
  */
 class ResourceBindingTable final
 {
 public:
-    /** @brief Adds or replaces one resource array element by shader-visible name. */
+    /** @brief 通过着色器可见名称添加或替换一个资源数组元素。 */
     void set(std::string_view Name, rhi::BindGroupResource Resource, uint32_t ArrayElement = 0);
 
-    /** @brief Adds or replaces one resource array element by a precomputed stable ID. */
+    /** @brief 通过预计算的稳定 ID 添加或替换一个资源数组元素。 */
     void set(ResourceId Id, std::string_view Name, rhi::BindGroupResource Resource,
         uint32_t ArrayElement = 0);
 
-    /** @return Resource at the requested array element, or nullptr when not present. */
+    /** @return 所请求数组元素处的资源，不存在时为 nullptr。 */
     [[nodiscard]] const rhi::BindGroupResource* find(
         ResourceId Id,
         std::string_view ExpectedName,
         uint32_t ArrayElement = 0) const;
 
-    /** @return Highest populated element plus one, or zero when the resource is absent. */
+    /** @return 最高已填充元素加一，资源不存在时为零。 */
     [[nodiscard]] uint32_t getElementCount(ResourceId Id, std::string_view ExpectedName) const;
 
 private:
@@ -144,7 +144,7 @@ private:
     std::unordered_map<ResourceId, Slot> Slots;
 };
 
-/** @brief Result of resolving a PipelineInterface against a resource table. */
+/** @brief 将 PipelineInterface 针对资源表进行解析的结果。 */
 struct ResolvedPipelineBindings
 {
     std::shared_ptr<rhi::RPipelineLayout> PipelineLayout;
@@ -153,11 +153,10 @@ struct ResolvedPipelineBindings
 };
 
 /**
- * @brief Creates and reuses RHI layouts, then materializes immutable BindGroups.
+ * @brief 创建并复用 RHI 布局，然后实例化不可变 BindGroup。
  *
- * Layouts are cached by canonical ABI bytes. Concrete BindGroups are deliberately
- * not cached because resource lifetime/version policy belongs to materials and the
- * render graph above this service.
+ * 布局按规范 ABI 字节缓存。具体 BindGroup 有意不缓存，
+ * 因为资源的生命周期/版本策略属于材质以及本服务之上的渲染图。
  */
 class ShaderBindingResolver final
 {
@@ -165,10 +164,10 @@ public:
     explicit ShaderBindingResolver(rhi::RDevice& Device) noexcept : Device(&Device) {}
 
     /**
-     * @brief Resolves all reflected resources and creates bindable RHI objects.
-     * @param Interface Merged pipeline ABI.
-     * @param Resources Semantic resource table.
-     * @return Pipeline layout, group layouts and concrete groups in set order.
+     * @brief 解析所有反射资源并创建可绑定的 RHI 对象。
+     * @param Interface 合并后的管线 ABI。
+     * @param Resources 语义资源表。
+     * @return 按 set 顺序排列的管线布局、组布局与具体组。
      */
     [[nodiscard]] ResolvedPipelineBindings resolve(
         const PipelineInterface& Interface,

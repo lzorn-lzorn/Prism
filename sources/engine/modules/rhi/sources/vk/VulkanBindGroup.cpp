@@ -1,4 +1,4 @@
-﻿#include "VulkanBindGroup.hpp"
+#include "VulkanBindGroup.hpp"
 
 #include "VulkanBuffer.hpp"
 #include "VulkanDevice.hpp"
@@ -22,20 +22,20 @@ constexpr uint32_t DescriptorSetsPerPool = 64;
 
 uint32_t scaledDescriptorCount(uint32_t Count)
 {
-    constexpr uint32_t minimum_count = DescriptorSetsPerPool;
+    constexpr uint32_t MinimumCount = DescriptorSetsPerPool;
     if (Count > std::numeric_limits<uint32_t>::max() / DescriptorSetsPerPool)
         return std::numeric_limits<uint32_t>::max();
-    return std::max(minimum_count, Count * DescriptorSetsPerPool);
+    return std::max(MinimumCount, Count * DescriptorSetsPerPool);
 }
 
 const BindGroupLayoutEntry& findLayoutEntry(
     std::span<const BindGroupLayoutEntry> Entries,
     uint32_t Binding)
 {
-    const auto iterator = std::ranges::lower_bound(Entries, Binding, {}, &BindGroupLayoutEntry::Binding);
-    if (iterator == Entries.end() || iterator->Binding != Binding)
+    const auto Iterator = std::ranges::lower_bound(Entries, Binding, {}, &BindGroupLayoutEntry::Binding);
+    if (Iterator == Entries.end() || Iterator->Binding != Binding)
         throw std::invalid_argument("BindGroup entry references a binding absent from its layout.");
-    return *iterator;
+    return *Iterator;
 }
 
 bool isBufferDescriptor(EDescriptorType Type)
@@ -68,21 +68,21 @@ vk::UniqueDescriptorPool VulkanDescriptorAllocator::createPool(
     uint32_t VariableArrayCount,
     bool UpdateAfterBind) const
 {
-    uint32_t requested_descriptors = 0;
-    for (size_t index = 0; index < Entries.size(); ++index)
+    uint32_t RequestedDescriptors = 0;
+    for (size_t Index = 0; Index < Entries.size(); ++Index)
     {
-        const auto& entry = Entries[index];
-        const uint32_t count = entry.Flags.has(EDescriptorBindingFlag_t::VariableArrayCount)
+        const auto& Entry = Entries[Index];
+        const uint32_t Count = Entry.Flags.has(EDescriptorBindingFlag_t::VariableArrayCount)
             ? VariableArrayCount
-            : entry.ArrayCount;
-        if (requested_descriptors > std::numeric_limits<uint32_t>::max() - count)
+            : Entry.ArrayCount;
+        if (RequestedDescriptors > std::numeric_limits<uint32_t>::max() - Count)
             throw std::overflow_error("Descriptor pool size overflow.");
-        requested_descriptors += count;
+        RequestedDescriptors += Count;
     }
-    const uint32_t descriptors_per_type = scaledDescriptorCount(requested_descriptors);
+    const uint32_t DescriptorsPerType = scaledDescriptorCount(RequestedDescriptors);
     // Pages are intentionally type-complete: the arena may reuse a page for layouts
     // created later, so sizing it only for the first layout would be invalid.
-    const std::array descriptor_types {
+    const std::array DescriptorTypes {
         vk::DescriptorType::eSampler,
         vk::DescriptorType::eCombinedImageSampler,
         vk::DescriptorType::eSampledImage,
@@ -95,18 +95,18 @@ vk::UniqueDescriptorPool VulkanDescriptorAllocator::createPool(
         vk::DescriptorType::eStorageBufferDynamic,
         vk::DescriptorType::eInputAttachment
     };
-    std::vector<vk::DescriptorPoolSize> sizes;
-    sizes.reserve(descriptor_types.size());
-    for (const auto type : descriptor_types)
-        sizes.emplace_back(type, descriptors_per_type);
+    std::vector<vk::DescriptorPoolSize> Sizes;
+    Sizes.reserve(DescriptorTypes.size());
+    for (const auto Type : DescriptorTypes)
+        Sizes.emplace_back(Type, DescriptorsPerType);
     if (Device->getFeatures().AccelerationStructure)
-        sizes.emplace_back(vk::DescriptorType::eAccelerationStructureKHR, descriptors_per_type);
+        Sizes.emplace_back(vk::DescriptorType::eAccelerationStructureKHR, DescriptorsPerType);
 
-    vk::DescriptorPoolCreateFlags flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
+    vk::DescriptorPoolCreateFlags Flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
     if (UpdateAfterBind)
-        flags |= vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind;
+        Flags |= vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind;
     return Device->getVkDevice().createDescriptorPoolUnique(vk::DescriptorPoolCreateInfo(
-        flags, DescriptorSetsPerPool, sizes));
+        Flags, DescriptorSetsPerPool, Sizes));
 }
 
 vk::DescriptorSet VulkanDescriptorAllocator::tryAllocate(
@@ -114,26 +114,26 @@ vk::DescriptorSet VulkanDescriptorAllocator::tryAllocate(
     vk::DescriptorSetLayout Layout,
     uint32_t VariableArrayCount) const
 {
-    VkDescriptorSetVariableDescriptorCountAllocateInfo variable_info {
+    VkDescriptorSetVariableDescriptorCountAllocateInfo VariableInfo {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO,
         .pNext = nullptr,
         .descriptorSetCount = 1,
         .pDescriptorCounts = &VariableArrayCount
     };
-    const VkDescriptorSetLayout layout = static_cast<VkDescriptorSetLayout>(Layout);
-    VkDescriptorSetAllocateInfo allocate_info {
+    const VkDescriptorSetLayout VkLayout = static_cast<VkDescriptorSetLayout>(Layout);
+    VkDescriptorSetAllocateInfo AllocateInfo {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .pNext = VariableArrayCount == 0 ? nullptr : &variable_info,
+        .pNext = VariableArrayCount == 0 ? nullptr : &VariableInfo,
         .descriptorPool = static_cast<VkDescriptorPool>(Pool),
         .descriptorSetCount = 1,
-        .pSetLayouts = &layout
+        .pSetLayouts = &VkLayout
     };
-    VkDescriptorSet result = VK_NULL_HANDLE;
-    const VkResult allocation_result = vkAllocateDescriptorSets(
-        static_cast<VkDevice>(Device->getVkDevice()), &allocate_info, &result);
-    if (allocation_result == VK_SUCCESS)
-        return result;
-    if (allocation_result == VK_ERROR_OUT_OF_POOL_MEMORY || allocation_result == VK_ERROR_FRAGMENTED_POOL)
+    VkDescriptorSet Result = VK_NULL_HANDLE;
+    const VkResult AllocationResult = vkAllocateDescriptorSets(
+        static_cast<VkDevice>(Device->getVkDevice()), &AllocateInfo, &Result);
+    if (AllocationResult == VK_SUCCESS)
+        return Result;
+    if (AllocationResult == VK_ERROR_OUT_OF_POOL_MEMORY || AllocationResult == VK_ERROR_FRAGMENTED_POOL)
         return {};
     throw std::runtime_error("Failed to allocate a Vulkan descriptor set.");
 }
@@ -144,38 +144,38 @@ VulkanDescriptorAllocation VulkanDescriptorAllocator::allocate(
     uint32_t VariableArrayCount,
     bool UpdateAfterBind)
 {
-    std::scoped_lock lock(Mutex);
-    for (auto& page : Pools)
+    std::scoped_lock Lock(Mutex);
+    for (auto& Page : Pools)
     {
-        if (page.UpdateAfterBind != UpdateAfterBind)
+        if (Page.UpdateAfterBind != UpdateAfterBind)
             continue;
-        if (const auto set = tryAllocate(page.Pool.get(), Layout, VariableArrayCount))
-            return { page.Pool.get(), set };
+        if (const auto Set = tryAllocate(Page.Pool.get(), Layout, VariableArrayCount))
+            return { Page.Pool.get(), Set };
     }
 
-    PoolPage page {
+    PoolPage Page {
         .Pool = createPool(Entries, VariableArrayCount, UpdateAfterBind),
         .UpdateAfterBind = UpdateAfterBind
     };
-    const auto set = tryAllocate(page.Pool.get(), Layout, VariableArrayCount);
-    if (!set)
+    const auto Set = tryAllocate(Page.Pool.get(), Layout, VariableArrayCount);
+    if (!Set)
         throw std::runtime_error("A newly-created Vulkan descriptor pool could not allocate a set.");
-    const auto pool = page.Pool.get();
-    Pools.emplace_back(std::move(page));
-    return { pool, set };
+    const auto Pool = Page.Pool.get();
+    Pools.emplace_back(std::move(Page));
+    return { Pool, Set };
 }
 
 void VulkanDescriptorAllocator::release(VulkanDescriptorAllocation Allocation) noexcept
 {
     if (!Allocation.Pool || !Allocation.Set || !Device)
         return;
-    std::scoped_lock lock(Mutex);
-    const VkDescriptorSet set = static_cast<VkDescriptorSet>(Allocation.Set);
+    std::scoped_lock Lock(Mutex);
+    const VkDescriptorSet Set = static_cast<VkDescriptorSet>(Allocation.Set);
     (void)vkFreeDescriptorSets(
         static_cast<VkDevice>(Device->getVkDevice()),
         static_cast<VkDescriptorPool>(Allocation.Pool),
         1,
-        &set);
+        &Set);
 }
 
 VulkanBindGroup::VulkanBindGroup(
@@ -188,32 +188,32 @@ VulkanBindGroup::VulkanBindGroup(
     , Entries(Desc.Entries)
     , DebugName(Desc.DebugName)
 {
-    auto vk_layout = std::dynamic_pointer_cast<VulkanBindGroupLayout>(Layout);
-    if (!vk_layout || &vk_layout->getDevice() != Device || !vk_layout->isValid())
+    auto VkLayout = std::dynamic_pointer_cast<VulkanBindGroupLayout>(Layout);
+    if (!VkLayout || &VkLayout->getDevice() != Device || !VkLayout->isValid())
         throw std::invalid_argument("BindGroup layout belongs to another backend or device.");
     if (!Allocator)
         throw std::invalid_argument("BindGroup requires a descriptor allocator.");
 
-    const auto layout_entries = vk_layout->getEntries();
-    const auto variable_entry = std::ranges::find_if(layout_entries, [](const auto& entry)
+    const auto LayoutEntries = VkLayout->getEntries();
+    const auto VariableEntry = std::ranges::find_if(LayoutEntries, [](const auto& Entry)
     {
-        return entry.Flags.has(EDescriptorBindingFlag_t::VariableArrayCount);
+        return Entry.Flags.has(EDescriptorBindingFlag_t::VariableArrayCount);
     });
-    if (Desc.VariableArrayCount != 0 && variable_entry == layout_entries.end())
+    if (Desc.VariableArrayCount != 0 && VariableEntry == LayoutEntries.end())
         throw std::invalid_argument("VariableArrayCount was supplied for a fixed-size BindGroup layout.");
-    const uint32_t variable_count = variable_entry == layout_entries.end()
+    const uint32_t VariableCount = VariableEntry == LayoutEntries.end()
         ? 0
-        : (Desc.VariableArrayCount == 0 ? variable_entry->ArrayCount : Desc.VariableArrayCount);
-    if (variable_entry != layout_entries.end() && variable_count > variable_entry->ArrayCount)
+        : (Desc.VariableArrayCount == 0 ? VariableEntry->ArrayCount : Desc.VariableArrayCount);
+    if (VariableEntry != LayoutEntries.end() && VariableCount > VariableEntry->ArrayCount)
         throw std::invalid_argument("BindGroup variable descriptor count exceeds its layout maximum.");
-    VariableArrayCount = variable_count;
+    VariableArrayCount = VariableCount;
 
-    const bool update_after_bind = std::ranges::any_of(layout_entries, [](const auto& entry)
+    const bool UpdateAfterBind = std::ranges::any_of(LayoutEntries, [](const auto& Entry)
     {
-        return entry.Flags.has(EDescriptorBindingFlag_t::UpdateAfterBind);
+        return Entry.Flags.has(EDescriptorBindingFlag_t::UpdateAfterBind);
     });
     Allocation = Allocator->allocate(
-        vk_layout->getVkDescriptorSetLayout(), layout_entries, variable_count, update_after_bind);
+        VkLayout->getVkDescriptorSetLayout(), LayoutEntries, VariableCount, UpdateAfterBind);
     struct AllocationGuard
     {
         std::shared_ptr<VulkanDescriptorAllocator> Allocator;
@@ -224,167 +224,167 @@ VulkanBindGroup::VulkanBindGroup(
             if (Active)
                 Allocator->release(*Allocation);
         }
-    } allocation_guard { Allocator, &Allocation };
+    } AllocationGuard { Allocator, &Allocation };
 
-    std::unordered_set<uint64_t> written_elements;
-    written_elements.reserve(Entries.size());
-    std::vector<vk::DescriptorBufferInfo> buffer_infos;
-    std::vector<vk::DescriptorImageInfo> image_infos;
-    std::vector<vk::BufferView> texel_views;
-    std::vector<vk::WriteDescriptorSet> writes;
-    std::vector<VkWriteDescriptorSetAccelerationStructureKHR> acceleration_writes;
-    std::vector<VkAccelerationStructureKHR> acceleration_handles;
-    buffer_infos.reserve(Entries.size());
-    image_infos.reserve(Entries.size());
-    texel_views.reserve(Entries.size());
-    writes.reserve(Entries.size());
-    acceleration_writes.reserve(Entries.size());
-    acceleration_handles.reserve(Entries.size());
+    std::unordered_set<uint64_t> WrittenElements;
+    WrittenElements.reserve(Entries.size());
+    std::vector<vk::DescriptorBufferInfo> BufferInfos;
+    std::vector<vk::DescriptorImageInfo> ImageInfos;
+    std::vector<vk::BufferView> TexelViews;
+    std::vector<vk::WriteDescriptorSet> Writes;
+    std::vector<VkWriteDescriptorSetAccelerationStructureKHR> AccelerationWrites;
+    std::vector<VkAccelerationStructureKHR> AccelerationHandles;
+    BufferInfos.reserve(Entries.size());
+    ImageInfos.reserve(Entries.size());
+    TexelViews.reserve(Entries.size());
+    Writes.reserve(Entries.size());
+    AccelerationWrites.reserve(Entries.size());
+    AccelerationHandles.reserve(Entries.size());
     TexelBufferViews.reserve(Entries.size());
 
-    for (const auto& entry : Entries)
+    for (const auto& Entry : Entries)
     {
-        const auto& layout_entry = findLayoutEntry(layout_entries, entry.Binding);
-        const uint32_t descriptor_count = layout_entry.Flags.has(EDescriptorBindingFlag_t::VariableArrayCount)
-            ? variable_count
-            : layout_entry.ArrayCount;
-        if (entry.ArrayElement >= descriptor_count)
+        const auto& LayoutEntry = findLayoutEntry(LayoutEntries, Entry.Binding);
+        const uint32_t DescriptorCount = LayoutEntry.Flags.has(EDescriptorBindingFlag_t::VariableArrayCount)
+            ? VariableCount
+            : LayoutEntry.ArrayCount;
+        if (Entry.ArrayElement >= DescriptorCount)
             throw std::out_of_range("BindGroup array element exceeds the declared descriptor count.");
-        const uint64_t element_key = (static_cast<uint64_t>(entry.Binding) << 32u) | entry.ArrayElement;
-        if (!written_elements.emplace(element_key).second)
+        const uint64_t ElementKey = (static_cast<uint64_t>(Entry.Binding) << 32u) | Entry.ArrayElement;
+        if (!WrittenElements.emplace(ElementKey).second)
             throw std::invalid_argument("BindGroup contains a duplicate binding array element.");
 
-        vk::WriteDescriptorSet write;
-        write
+        vk::WriteDescriptorSet Write;
+        Write
             .setDstSet(Allocation.Set)
-            .setDstBinding(entry.Binding)
-            .setDstArrayElement(entry.ArrayElement)
+            .setDstBinding(Entry.Binding)
+            .setDstArrayElement(Entry.ArrayElement)
             .setDescriptorCount(1)
-            .setDescriptorType(toVk(layout_entry.Type, layout_entry.Flags));
+            .setDescriptorType(toVk(LayoutEntry.Type, LayoutEntry.Flags));
 
-        if (isBufferDescriptor(layout_entry.Type))
+        if (isBufferDescriptor(LayoutEntry.Type))
         {
-            const auto* binding = std::get_if<BufferBinding>(&entry.Resource);
-            auto buffer = binding ? std::dynamic_pointer_cast<VulkanBuffer>(binding->Buffer) : nullptr;
-            if (!binding || !buffer || &buffer->getDevice() != Device || !buffer->isValid())
+            const auto* Binding = std::get_if<BufferBinding>(&Entry.Resource);
+            auto Buffer = Binding ? std::dynamic_pointer_cast<VulkanBuffer>(Binding->Buffer) : nullptr;
+            if (!Binding || !Buffer || &Buffer->getDevice() != Device || !Buffer->isValid())
                 throw std::invalid_argument("Buffer descriptor requires a valid Vulkan buffer from this device.");
-            const auto& buffer_desc = buffer->getDescriptor();
-            validateBufferUsage(buffer_desc, layout_entry.Type);
-            if (binding->Offset >= buffer_desc.Size ||
-                (binding->Size != 0 && binding->Size > buffer_desc.Size - binding->Offset))
+            const auto& BufferDesc = Buffer->getDescriptor();
+            validateBufferUsage(BufferDesc, LayoutEntry.Type);
+            if (Binding->Offset >= BufferDesc.Size ||
+                (Binding->Size != 0 && Binding->Size > BufferDesc.Size - Binding->Offset))
                 throw std::out_of_range("Buffer binding range is out of bounds.");
-            const DeviceSizeType alignment = layout_entry.Type == EDescriptorType::UniformBuffer
+            const DeviceSizeType Alignment = LayoutEntry.Type == EDescriptorType::UniformBuffer
                 ? Device->getLimits().MinUniformBufferOffsetAlignment
                 : Device->getLimits().MinStorageBufferOffsetAlignment;
-            if (binding->Offset % alignment != 0)
+            if (Binding->Offset % Alignment != 0)
                 throw std::invalid_argument("Buffer binding offset does not satisfy device alignment.");
-            buffer_infos.emplace_back(
-                buffer->getVkBuffer(),
-                binding->Offset,
-                binding->Size == 0 ? buffer_desc.Size - binding->Offset : binding->Size);
-            write.pBufferInfo = &buffer_infos.back();
+            BufferInfos.emplace_back(
+                Buffer->getVkBuffer(),
+                Binding->Offset,
+                Binding->Size == 0 ? BufferDesc.Size - Binding->Offset : Binding->Size);
+            Write.pBufferInfo = &BufferInfos.back();
         }
-        else if (layout_entry.Type == EDescriptorType::UniformTexelBuffer ||
-            layout_entry.Type == EDescriptorType::StorageTexelBuffer)
+        else if (LayoutEntry.Type == EDescriptorType::UniformTexelBuffer ||
+            LayoutEntry.Type == EDescriptorType::StorageTexelBuffer)
         {
-            const auto* binding = std::get_if<TexelBufferBinding>(&entry.Resource);
-            auto buffer = binding ? std::dynamic_pointer_cast<VulkanBuffer>(binding->Buffer) : nullptr;
-            if (!binding || !buffer || &buffer->getDevice() != Device || !buffer->isValid() ||
-                binding->Format == EFormat::Undefined)
+            const auto* Binding = std::get_if<TexelBufferBinding>(&Entry.Resource);
+            auto Buffer = Binding ? std::dynamic_pointer_cast<VulkanBuffer>(Binding->Buffer) : nullptr;
+            if (!Binding || !Buffer || &Buffer->getDevice() != Device || !Buffer->isValid() ||
+                Binding->Format == EFormat::Undefined)
                 throw std::invalid_argument("Texel-buffer descriptor requires a valid buffer and format.");
-            const auto& buffer_desc = buffer->getDescriptor();
-            const auto required_usage = layout_entry.Type == EDescriptorType::UniformTexelBuffer
+            const auto& BufferDesc = Buffer->getDescriptor();
+            const auto RequiredUsage = LayoutEntry.Type == EDescriptorType::UniformTexelBuffer
                 ? EBufferUsage::UniformTexel
                 : EBufferUsage::StorageTexel;
-            if (!buffer_desc.Usage.has(required_usage))
+            if (!BufferDesc.Usage.has(RequiredUsage))
                 throw std::invalid_argument("Texel-buffer binding has incompatible buffer usage.");
-            if (binding->Offset >= buffer_desc.Size ||
-                (binding->Size != 0 && binding->Size > buffer_desc.Size - binding->Offset) ||
-                binding->Offset % Device->getLimits().MinTexelBufferOffsetAlignment != 0)
+            if (Binding->Offset >= BufferDesc.Size ||
+                (Binding->Size != 0 && Binding->Size > BufferDesc.Size - Binding->Offset) ||
+                Binding->Offset % Device->getLimits().MinTexelBufferOffsetAlignment != 0)
                 throw std::out_of_range("Texel-buffer range or alignment is invalid.");
             TexelBufferViews.emplace_back(Device->getVkDevice().createBufferViewUnique(vk::BufferViewCreateInfo(
-                {}, buffer->getVkBuffer(), toVk(binding->Format), binding->Offset,
-                binding->Size == 0 ? buffer_desc.Size - binding->Offset : binding->Size)));
-            texel_views.emplace_back(TexelBufferViews.back().get());
-            write.pTexelBufferView = &texel_views.back();
+                {}, Buffer->getVkBuffer(), toVk(Binding->Format), Binding->Offset,
+                Binding->Size == 0 ? BufferDesc.Size - Binding->Offset : Binding->Size)));
+            TexelViews.emplace_back(TexelBufferViews.back().get());
+            Write.pTexelBufferView = &TexelViews.back();
         }
-        else if (layout_entry.Type == EDescriptorType::Sampler ||
-            layout_entry.Type == EDescriptorType::ComparisonSampler)
+        else if (LayoutEntry.Type == EDescriptorType::Sampler ||
+            LayoutEntry.Type == EDescriptorType::ComparisonSampler)
         {
-            const auto* binding = std::get_if<SamplerBinding>(&entry.Resource);
-            auto sampler = binding ? std::dynamic_pointer_cast<VulkanSampler>(binding->Sampler) : nullptr;
-            if (!binding || !sampler || &sampler->getDevice() != Device || !sampler->isValid())
+            const auto* Binding = std::get_if<SamplerBinding>(&Entry.Resource);
+            auto Sampler = Binding ? std::dynamic_pointer_cast<VulkanSampler>(Binding->Sampler) : nullptr;
+            if (!Binding || !Sampler || &Sampler->getDevice() != Device || !Sampler->isValid())
                 throw std::invalid_argument("Sampler descriptor requires a valid Vulkan sampler from this device.");
-            if (layout_entry.Type == EDescriptorType::ComparisonSampler &&
-                !sampler->getDescriptor().CompareEnable)
+            if (LayoutEntry.Type == EDescriptorType::ComparisonSampler &&
+                !Sampler->getDescriptor().CompareEnable)
                 throw std::invalid_argument("ComparisonSampler requires comparison sampling to be enabled.");
-            image_infos.emplace_back(sampler->getVkSampler(), vk::ImageView{}, vk::ImageLayout::eUndefined);
-            write.pImageInfo = &image_infos.back();
+            ImageInfos.emplace_back(Sampler->getVkSampler(), vk::ImageView{}, vk::ImageLayout::eUndefined);
+            Write.pImageInfo = &ImageInfos.back();
         }
-        else if (layout_entry.Type == EDescriptorType::CombinedImageSampler)
+        else if (LayoutEntry.Type == EDescriptorType::CombinedImageSampler)
         {
-            const auto* binding = std::get_if<CombinedImageSamplerBinding>(&entry.Resource);
-            auto view = binding ? std::dynamic_pointer_cast<VulkanImageView>(binding->View) : nullptr;
-            auto sampler = binding ? std::dynamic_pointer_cast<VulkanSampler>(binding->Sampler) : nullptr;
-            if (!binding || !view || !sampler || &view->getDevice() != Device ||
-                &sampler->getDevice() != Device || !view->isValid() || !sampler->isValid())
+            const auto* Binding = std::get_if<CombinedImageSamplerBinding>(&Entry.Resource);
+            auto View = Binding ? std::dynamic_pointer_cast<VulkanImageView>(Binding->View) : nullptr;
+            auto Sampler = Binding ? std::dynamic_pointer_cast<VulkanSampler>(Binding->Sampler) : nullptr;
+            if (!Binding || !View || !Sampler || &View->getDevice() != Device ||
+                &Sampler->getDevice() != Device || !View->isValid() || !Sampler->isValid())
                 throw std::invalid_argument("Combined descriptor requires a valid image view and sampler.");
-            image_infos.emplace_back(sampler->getVkSampler(), view->getVkImageView(), toVk(binding->Layout));
-            write.pImageInfo = &image_infos.back();
+            ImageInfos.emplace_back(Sampler->getVkSampler(), View->getVkImageView(), toVk(Binding->Layout));
+            Write.pImageInfo = &ImageInfos.back();
         }
-        else if (layout_entry.Type == EDescriptorType::SampledTexture ||
-            layout_entry.Type == EDescriptorType::StorageTexture ||
-            layout_entry.Type == EDescriptorType::InputAttachment)
+        else if (LayoutEntry.Type == EDescriptorType::SampledTexture ||
+            LayoutEntry.Type == EDescriptorType::StorageTexture ||
+            LayoutEntry.Type == EDescriptorType::InputAttachment)
         {
-            const auto* binding = std::get_if<TextureBinding>(&entry.Resource);
-            auto view = binding ? std::dynamic_pointer_cast<VulkanImageView>(binding->View) : nullptr;
-            if (!binding || !view || &view->getDevice() != Device || !view->isValid())
+            const auto* Binding = std::get_if<TextureBinding>(&Entry.Resource);
+            auto View = Binding ? std::dynamic_pointer_cast<VulkanImageView>(Binding->View) : nullptr;
+            if (!Binding || !View || &View->getDevice() != Device || !View->isValid())
                 throw std::invalid_argument("Texture descriptor requires a valid Vulkan image view from this device.");
-            if (layout_entry.Type == EDescriptorType::StorageTexture &&
-                binding->Layout != EDescriptorImageLayout::General)
+            if (LayoutEntry.Type == EDescriptorType::StorageTexture &&
+                Binding->Layout != EDescriptorImageLayout::General)
                 throw std::invalid_argument("Storage textures require the General descriptor image layout.");
-            image_infos.emplace_back(vk::Sampler{}, view->getVkImageView(), toVk(binding->Layout));
-            write.pImageInfo = &image_infos.back();
+            ImageInfos.emplace_back(vk::Sampler{}, View->getVkImageView(), toVk(Binding->Layout));
+            Write.pImageInfo = &ImageInfos.back();
         }
-        else if (layout_entry.Type == EDescriptorType::AccelerationStructure)
+        else if (LayoutEntry.Type == EDescriptorType::AccelerationStructure)
         {
-            const auto* binding = std::get_if<AccelerationStructureBinding>(&entry.Resource);
-            auto structure = binding
-                ? std::dynamic_pointer_cast<VulkanAccelerationStructure>(binding->AccelerationStructure)
+            const auto* Binding = std::get_if<AccelerationStructureBinding>(&Entry.Resource);
+            auto Structure = Binding
+                ? std::dynamic_pointer_cast<VulkanAccelerationStructure>(Binding->AccelerationStructure)
                 : nullptr;
-            if (!Device->getFeatures().AccelerationStructure || !structure ||
-                &structure->getDevice() != Device || !structure->isValid())
+            if (!Device->getFeatures().AccelerationStructure || !Structure ||
+                &Structure->getDevice() != Device || !Structure->isValid())
                 throw std::invalid_argument("Acceleration-structure descriptor requires a valid Vulkan acceleration structure.");
-            acceleration_handles.emplace_back(static_cast<VkAccelerationStructureKHR>(structure->getVkHandle()));
-            acceleration_writes.push_back({
+            AccelerationHandles.emplace_back(static_cast<VkAccelerationStructureKHR>(Structure->getVkHandle()));
+            AccelerationWrites.push_back({
                 VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR,
-                nullptr, 1, &acceleration_handles.back()
+                nullptr, 1, &AccelerationHandles.back()
             });
-            write.pNext = &acceleration_writes.back();
+            Write.pNext = &AccelerationWrites.back();
         }
         else
         {
             throw std::invalid_argument("Acceleration-structure BindGroups require the ray-tracing backend path.");
         }
-        writes.emplace_back(write);
+        Writes.emplace_back(Write);
     }
 
-    for (const auto& layout_entry : layout_entries)
+    for (const auto& LayoutEntry : LayoutEntries)
     {
-        if (layout_entry.Flags.has(EDescriptorBindingFlag_t::PartiallyBound))
+        if (LayoutEntry.Flags.has(EDescriptorBindingFlag_t::PartiallyBound))
             continue;
-        const uint32_t count = layout_entry.Flags.has(EDescriptorBindingFlag_t::VariableArrayCount)
-            ? variable_count
-            : layout_entry.ArrayCount;
-        for (uint32_t array_element = 0; array_element < count; ++array_element)
+        const uint32_t Count = LayoutEntry.Flags.has(EDescriptorBindingFlag_t::VariableArrayCount)
+            ? VariableCount
+            : LayoutEntry.ArrayCount;
+        for (uint32_t ArrayElement = 0; ArrayElement < Count; ++ArrayElement)
         {
-            const uint64_t key = (static_cast<uint64_t>(layout_entry.Binding) << 32u) | array_element;
-            if (!written_elements.contains(key))
+            const uint64_t Key = (static_cast<uint64_t>(LayoutEntry.Binding) << 32u) | ArrayElement;
+            if (!WrittenElements.contains(Key))
                 throw std::invalid_argument("BindGroup does not initialize every required descriptor.");
         }
     }
-    Device->getVkDevice().updateDescriptorSets(writes, {});
-    allocation_guard.Active = false;
+    Device->getVkDevice().updateDescriptorSets(Writes, {});
+    AllocationGuard.Active = false;
 }
 
 VulkanBindGroup::~VulkanBindGroup()

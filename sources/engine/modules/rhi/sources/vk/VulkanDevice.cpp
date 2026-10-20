@@ -1,4 +1,4 @@
-﻿#include "RHI.hpp"
+#include "RHI.hpp"
 #include "VulkanRHI.hpp"
 #include "VulkanBindGroup.hpp"
 #include "VulkanBuffer.hpp"
@@ -34,56 +34,56 @@ VulkanDevice::VulkanDevice(VulkanContextPtr InContext)
     , GraphicsQueue(Context->Device->getQueue(Context->GraphicsQueueFamilyIndex, 0))
     , DescriptorAllocator(std::make_shared<VulkanDescriptorAllocator>(*this))
 {
-    const auto queue_families = Context->PhysicalDevice.getQueueFamilyProperties();
-    if (Context->GraphicsQueueFamilyIndex >= queue_families.size())
+    const auto QueueFamilies = Context->PhysicalDevice.getQueueFamilyProperties();
+    if (Context->GraphicsQueueFamilyIndex >= QueueFamilies.size())
         throw std::out_of_range("Vulkan queue family index is out of range.");
 
-    const auto properties = Context->PhysicalDevice.getProperties();
-    Limits.MaxColorAttachments = properties.limits.maxColorAttachments;
-    Limits.MaxViewports = properties.limits.maxViewports;
-    Limits.MaxFramebufferWidth = properties.limits.maxFramebufferWidth;
-    Limits.MaxFramebufferHeight = properties.limits.maxFramebufferHeight;
-    Limits.MaxVertexInputBindings = properties.limits.maxVertexInputBindings;
-    Limits.MaxVertexInputAttributes = properties.limits.maxVertexInputAttributes;
-    Limits.MaxPushConstantSize = properties.limits.maxPushConstantsSize;
-    Limits.MaxBoundBindGroups = properties.limits.maxBoundDescriptorSets;
-    Limits.MinUniformBufferOffsetAlignment = properties.limits.minUniformBufferOffsetAlignment;
-    Limits.MinStorageBufferOffsetAlignment = properties.limits.minStorageBufferOffsetAlignment;
-    Limits.MinTexelBufferOffsetAlignment = properties.limits.minTexelBufferOffsetAlignment;
-    Limits.TimestampValidBits = queue_families[Context->GraphicsQueueFamilyIndex].timestampValidBits;
+    const auto Properties = Context->PhysicalDevice.getProperties();
+    Limits.MaxColorAttachments = Properties.limits.maxColorAttachments;
+    Limits.MaxViewports = Properties.limits.maxViewports;
+    Limits.MaxFramebufferWidth = Properties.limits.maxFramebufferWidth;
+    Limits.MaxFramebufferHeight = Properties.limits.maxFramebufferHeight;
+    Limits.MaxVertexInputBindings = Properties.limits.maxVertexInputBindings;
+    Limits.MaxVertexInputAttributes = Properties.limits.maxVertexInputAttributes;
+    Limits.MaxPushConstantSize = Properties.limits.maxPushConstantsSize;
+    Limits.MaxBoundBindGroups = Properties.limits.maxBoundDescriptorSets;
+    Limits.MinUniformBufferOffsetAlignment = Properties.limits.minUniformBufferOffsetAlignment;
+    Limits.MinStorageBufferOffsetAlignment = Properties.limits.minStorageBufferOffsetAlignment;
+    Limits.MinTexelBufferOffsetAlignment = Properties.limits.minTexelBufferOffsetAlignment;
+    Limits.TimestampValidBits = QueueFamilies[Context->GraphicsQueueFamilyIndex].timestampValidBits;
     // VkPhysicalDeviceLimits::timestampPeriod is nanoseconds per timestamp tick.
-    Limits.TimestampPeriodNanoseconds = properties.limits.timestampPeriod;
+    Limits.TimestampPeriodNanoseconds = Properties.limits.timestampPeriod;
 
     Features = Context->EnabledFeatures;
     if (Features.AccelerationStructure || Features.RayTracingPipeline)
     {
-        vk::PhysicalDeviceAccelerationStructurePropertiesKHR acceleration_properties;
-        vk::PhysicalDeviceRayTracingPipelinePropertiesKHR pipeline_properties;
-        acceleration_properties.pNext = Features.RayTracingPipeline ? &pipeline_properties : nullptr;
-        vk::PhysicalDeviceProperties2 properties2;
-        properties2.pNext = &acceleration_properties;
-        Context->PhysicalDevice.getProperties2(&properties2);
+        vk::PhysicalDeviceAccelerationStructurePropertiesKHR AccelerationProperties;
+        vk::PhysicalDeviceRayTracingPipelinePropertiesKHR PipelineProperties;
+        AccelerationProperties.pNext = Features.RayTracingPipeline ? &PipelineProperties : nullptr;
+        vk::PhysicalDeviceProperties2 Properties2;
+        Properties2.pNext = &AccelerationProperties;
+        Context->PhysicalDevice.getProperties2(&Properties2);
         Limits.MinAccelerationStructureScratchOffsetAlignment =
-            acceleration_properties.minAccelerationStructureScratchOffsetAlignment;
+            AccelerationProperties.minAccelerationStructureScratchOffsetAlignment;
         if (Features.RayTracingPipeline)
         {
-            Limits.ShaderBindingTableAlignment = pipeline_properties.shaderGroupBaseAlignment;
-            Limits.ShaderGroupHandleAlignment = pipeline_properties.shaderGroupHandleAlignment;
-            Limits.ShaderGroupHandleSize = pipeline_properties.shaderGroupHandleSize;
-            Limits.MaxShaderGroupStride = pipeline_properties.maxShaderGroupStride;
-            Limits.MaxRayRecursionDepth = pipeline_properties.maxRayRecursionDepth;
-            Limits.MaxRayDispatchInvocationCount = pipeline_properties.maxRayDispatchInvocationCount;
+            Limits.ShaderBindingTableAlignment = PipelineProperties.shaderGroupBaseAlignment;
+            Limits.ShaderGroupHandleAlignment = PipelineProperties.shaderGroupHandleAlignment;
+            Limits.ShaderGroupHandleSize = PipelineProperties.shaderGroupHandleSize;
+            Limits.MaxShaderGroupStride = PipelineProperties.maxShaderGroupStride;
+            Limits.MaxRayRecursionDepth = PipelineProperties.maxRayRecursionDepth;
+            Limits.MaxRayDispatchInvocationCount = PipelineProperties.maxRayDispatchInvocationCount;
         }
     }
     Features.DeferredRelease = Features.TimelineSemaphore;
-    Features.TimestampQueries = queue_families[Context->GraphicsQueueFamilyIndex].timestampValidBits != 0;
+    Features.TimestampQueries = QueueFamilies[Context->GraphicsQueueFamilyIndex].timestampValidBits != 0;
     Features.DebugLabels = getVkDevice().getProcAddr("vkCmdBeginDebugUtilsLabelEXT") != nullptr;
-    if (const auto capabilities = getSwapchainCapabilities())
-        Features.HDRSwapchain = std::ranges::any_of(capabilities->Formats, [](const SurfaceFormat& format)
+    if (const auto Capabilities = getSwapchainCapabilities())
+        Features.HDRSwapchain = std::ranges::any_of(Capabilities->Formats, [](const SurfaceFormat& Format)
         {
-            return (format.Format == EFormat::RGB10A2_UNorm || format.Format == EFormat::RGBA16_Float) &&
-                (format.ColorSpace == EColorSpace::HDR10_ST2084 ||
-                 format.ColorSpace == EColorSpace::ExtendedSRGBLinear);
+            return (Format.Format == EFormat::RGB10A2_UNorm || Format.Format == EFormat::RGBA16_Float) &&
+                (Format.ColorSpace == EColorSpace::HDR10_ST2084 ||
+                 Format.ColorSpace == EColorSpace::ExtendedSRGBLinear);
         });
 
     Queues[0] = std::make_shared<VulkanQueue>(*this, Context, ECommandQueueType::Graphics);
@@ -135,10 +135,10 @@ std::optional<MemoryRequirements> VulkanDevice::getBufferMemoryRequirements(
     BufferDesc.PreferredMemoryProperty = Desc.PreferredMemoryProperty;
     BufferDesc.DedicatedAllocation = Desc.DedicatedAllocation;
 
-    auto buffer = VulkanBuffer::createUnbound(*this, BufferDesc);
-    if (!buffer)
+    auto Buffer = VulkanBuffer::createUnbound(*this, BufferDesc);
+    if (!Buffer)
         return std::nullopt;
-    return buffer->getMemoryRequirements();
+    return Buffer->getMemoryRequirements();
 }
 
 std::optional<MemoryRequirements> VulkanDevice::getImageMemoryRequirements(
@@ -159,10 +159,10 @@ std::optional<MemoryRequirements> VulkanDevice::getImageMemoryRequirements(
     ImageDesc.MemoryProperty = Desc.MemoryProperty;
 
     // 用带别名标志的路径查询: 别名会改变驱动给出的显存需求估算.
-    auto image = VulkanImage::createUnboundAliasing(*this, ImageDesc);
-    if (!image)
+    auto Image = VulkanImage::createUnboundAliasing(*this, ImageDesc);
+    if (!Image)
         return std::nullopt;
-    return image->getMemoryRequirements();
+    return Image->getMemoryRequirements();
 }
 
 std::shared_ptr<RBuffer> VulkanDevice::createPlacedBuffer(
@@ -171,24 +171,24 @@ std::shared_ptr<RBuffer> VulkanDevice::createPlacedBuffer(
     DeviceSizeType Offset)
 {
     requireReady();
-    auto heap = std::dynamic_pointer_cast<VulkanTransientHeap>(Heap);
-    if (!heap || !heap->isValid())
+    auto VkHeap = std::dynamic_pointer_cast<VulkanTransientHeap>(Heap);
+    if (!VkHeap || !VkHeap->isValid())
         return {};
 
-    const auto buffer = VulkanBuffer::createUnbound(*this, Desc);
-    if (!buffer)
+    const auto Buffer = VulkanBuffer::createUnbound(*this, Desc);
+    if (!Buffer)
         return {};
 
-    const auto requirements = buffer->getMemoryRequirements();
-    if (Offset % std::max<DeviceSizeType>(1, requirements.Alignment) != 0 ||
-        Offset + requirements.Size > heap->getSize() ||
-        (requirements.MemoryTypeBits & (1u << heap->getMemoryTypeIndex())) == 0)
+    const auto Requirements = Buffer->getMemoryRequirements();
+    if (Offset % std::max<DeviceSizeType>(1, Requirements.Alignment) != 0 ||
+        Offset + Requirements.Size > VkHeap->getSize() ||
+        (Requirements.MemoryTypeBits & (1u << VkHeap->getMemoryTypeIndex())) == 0)
         return {};
 
-    getVkDevice().bindBufferMemory(buffer->getVkBuffer(), heap->getVkDeviceMemory(), Offset);
-    buffer->bindPlacedMemory(
-        std::make_shared<VulkanHeapSubAllocation>(heap, Offset, requirements.Size));
-    return buffer;
+    getVkDevice().bindBufferMemory(Buffer->getVkBuffer(), VkHeap->getVkDeviceMemory(), Offset);
+    Buffer->bindPlacedMemory(
+        std::make_shared<VulkanHeapSubAllocation>(VkHeap, Offset, Requirements.Size));
+    return Buffer;
 }
 
 std::shared_ptr<RImage> VulkanDevice::createPlacedImage(
@@ -197,25 +197,25 @@ std::shared_ptr<RImage> VulkanDevice::createPlacedImage(
     DeviceSizeType Offset)
 {
     requireReady();
-    auto heap = std::dynamic_pointer_cast<VulkanTransientHeap>(Heap);
-    if (!heap || !heap->isValid())
+    auto VkHeap = std::dynamic_pointer_cast<VulkanTransientHeap>(Heap);
+    if (!VkHeap || !VkHeap->isValid())
         return {};
 
     // 复用同一段显存的所有 Image 都必须带 VK_IMAGE_CREATE_ALIAS_BIT.
-    const auto image = VulkanImage::createUnboundAliasing(*this, Desc);
-    if (!image)
+    const auto Image = VulkanImage::createUnboundAliasing(*this, Desc);
+    if (!Image)
         return {};
 
-    const auto requirements = image->getMemoryRequirements();
-    if (Offset % std::max<DeviceSizeType>(1, requirements.Alignment) != 0 ||
-        Offset + requirements.Size > heap->getSize() ||
-        (requirements.MemoryTypeBits & (1u << heap->getMemoryTypeIndex())) == 0)
+    const auto Requirements = Image->getMemoryRequirements();
+    if (Offset % std::max<DeviceSizeType>(1, Requirements.Alignment) != 0 ||
+        Offset + Requirements.Size > VkHeap->getSize() ||
+        (Requirements.MemoryTypeBits & (1u << VkHeap->getMemoryTypeIndex())) == 0)
         return {};
 
-    getVkDevice().bindImageMemory(image->getVkImage(), heap->getVkDeviceMemory(), Offset);
-    image->bindPlacedMemory(
-        std::make_shared<VulkanHeapSubAllocation>(heap, Offset, requirements.Size));
-    return image;
+    getVkDevice().bindImageMemory(Image->getVkImage(), VkHeap->getVkDeviceMemory(), Offset);
+    Image->bindPlacedMemory(
+        std::make_shared<VulkanHeapSubAllocation>(VkHeap, Offset, Requirements.Size));
+    return Image;
 }
 
 std::shared_ptr<RImageView> VulkanDevice::createImageView(
@@ -310,20 +310,20 @@ std::vector<std::byte> VulkanDevice::getRayTracingShaderGroupHandles(
         Limits.ShaderGroupHandleSize == 0 ||
         GroupCount > std::numeric_limits<size_t>::max() / Limits.ShaderGroupHandleSize)
         return {};
-    auto vk_pipeline = std::dynamic_pointer_cast<VulkanPipeline>(Pipeline);
-    if (!vk_pipeline || &vk_pipeline->getDevice() != this ||
-        vk_pipeline->getType() != EPipelineType::RayTracing || !vk_pipeline->isValid() ||
-        FirstGroup > vk_pipeline->getRayTracingGroupCount() ||
-        GroupCount > vk_pipeline->getRayTracingGroupCount() - FirstGroup)
+    auto RayTracingPipeline = std::dynamic_pointer_cast<VulkanPipeline>(Pipeline);
+    if (!RayTracingPipeline || &RayTracingPipeline->getDevice() != this ||
+        RayTracingPipeline->getType() != EPipelineType::RayTracing || !RayTracingPipeline->isValid() ||
+        FirstGroup > RayTracingPipeline->getRayTracingGroupCount() ||
+        GroupCount > RayTracingPipeline->getRayTracingGroupCount() - FirstGroup)
         return {};
-    std::vector<std::byte> result(static_cast<size_t>(GroupCount) * Limits.ShaderGroupHandleSize);
-    auto function = reinterpret_cast<PFN_vkGetRayTracingShaderGroupHandlesKHR>(
+    std::vector<std::byte> Result(static_cast<size_t>(GroupCount) * Limits.ShaderGroupHandleSize);
+    auto Function = reinterpret_cast<PFN_vkGetRayTracingShaderGroupHandlesKHR>(
         getVkDevice().getProcAddr("vkGetRayTracingShaderGroupHandlesKHR"));
-    if (!function || function(static_cast<VkDevice>(getVkDevice()),
-        static_cast<VkPipeline>(vk_pipeline->getVkPipeline()), FirstGroup, GroupCount,
-        result.size(), result.data()) != VK_SUCCESS)
+    if (!Function || Function(static_cast<VkDevice>(getVkDevice()),
+        static_cast<VkPipeline>(RayTracingPipeline->getVkPipeline()), FirstGroup, GroupCount,
+        Result.size(), Result.data()) != VK_SUCCESS)
         return {};
-    return result;
+    return Result;
 }
 
 std::shared_ptr<RCommandList> VulkanDevice::createCommandList(
@@ -385,8 +385,8 @@ std::shared_ptr<RQueryPool> VulkanDevice::createQueryPool(const QueryPoolDescrip
         (Desc.Type == EQueryType::Occlusion && !Features.OcclusionQueries) ||
         (Desc.Type == EQueryType::PipelineStatistics && !Features.PipelineStatisticsQueries))
         throw std::logic_error("Requested query type is not supported by this Vulkan device.");
-    constexpr uint32_t statistic_mask = (1u << 11) - 1;
-    if (Desc.Count == 0 || (Desc.PipelineStatistics.Value & ~statistic_mask) != 0 ||
+    constexpr uint32_t StatisticMask = (1u << 11) - 1;
+    if (Desc.Count == 0 || (Desc.PipelineStatistics.Value & ~StatisticMask) != 0 ||
         (Desc.Type == EQueryType::PipelineStatistics) != static_cast<bool>(Desc.PipelineStatistics))
         throw std::invalid_argument("Query pool count or pipeline-statistics mask is invalid.");
     return std::make_shared<VulkanQueryPool>(*this, Context, Desc);
@@ -395,22 +395,22 @@ std::shared_ptr<RQueryPool> VulkanDevice::createQueryPool(const QueryPoolDescrip
 FormatCapabilities VulkanDevice::getFormatCapabilities(EFormat Format) const
 {
     requireReady();
-    const auto properties = Context->PhysicalDevice.getFormatProperties(toVk(Format));
-    auto convert = [](vk::FormatFeatureFlags flags)
+    const auto Properties = Context->PhysicalDevice.getFormatProperties(toVk(Format));
+    auto Convert = [](vk::FormatFeatureFlags Flags)
     {
-        EFormatFeatures result;
-        if (flags & vk::FormatFeatureFlagBits::eSampledImage) result.set(EFormatFeature_t::Sampled);
-        if (flags & vk::FormatFeatureFlagBits::eStorageImage) result.set(EFormatFeature_t::Storage);
-        if (flags & vk::FormatFeatureFlagBits::eColorAttachment) result.set(EFormatFeature_t::ColorAttachment);
-        if (flags & vk::FormatFeatureFlagBits::eDepthStencilAttachment) result.set(EFormatFeature_t::DepthStencilAttachment);
-        if (flags & vk::FormatFeatureFlagBits::eSampledImageFilterLinear) result.set(EFormatFeature_t::LinearFiltering);
-        if (flags & vk::FormatFeatureFlagBits::eBlitSrc) result.set(EFormatFeature_t::BlitSource);
-        if (flags & vk::FormatFeatureFlagBits::eBlitDst) result.set(EFormatFeature_t::BlitDestination);
-        if (flags & vk::FormatFeatureFlagBits::eVertexBuffer) result.set(EFormatFeature_t::VertexBuffer);
-        return result;
+        EFormatFeatures Result;
+        if (Flags & vk::FormatFeatureFlagBits::eSampledImage) Result.set(EFormatFeature_t::Sampled);
+        if (Flags & vk::FormatFeatureFlagBits::eStorageImage) Result.set(EFormatFeature_t::Storage);
+        if (Flags & vk::FormatFeatureFlagBits::eColorAttachment) Result.set(EFormatFeature_t::ColorAttachment);
+        if (Flags & vk::FormatFeatureFlagBits::eDepthStencilAttachment) Result.set(EFormatFeature_t::DepthStencilAttachment);
+        if (Flags & vk::FormatFeatureFlagBits::eSampledImageFilterLinear) Result.set(EFormatFeature_t::LinearFiltering);
+        if (Flags & vk::FormatFeatureFlagBits::eBlitSrc) Result.set(EFormatFeature_t::BlitSource);
+        if (Flags & vk::FormatFeatureFlagBits::eBlitDst) Result.set(EFormatFeature_t::BlitDestination);
+        if (Flags & vk::FormatFeatureFlagBits::eVertexBuffer) Result.set(EFormatFeature_t::VertexBuffer);
+        return Result;
     };
-    return { convert(properties.optimalTilingFeatures),
-        convert(properties.linearTilingFeatures), convert(properties.bufferFeatures) };
+    return { Convert(Properties.optimalTilingFeatures),
+        Convert(Properties.linearTilingFeatures), Convert(Properties.bufferFeatures) };
 }
 
 std::optional<SwapchainCapabilities> VulkanDevice::getSwapchainCapabilities() const
@@ -418,66 +418,66 @@ std::optional<SwapchainCapabilities> VulkanDevice::getSwapchainCapabilities() co
     if (Context->isDeviceLost() || !Context->Surface) return std::nullopt;
     try
     {
-        const auto capabilities = Context->PhysicalDevice.getSurfaceCapabilitiesKHR(Context->Surface->Handle);
-        const auto formats = Context->PhysicalDevice.getSurfaceFormatsKHR(Context->Surface->Handle);
-        const auto modes = Context->PhysicalDevice.getSurfacePresentModesKHR(Context->Surface->Handle);
-        SwapchainCapabilities result;
-        result.MinimumImageCount = capabilities.minImageCount;
-        result.MaximumImageCount = capabilities.maxImageCount;
-        result.MinimumWidth = capabilities.minImageExtent.width;
-        result.MinimumHeight = capabilities.minImageExtent.height;
-        result.MaximumWidth = capabilities.maxImageExtent.width;
-        result.MaximumHeight = capabilities.maxImageExtent.height;
-        for (const auto& format : formats)
+        const auto Capabilities = Context->PhysicalDevice.getSurfaceCapabilitiesKHR(Context->Surface->Handle);
+        const auto Formats = Context->PhysicalDevice.getSurfaceFormatsKHR(Context->Surface->Handle);
+        const auto Modes = Context->PhysicalDevice.getSurfacePresentModesKHR(Context->Surface->Handle);
+        SwapchainCapabilities Result;
+        Result.MinimumImageCount = Capabilities.minImageCount;
+        Result.MaximumImageCount = Capabilities.maxImageCount;
+        Result.MinimumWidth = Capabilities.minImageExtent.width;
+        Result.MinimumHeight = Capabilities.minImageExtent.height;
+        Result.MaximumWidth = Capabilities.maxImageExtent.width;
+        Result.MaximumHeight = Capabilities.maxImageExtent.height;
+        for (const auto& Format : Formats)
         {
-            EFormat mapped_format = EFormat::Undefined;
-            switch (format.format)
+            EFormat MappedFormat = EFormat::Undefined;
+            switch (Format.format)
             {
-            case vk::Format::eR8G8B8A8Unorm: mapped_format = EFormat::RGBA8_UNorm; break;
-            case vk::Format::eR8G8B8A8Srgb: mapped_format = EFormat::RGBA8_sRGB; break;
-            case vk::Format::eB8G8R8A8Unorm: mapped_format = EFormat::BGRA8_UNorm; break;
-            case vk::Format::eB8G8R8A8Srgb: mapped_format = EFormat::BGRA8_sRGB; break;
-            case vk::Format::eA2B10G10R10UnormPack32: mapped_format = EFormat::RGB10A2_UNorm; break;
-            case vk::Format::eR16G16B16A16Sfloat: mapped_format = EFormat::RGBA16_Float; break;
+            case vk::Format::eR8G8B8A8Unorm: MappedFormat = EFormat::RGBA8_UNorm; break;
+            case vk::Format::eR8G8B8A8Srgb: MappedFormat = EFormat::RGBA8_sRGB; break;
+            case vk::Format::eB8G8R8A8Unorm: MappedFormat = EFormat::BGRA8_UNorm; break;
+            case vk::Format::eB8G8R8A8Srgb: MappedFormat = EFormat::BGRA8_sRGB; break;
+            case vk::Format::eA2B10G10R10UnormPack32: MappedFormat = EFormat::RGB10A2_UNorm; break;
+            case vk::Format::eR16G16B16A16Sfloat: MappedFormat = EFormat::RGBA16_Float; break;
             default: break;
             }
-            std::optional<EColorSpace> mapped_space;
-            switch (format.colorSpace)
+            std::optional<EColorSpace> MappedSpace;
+            switch (Format.colorSpace)
             {
-            case vk::ColorSpaceKHR::eSrgbNonlinear: mapped_space = EColorSpace::SRGB_Nonlinear; break;
-            case vk::ColorSpaceKHR::eAdobergbNonlinearEXT: mapped_space = EColorSpace::AdobeRGB; break;
-            case vk::ColorSpaceKHR::eDciP3NonlinearEXT: mapped_space = EColorSpace::DCIP3; break;
-            case vk::ColorSpaceKHR::eBt2020LinearEXT: mapped_space = EColorSpace::Rec2020; break;
-            case vk::ColorSpaceKHR::eHdr10St2084EXT: mapped_space = EColorSpace::HDR10_ST2084; break;
-            case vk::ColorSpaceKHR::eExtendedSrgbLinearEXT: mapped_space = EColorSpace::ExtendedSRGBLinear; break;
+            case vk::ColorSpaceKHR::eSrgbNonlinear: MappedSpace = EColorSpace::SRGB_Nonlinear; break;
+            case vk::ColorSpaceKHR::eAdobergbNonlinearEXT: MappedSpace = EColorSpace::AdobeRGB; break;
+            case vk::ColorSpaceKHR::eDciP3NonlinearEXT: MappedSpace = EColorSpace::DCIP3; break;
+            case vk::ColorSpaceKHR::eBt2020LinearEXT: MappedSpace = EColorSpace::Rec2020; break;
+            case vk::ColorSpaceKHR::eHdr10St2084EXT: MappedSpace = EColorSpace::HDR10_ST2084; break;
+            case vk::ColorSpaceKHR::eExtendedSrgbLinearEXT: MappedSpace = EColorSpace::ExtendedSRGBLinear; break;
             default: break;
             }
-            if (mapped_format != EFormat::Undefined && mapped_space)
-                result.Formats.push_back({ mapped_format, *mapped_space });
+            if (MappedFormat != EFormat::Undefined && MappedSpace)
+                Result.Formats.push_back({ MappedFormat, *MappedSpace });
         }
-        for (const auto mode : modes)
+        for (const auto Mode : Modes)
         {
-            switch (mode)
+            switch (Mode)
             {
-            case vk::PresentModeKHR::eImmediate: result.PresentModes.push_back(EPresentMode::Immediate); break;
-            case vk::PresentModeKHR::eFifo: result.PresentModes.push_back(EPresentMode::Fifo); break;
-            case vk::PresentModeKHR::eFifoRelaxed: result.PresentModes.push_back(EPresentMode::FifoRelaxed); break;
-            case vk::PresentModeKHR::eMailbox: result.PresentModes.push_back(EPresentMode::Mailbox); break;
+            case vk::PresentModeKHR::eImmediate: Result.PresentModes.push_back(EPresentMode::Immediate); break;
+            case vk::PresentModeKHR::eFifo: Result.PresentModes.push_back(EPresentMode::Fifo); break;
+            case vk::PresentModeKHR::eFifoRelaxed: Result.PresentModes.push_back(EPresentMode::FifoRelaxed); break;
+            case vk::PresentModeKHR::eMailbox: Result.PresentModes.push_back(EPresentMode::Mailbox); break;
             default: break;
             }
         }
-        const bool hdr_format = std::ranges::any_of(result.Formats, [](const SurfaceFormat& format)
+        const bool HdrFormat = std::ranges::any_of(Result.Formats, [](const SurfaceFormat& Format)
         {
-            return format.ColorSpace == EColorSpace::HDR10_ST2084 ||
-                format.ColorSpace == EColorSpace::ExtendedSRGBLinear;
+            return Format.ColorSpace == EColorSpace::HDR10_ST2084 ||
+                Format.ColorSpace == EColorSpace::ExtendedSRGBLinear;
         });
-        result.SupportsHDRMetadata = Context->EnabledFeatures.HDRMetadata && hdr_format;
-        return result;
+        Result.SupportsHDRMetadata = Context->EnabledFeatures.HDRMetadata && HdrFormat;
+        return Result;
     }
-    catch (const vk::SystemError& error)
+    catch (const vk::SystemError& Error)
     {
-        const auto status = vulkan_wsi::mapStatus(vulkan_wsi::resultFromSystemError(error));
-        if (status && *status == ESwapchainStatus::DeviceLost) Context->markDeviceLost();
+        const auto Status = vulkan_wsi::mapStatus(vulkan_wsi::resultFromSystemError(Error));
+        if (Status && *Status == ESwapchainStatus::DeviceLost) Context->markDeviceLost();
         return std::nullopt;
     }
 }
@@ -498,20 +498,20 @@ std::shared_ptr<DeviceMemory> VulkanDevice::allocateMemory(
         throw std::invalid_argument("Vulkan memory requirements are invalid.");
     }
 
-    const vk::MemoryAllocateInfo allocation_info(
+    const vk::MemoryAllocateInfo AllocationInfo(
         Requirements.Size,
         findMemoryType(Requirements.MemoryTypeBits, toVk(Property)));
-    vk::DeviceMemory device_memory = Context->Device->allocateMemory(allocation_info);
+    vk::DeviceMemory VkDeviceMemory = Context->Device->allocateMemory(AllocationInfo);
 
-    auto& memory = VulkanDeviceMemoryPool::self().allocateMemory();
-    memory.OwnerDevice = Context->Device.get();
-    memory.VkDeviceMemory = device_memory;
-    memory.Requirements = Requirements;
-    memory.Property = Property;
-    memory.OwnershipState = DeviceMemory::EState::OwnsMemory;
+    auto& Memory = VulkanDeviceMemoryPool::self().allocateMemory();
+    Memory.OwnerDevice = Context->Device.get();
+    Memory.VkDeviceMemory = VkDeviceMemory;
+    Memory.Requirements = Requirements;
+    Memory.Property = Property;
+    Memory.OwnershipState = DeviceMemory::EState::OwnsMemory;
 
     return std::shared_ptr<DeviceMemory>(
-        &memory,
+        &Memory,
         VulkanDeviceMemoryDeleter(&VulkanDeviceMemoryPool::self()));
 }
 
@@ -557,7 +557,7 @@ bool VulkanDevice::deferRelease(
         !CompletionSemaphore->isTimeline() || &CompletionSemaphore->getDevice() != this)
         return false;
 
-    std::scoped_lock lock(DeferredReleaseMutex);
+    std::scoped_lock Lock(DeferredReleaseMutex);
     DeferredReleases.push_back({
         .Sequence = NextDeferredReleaseSequence++,
         .CompletionValue = CompletionValue,
@@ -570,43 +570,43 @@ bool VulkanDevice::deferRelease(
 void VulkanDevice::collectDeferredReleases()
 {
     if (Context->isDeviceLost()) { drainDeferredReleases(); return; }
-    std::vector<DeferredReleaseEntry> ready;
+    std::vector<DeferredReleaseEntry> Ready;
     {
-        std::scoped_lock lock(DeferredReleaseMutex);
-        for (auto entry = DeferredReleases.begin(); entry != DeferredReleases.end();)
+        std::scoped_lock Lock(DeferredReleaseMutex);
+        for (auto Entry = DeferredReleases.begin(); Entry != DeferredReleases.end();)
         {
-            if (entry->CompletionSemaphore->getCompletedValue() >= entry->CompletionValue)
+            if (Entry->CompletionSemaphore->getCompletedValue() >= Entry->CompletionValue)
             {
-                ready.push_back(std::move(*entry));
-                entry = DeferredReleases.erase(entry);
+                Ready.push_back(std::move(*Entry));
+                Entry = DeferredReleases.erase(Entry);
             }
             else
             {
-                ++entry;
+                ++Entry;
             }
         }
     }
-    std::ranges::sort(ready, {}, &DeferredReleaseEntry::Sequence);
+    std::ranges::sort(Ready, {}, &DeferredReleaseEntry::Sequence);
     // Reset explicitly outside the mutex: destructors may call arbitrary engine code or enqueue again.
-    for (auto& entry : ready)
+    for (auto& Entry : Ready)
     {
-        entry.Resource.reset();
-        entry.CompletionSemaphore.reset();
+        Entry.Resource.reset();
+        Entry.CompletionSemaphore.reset();
     }
 }
 
 void VulkanDevice::drainDeferredReleases() noexcept
 {
-    std::vector<DeferredReleaseEntry> releases;
+    std::vector<DeferredReleaseEntry> Releases;
     {
-        std::scoped_lock lock(DeferredReleaseMutex);
-        releases.swap(DeferredReleases);
+        std::scoped_lock Lock(DeferredReleaseMutex);
+        Releases.swap(DeferredReleases);
     }
-    std::ranges::sort(releases, {}, &DeferredReleaseEntry::Sequence);
-    for (auto& entry : releases)
+    std::ranges::sort(Releases, {}, &DeferredReleaseEntry::Sequence);
+    for (auto& Entry : Releases)
     {
-        entry.Resource.reset();
-        entry.CompletionSemaphore.reset();
+        Entry.Resource.reset();
+        Entry.CompletionSemaphore.reset();
     }
 }
 
@@ -629,14 +629,14 @@ void* VulkanDevice::getNativeHandle() const
 
 uint32_t VulkanDevice::findMemoryType(uint32_t TypeBits, vk::MemoryPropertyFlags Properties)
 {
-    vk::PhysicalDeviceMemoryProperties memory_properties = Context->PhysicalDevice.getMemoryProperties();
+    vk::PhysicalDeviceMemoryProperties MemoryProperties = Context->PhysicalDevice.getMemoryProperties();
 
-    for (uint32_t i = 0; i < memory_properties.memoryTypeCount; i++)
+    for (uint32_t I = 0; I < MemoryProperties.memoryTypeCount; I++)
     {
-        if ((TypeBits & (1u << i)) &&
-            (memory_properties.memoryTypes[i].propertyFlags & Properties) == Properties)
+        if ((TypeBits & (1u << I)) &&
+            (MemoryProperties.memoryTypes[I].propertyFlags & Properties) == Properties)
         {
-            return i;
+            return I;
         }
     }
     throw std::runtime_error("Failed to find a suitable Vulkan memory type.");

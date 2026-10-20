@@ -22,11 +22,10 @@ namespace runtime::renderer
 {
 
 /**
- * @brief Renderer facade that owns the application-facing RHI lifecycle.
+ * @brief 持有面向应用的 RHI 生命周期的渲染器门面。
  *
- * UI/launcher code depends on this service instead of constructing backend objects.
- * Shader reflection and automatic BindGroup resolution stay in Renderer while native
- * descriptor allocation remains inside RHI.
+ * UI/launcher 代码依赖本服务，而不是自行构造后端对象。
+ * 着色器反射与自动 BindGroup 解析留在 Renderer 中，而原生描述符分配仍位于 RHI 内部。
  */
 class RendererServer final
 {
@@ -61,23 +60,26 @@ public:
     RendererServer& operator=(const RendererServer&) = delete;
 
     /**
-     * @brief Initializes the selected backend for a window.
-     * @param BackendAPI Graphics API implementation to create.
-     * @param Window Platform-neutral output window.
+     * @brief 为窗口初始化选定的后端。
+     * @param BackendAPI 要创建的图形 API 实现。
+     * @param Window 平台无关的输出窗口。
      */
     void initialize(
         rhi::ESupportedBackendAPI BackendAPI,
         const ui::GenericWindowPointer& Window);
 
-    /** @brief Waits for outstanding GPU work and destroys renderer-owned RHI state. */
+    /** @brief 等待未完成的 GPU 工作并销毁 Renderer 持有的 RHI 状态。 */
     void shutdown() noexcept;
 
     [[nodiscard]] bool isInitialized() const noexcept;
     [[nodiscard]] const std::shared_ptr<rhi::RDevice>& getDevice() const noexcept;
-    /** @brief Returns the most recently completed GPU frame interval measured by timestamp queries. @return Nanoseconds, or std::nullopt before the first result or when unsupported. */
+    /**
+     * @brief 返回由时间戳查询测得、最近完成的 GPU 帧间隔。
+     * @return 纳秒；在首个结果之前或不受支持时为 std::nullopt。
+     */
     [[nodiscard]] std::optional<double> getLastGPUFrameTimeNanoseconds() const noexcept;
 
-    /** @brief Retains an object until all renderer submissions made so far have completed. */
+    /** @brief 保留一个对象，直到目前为止所有 Renderer 提交均已完成。 */
     [[nodiscard]] bool deferRelease(std::shared_ptr<void> Resource);
 
     /** @brief 渲染代理世界数据容器(持有 RenderProxy 与变化意图), 供应用/Game Framework 填充. */
@@ -100,9 +102,9 @@ public:
     [[nodiscard]] const RenderFrameSubmission& getLastRenderSubmission() const noexcept;
 
     /**
-     * @brief Exercises reflection, automatic resource resolution and descriptor binding.
-     * @throws std::exception if any BindGroup layer is invalid.
-     * @note This deterministic startup smoke test uses the repository SPIR-V fixture.
+     * @brief 演练反射、自动资源解析与描述符绑定。
+     * @throws std::exception 如果任一 BindGroup 层无效。
+     * @note 该确定性启动冒烟测试使用仓库中的 SPIR-V fixture。
      */
     void runBindGroupSmokeTest();
 
@@ -126,7 +128,7 @@ public:
     /** @brief 通知 Renderer 输出尺寸变化；0 尺寸表示窗口最小化.  */
     void resize(uint32_t Width, uint32_t Height);
 
-    /** @brief Recreates only the native surface and swapchain after SurfaceLost. DeviceLost requires full application/RHI resource rebuild. */
+    /** @brief 在 SurfaceLost 后仅重建原生 surface 与交换链。DeviceLost 需要完全重建应用/RHI 资源。 */
     [[nodiscard]] bool recoverSurface();
 
 private:

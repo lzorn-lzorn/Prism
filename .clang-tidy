@@ -6,7 +6,7 @@
 #   接口类                            : 抽象类 + I- 前缀 (AbstractClass)
 #   枚举                              : E- 前缀; 枚举值大驼峰
 #   函数 / 成员函数 / lambda         : 小驼峰 (camelBack)
-#   函数形参 / 局部变量 / 成员变量     : 下划线 (lower_case)
+#   函数形参 / 局部变量 / 成员变量     : 大驼峰 (CamelCase, UE 风格)
 #   全局常量 / 枚举值                : 大驼峰 (无前缀)
 #   全局变量                          : 大驼峰 + G- 前缀
 #   命名空间                          : 单小写单词 (lower_case)
@@ -22,6 +22,7 @@
 # ============================================================================
 
 Checks: '-*,readability-identifier-naming'
+HeaderFilterRegex: '.*sources.*'
 
 CheckOptions:
   # --------------------------------------------------------------------------
@@ -79,28 +80,28 @@ CheckOptions:
     value: camelBack
 
   # --------------------------------------------------------------------------
-  # 函数形参 / 局部变量 / 成员变量: 下划线命名
+  # 函数形参 / 局部变量 / 成员变量: 大驼峰命名 (UE 风格)
   # --------------------------------------------------------------------------
   - key:   readability-identifier-naming.MemberCase
-    value: lower_case
+    value: CamelCase
   - key:   readability-identifier-naming.PrivateMemberCase
-    value: lower_case
+    value: CamelCase
   - key:   readability-identifier-naming.ProtectedMemberCase
-    value: lower_case
+    value: CamelCase
   - key:   readability-identifier-naming.PublicMemberCase
-    value: lower_case
+    value: CamelCase
   - key:   readability-identifier-naming.ParameterCase
-    value: lower_case
+    value: CamelCase
   - key:   readability-identifier-naming.PointerParameterCase
-    value: lower_case
+    value: CamelCase
   - key:   readability-identifier-naming.ParameterPackCase
-    value: lower_case
+    value: CamelCase
   - key:   readability-identifier-naming.LocalVariableCase
-    value: lower_case
+    value: CamelCase
   - key:   readability-identifier-naming.LocalPointerCase
-    value: lower_case
+    value: CamelCase
   - key:   readability-identifier-naming.VariableCase
-    value: lower_case
+    value: CamelCase
 
   # --------------------------------------------------------------------------
   # 全局: 大驼峰; 全局变量 G- 前缀
@@ -128,7 +129,7 @@ CheckOptions:
   - key:   readability-identifier-naming.StaticConstantCase
     value: CamelCase
   - key:   readability-identifier-naming.LocalConstantCase
-    value: lower_case
+    value: CamelCase
 
   # --------------------------------------------------------------------------
   # 命名空间: 单小写单词

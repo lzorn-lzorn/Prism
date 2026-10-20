@@ -48,50 +48,50 @@ std::shared_ptr<VulkanTransientHeap> VulkanTransientHeap::create(
         return {};
 
     // 堆允许使用的内存类型必须同时满足调用方要求.
-    const auto memory_properties = Device.getVkPhysicalDevice().getMemoryProperties();
-    const auto required = toVk(Desc.RequiredProperties);
-    uint32_t selected_type = UINT32_MAX;
-    float selected_score = -1.0f;
-    for (uint32_t Index = 0; Index < memory_properties.memoryTypeCount; ++Index)
+    const auto MemoryProperties = Device.getVkPhysicalDevice().getMemoryProperties();
+    const auto Required = toVk(Desc.RequiredProperties);
+    uint32_t SelectedType = UINT32_MAX;
+    float SelectedScore = -1.0f;
+    for (uint32_t Index = 0; Index < MemoryProperties.memoryTypeCount; ++Index)
     {
         if (!(Desc.MemoryTypeBits & (1u << Index)))
             continue;
-        const auto properties = memory_properties.memoryTypes[Index].propertyFlags;
-        if ((properties & required) != required)
+        const auto Properties = MemoryProperties.memoryTypes[Index].propertyFlags;
+        if ((Properties & Required) != Required)
             continue;
-        const float score = static_cast<float>(
-            std::popcount(static_cast<uint32_t>(properties & toVk(Desc.PreferredProperties))));
-        if (score > selected_score)
+        const float Score = static_cast<float>(
+            std::popcount(static_cast<uint32_t>(Properties & toVk(Desc.PreferredProperties))));
+        if (Score > SelectedScore)
         {
-            selected_score = score;
-            selected_type = Index;
+            SelectedScore = Score;
+            SelectedType = Index;
         }
     }
-    if (selected_type == UINT32_MAX)
+    if (SelectedType == UINT32_MAX)
         return {};
 
-    const auto allocation_size = alignUp(Desc.Size, std::max<DeviceSizeType>(1, Desc.Alignment));
-    vk::MemoryAllocateInfo allocation_info(allocation_size, selected_type);
-    vk::DeviceMemory memory;
+    const auto AllocationSize = alignUp(Desc.Size, std::max<DeviceSizeType>(1, Desc.Alignment));
+    vk::MemoryAllocateInfo AllocationInfo(AllocationSize, SelectedType);
+    vk::DeviceMemory Memory;
     try
     {
-        memory = Device.getVkDevice().allocateMemory(allocation_info);
+        Memory = Device.getVkDevice().allocateMemory(AllocationInfo);
     }
     catch (const std::exception&)
     {
         // 显存不足/选择的内存类型不可用: 交给调用方回退到逐资源创建.
         return {};
     }
-    if (!memory)
+    if (!Memory)
         return {};
     // @note 这里不给 VkDeviceMemory 起调试名: DebugName 需要
     // VK_EXT_debug_utils 的函数指针, 而该扩展未在本后端启用.
 
-    auto heap = std::shared_ptr<VulkanTransientHeap>(
-        new VulkanTransientHeap(Device, Desc, memory));
-    heap->Descriptor.Size = allocation_size;
-    heap->MemoryTypeIndex = selected_type;
-    return heap;
+    auto Heap = std::shared_ptr<VulkanTransientHeap>(
+        new VulkanTransientHeap(Device, Desc, Memory));
+    Heap->Descriptor.Size = AllocationSize;
+    Heap->MemoryTypeIndex = SelectedType;
+    return Heap;
 }
 
 RDevice& VulkanTransientHeap::getDevice() const noexcept
@@ -115,25 +115,25 @@ std::optional<DeviceSizeType> VulkanTransientHeap::suballocate(
     if (TypeBits != 0 && (TypeBits & (1u << MemoryTypeIndex)) == 0)
         return std::nullopt;
 
-    std::scoped_lock lock(Mutex);
+    std::scoped_lock Lock(Mutex);
     for (size_t Index = 0; Index < FreeRanges.size(); ++Index)
     {
-        const DeviceSizeType aligned_begin = alignUp(FreeRanges[Index].Begin, Alignment);
-        if (aligned_begin + Size > FreeRanges[Index].End)
+        const DeviceSizeType AlignedBegin = alignUp(FreeRanges[Index].Begin, Alignment);
+        if (AlignedBegin + Size > FreeRanges[Index].End)
             continue;
 
-        const DeviceSizeType aligned_end = aligned_begin + Size;
-        const Range original = FreeRanges[Index];
+        const DeviceSizeType AlignedEnd = AlignedBegin + Size;
+        const Range Original = FreeRanges[Index];
         FreeRanges.erase(FreeRanges.begin() + static_cast<ptrdiff_t>(Index));
-        if (original.Begin < aligned_begin)
+        if (Original.Begin < AlignedBegin)
             FreeRanges.insert(
-                FreeRanges.begin() + static_cast<ptrdiff_t>(Index), { original.Begin, aligned_begin });
-        if (aligned_end < original.End)
+                FreeRanges.begin() + static_cast<ptrdiff_t>(Index), { Original.Begin, AlignedBegin });
+        if (AlignedEnd < Original.End)
             FreeRanges.insert(
                 FreeRanges.begin() + static_cast<ptrdiff_t>(Index) +
-                    (original.Begin < aligned_begin ? 1 : 0),
-                { aligned_end, original.End });
-        return aligned_begin;
+                    (Original.Begin < AlignedBegin ? 1 : 0),
+                { AlignedEnd, Original.End });
+        return AlignedBegin;
     }
     return std::nullopt;
 }
@@ -142,21 +142,21 @@ void VulkanTransientHeap::release(DeviceSizeType Offset, DeviceSizeType Size)
 {
     if (Size == 0)
         return;
-    std::scoped_lock lock(Mutex);
+    std::scoped_lock Lock(Mutex);
     FreeRanges.push_back({ Offset, Offset + Size });
     std::sort(FreeRanges.begin(), FreeRanges.end(),
         [](const Range& Lhs, const Range& Rhs) { return Lhs.Begin < Rhs.Begin; });
 
-    std::vector<Range> merged;
-    merged.reserve(FreeRanges.size());
-    for (const Range& current : FreeRanges)
+    std::vector<Range> Merged;
+    Merged.reserve(FreeRanges.size());
+    for (const Range& Current : FreeRanges)
     {
-        if (!merged.empty() && merged.back().End >= current.Begin)
-            merged.back().End = std::max(merged.back().End, current.End);
+        if (!Merged.empty() && Merged.back().End >= Current.Begin)
+            Merged.back().End = std::max(Merged.back().End, Current.End);
         else
-            merged.push_back(current);
+            Merged.push_back(Current);
     }
-    FreeRanges = std::move(merged);
+    FreeRanges = std::move(Merged);
 }
 
 } // namespace rhi

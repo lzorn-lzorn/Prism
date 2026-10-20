@@ -1,4 +1,4 @@
-﻿#include "VulkanRayTracing.hpp"
+#include "VulkanRayTracing.hpp"
 
 #include "VulkanBuffer.hpp"
 #include "VulkanDevice.hpp"
@@ -17,9 +17,9 @@ namespace
 template <typename Function>
 Function load(VulkanDevice& Device, const char* Name)
 {
-    auto function = reinterpret_cast<Function>(Device.getVkDevice().getProcAddr(Name));
-    if (!function) throw std::logic_error(std::string("Missing Vulkan ray-tracing command: ") + Name);
-    return function;
+    auto Proc = reinterpret_cast<Function>(Device.getVkDevice().getProcAddr(Name));
+    if (!Proc) throw std::logic_error(std::string("Missing Vulkan ray-tracing command: ") + Name);
+    return Proc;
 }
 
 VkAccelerationStructureTypeKHR toVk(EAccelerationStructureType Type)
@@ -31,21 +31,21 @@ VkAccelerationStructureTypeKHR toVk(EAccelerationStructureType Type)
 
 VkBuildAccelerationStructureFlagsKHR toVk(EAccelerationStructureBuildFlags Flags)
 {
-    VkBuildAccelerationStructureFlagsKHR result = 0;
-    if (Flags.has(EAccelerationStructureBuildFlag_t::AllowUpdate)) result |= VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
-    if (Flags.has(EAccelerationStructureBuildFlag_t::AllowCompaction)) result |= VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR;
-    if (Flags.has(EAccelerationStructureBuildFlag_t::PreferFastTrace)) result |= VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
-    if (Flags.has(EAccelerationStructureBuildFlag_t::PreferFastBuild)) result |= VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR;
-    if (Flags.has(EAccelerationStructureBuildFlag_t::LowMemory)) result |= VK_BUILD_ACCELERATION_STRUCTURE_LOW_MEMORY_BIT_KHR;
-    return result;
+    VkBuildAccelerationStructureFlagsKHR Result = 0;
+    if (Flags.has(EAccelerationStructureBuildFlag_t::AllowUpdate)) Result |= VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
+    if (Flags.has(EAccelerationStructureBuildFlag_t::AllowCompaction)) Result |= VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR;
+    if (Flags.has(EAccelerationStructureBuildFlag_t::PreferFastTrace)) Result |= VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+    if (Flags.has(EAccelerationStructureBuildFlag_t::PreferFastBuild)) Result |= VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR;
+    if (Flags.has(EAccelerationStructureBuildFlag_t::LowMemory)) Result |= VK_BUILD_ACCELERATION_STRUCTURE_LOW_MEMORY_BIT_KHR;
+    return Result;
 }
 
 VkGeometryFlagsKHR toVk(EAccelerationStructureGeometryFlags Flags)
 {
-    VkGeometryFlagsKHR result = 0;
-    if (Flags.has(EAccelerationStructureGeometryFlag_t::Opaque)) result |= VK_GEOMETRY_OPAQUE_BIT_KHR;
-    if (Flags.has(EAccelerationStructureGeometryFlag_t::NoDuplicateAnyHitInvocation)) result |= VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR;
-    return result;
+    VkGeometryFlagsKHR Result = 0;
+    if (Flags.has(EAccelerationStructureGeometryFlag_t::Opaque)) Result |= VK_GEOMETRY_OPAQUE_BIT_KHR;
+    if (Flags.has(EAccelerationStructureGeometryFlag_t::NoDuplicateAnyHitInvocation)) Result |= VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR;
+    return Result;
 }
 
 VkFormat rayTracingVertexFormat(EVertexFormat Format)
@@ -65,12 +65,12 @@ VulkanBuffer* requireBuffer(
     EBufferUsage Usage,
     DeviceSizeType Offset)
 {
-    auto* result = dynamic_cast<VulkanBuffer*>(Buffer.get());
-    if (!result || &result->getDevice() != &Device || !result->isValid() ||
+    auto* Result = dynamic_cast<VulkanBuffer*>(Buffer.get());
+    if (!Result || &Result->getDevice() != &Device || !Result->isValid() ||
         !Buffer->getDescriptor().Usage.has(Usage) || Offset >= Buffer->getDescriptor().Size ||
         Buffer->getDeviceAddress() == 0)
         throw std::invalid_argument("Acceleration-structure input requires an addressable Vulkan buffer and valid offset.");
-    return result;
+    return Result;
 }
 
 struct GeometryStorage
@@ -88,112 +88,112 @@ GeometryStorage convertGeometries(
     bool IncludeRanges)
 {
     if (Geometries.empty()) throw std::invalid_argument("Acceleration-structure build requires geometry.");
-    GeometryStorage output;
-    output.Geometries.reserve(Geometries.size());
-    output.Ranges.reserve(Geometries.size());
-    output.PrimitiveCounts.reserve(Geometries.size());
-    for (const auto& geometry : Geometries)
+    GeometryStorage Output;
+    Output.Geometries.reserve(Geometries.size());
+    Output.Ranges.reserve(Geometries.size());
+    Output.PrimitiveCounts.reserve(Geometries.size());
+    for (const auto& Geometry : Geometries)
     {
-        constexpr uint8_t known_geometry_flags =
+        constexpr uint8_t KnownGeometryFlags =
             static_cast<uint8_t>(EAccelerationStructureGeometryFlag_t::Opaque) |
             static_cast<uint8_t>(EAccelerationStructureGeometryFlag_t::NoDuplicateAnyHitInvocation);
-        if ((geometry.Flags.Value & ~known_geometry_flags) != 0)
+        if ((Geometry.Flags.Value & ~KnownGeometryFlags) != 0)
             throw std::invalid_argument("Acceleration-structure geometry contains unknown flags.");
-        if (geometry.PrimitiveCount == 0)
+        if (Geometry.PrimitiveCount == 0)
             throw std::invalid_argument("Acceleration-structure geometry requires primitives.");
-        VkAccelerationStructureGeometryKHR converted {
+        VkAccelerationStructureGeometryKHR Converted {
             .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
             .pNext = nullptr,
             .geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR,
             .geometry = {},
-            .flags = toVk(geometry.Flags)
+            .flags = toVk(Geometry.Flags)
         };
-        if (geometry.Type == EAccelerationStructureGeometryType::Triangles)
+        if (Geometry.Type == EAccelerationStructureGeometryType::Triangles)
         {
             if (StructureType != EAccelerationStructureType::BottomLevel)
                 throw std::invalid_argument("Triangle geometry is only valid in a bottom-level acceleration structure.");
-            const auto* triangles = std::get_if<AccelerationStructureTriangles>(&geometry.Data);
-            if (!triangles || triangles->VertexStride == 0 || triangles->MaxVertex == 0)
+            const auto* Triangles = std::get_if<AccelerationStructureTriangles>(&Geometry.Data);
+            if (!Triangles || Triangles->VertexStride == 0 || Triangles->MaxVertex == 0)
                 throw std::invalid_argument("Triangle geometry has invalid vertex metadata.");
-            const VkFormat format = rayTracingVertexFormat(triangles->VertexFormat);
-            if (format == VK_FORMAT_UNDEFINED)
+            const VkFormat Format = rayTracingVertexFormat(Triangles->VertexFormat);
+            if (Format == VK_FORMAT_UNDEFINED)
                 throw std::invalid_argument("Triangle vertex format is unsupported for Vulkan ray tracing.");
-            auto* vertices = requireBuffer(triangles->VertexBuffer, Device,
-                EBufferUsage::AccelerationStructureBuildInput, triangles->VertexOffset);
-            VkIndexType index_type = VK_INDEX_TYPE_NONE_KHR;
-            VkDeviceAddress index_address = 0;
-            if (triangles->IndexFormat != EIndexFormat::None)
+            auto* Vertices = requireBuffer(Triangles->VertexBuffer, Device,
+                EBufferUsage::AccelerationStructureBuildInput, Triangles->VertexOffset);
+            VkIndexType IndexType = VK_INDEX_TYPE_NONE_KHR;
+            VkDeviceAddress IndexAddress = 0;
+            if (Triangles->IndexFormat != EIndexFormat::None)
             {
-                auto* indices = requireBuffer(triangles->IndexBuffer, Device,
-                    EBufferUsage::AccelerationStructureBuildInput, triangles->IndexOffset);
-                index_type = triangles->IndexFormat == EIndexFormat::UInt16 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
-                index_address = indices->getDeviceAddress() + triangles->IndexOffset;
-                output.Resources.emplace_back(triangles->IndexBuffer);
+                auto* Indices = requireBuffer(Triangles->IndexBuffer, Device,
+                    EBufferUsage::AccelerationStructureBuildInput, Triangles->IndexOffset);
+                IndexType = Triangles->IndexFormat == EIndexFormat::UInt16 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
+                IndexAddress = Indices->getDeviceAddress() + Triangles->IndexOffset;
+                Output.Resources.emplace_back(Triangles->IndexBuffer);
             }
-            VkDeviceAddress transform_address = 0;
-            if (triangles->TransformBuffer)
+            VkDeviceAddress TransformAddress = 0;
+            if (Triangles->TransformBuffer)
             {
-                auto* transform = requireBuffer(triangles->TransformBuffer, Device,
-                    EBufferUsage::AccelerationStructureBuildInput, triangles->TransformOffset);
-                transform_address = transform->getDeviceAddress() + triangles->TransformOffset;
-                output.Resources.emplace_back(triangles->TransformBuffer);
+                auto* Transform = requireBuffer(Triangles->TransformBuffer, Device,
+                    EBufferUsage::AccelerationStructureBuildInput, Triangles->TransformOffset);
+                TransformAddress = Transform->getDeviceAddress() + Triangles->TransformOffset;
+                Output.Resources.emplace_back(Triangles->TransformBuffer);
             }
-            converted.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
-            converted.geometry.triangles = {
+            Converted.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+            Converted.geometry.triangles = {
                 .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
                 .pNext = nullptr,
-                .vertexFormat = format,
-                .vertexData = { vertices->getDeviceAddress() + triangles->VertexOffset },
-                .vertexStride = triangles->VertexStride,
-                .maxVertex = triangles->MaxVertex,
-                .indexType = index_type,
-                .indexData = { index_address },
-                .transformData = { transform_address }
+                .vertexFormat = Format,
+                .vertexData = { Vertices->getDeviceAddress() + Triangles->VertexOffset },
+                .vertexStride = Triangles->VertexStride,
+                .maxVertex = Triangles->MaxVertex,
+                .indexType = IndexType,
+                .indexData = { IndexAddress },
+                .transformData = { TransformAddress }
             };
-            output.Resources.emplace_back(triangles->VertexBuffer);
+            Output.Resources.emplace_back(Triangles->VertexBuffer);
         }
-        else if (geometry.Type == EAccelerationStructureGeometryType::AABBs)
+        else if (Geometry.Type == EAccelerationStructureGeometryType::AABBs)
         {
             if (StructureType != EAccelerationStructureType::BottomLevel)
                 throw std::invalid_argument("AABB geometry is only valid in a bottom-level acceleration structure.");
-            const auto* aabbs = std::get_if<AccelerationStructureAABBs>(&geometry.Data);
-            if (!aabbs || aabbs->Stride < 24 || aabbs->Stride % 8 != 0)
+            const auto* Aabbs = std::get_if<AccelerationStructureAABBs>(&Geometry.Data);
+            if (!Aabbs || Aabbs->Stride < 24 || Aabbs->Stride % 8 != 0)
                 throw std::invalid_argument("AABB geometry stride must be at least 24 and a multiple of 8.");
-            auto* buffer = requireBuffer(aabbs->Buffer, Device,
-                EBufferUsage::AccelerationStructureBuildInput, aabbs->Offset);
-            converted.geometryType = VK_GEOMETRY_TYPE_AABBS_KHR;
-            converted.geometry.aabbs = {
+            auto* Buffer = requireBuffer(Aabbs->Buffer, Device,
+                EBufferUsage::AccelerationStructureBuildInput, Aabbs->Offset);
+            Converted.geometryType = VK_GEOMETRY_TYPE_AABBS_KHR;
+            Converted.geometry.aabbs = {
                 .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_AABBS_DATA_KHR,
                 .pNext = nullptr,
-                .data = { buffer->getDeviceAddress() + aabbs->Offset },
-                .stride = aabbs->Stride
+                .data = { Buffer->getDeviceAddress() + Aabbs->Offset },
+                .stride = Aabbs->Stride
             };
-            output.Resources.emplace_back(aabbs->Buffer);
+            Output.Resources.emplace_back(Aabbs->Buffer);
         }
         else
         {
             if (StructureType != EAccelerationStructureType::TopLevel)
                 throw std::invalid_argument("Instance geometry is only valid in a top-level acceleration structure.");
-            const auto* instances = std::get_if<AccelerationStructureInstances>(&geometry.Data);
-            if (!instances) throw std::invalid_argument("Instance geometry payload does not match its type.");
-            auto* buffer = requireBuffer(instances->Buffer, Device,
-                EBufferUsage::AccelerationStructureBuildInput, instances->Offset);
-            converted.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
-            converted.geometry.instances = {
+            const auto* Instances = std::get_if<AccelerationStructureInstances>(&Geometry.Data);
+            if (!Instances) throw std::invalid_argument("Instance geometry payload does not match its type.");
+            auto* Buffer = requireBuffer(Instances->Buffer, Device,
+                EBufferUsage::AccelerationStructureBuildInput, Instances->Offset);
+            Converted.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
+            Converted.geometry.instances = {
                 .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR,
                 .pNext = nullptr,
-                .arrayOfPointers = instances->ArrayOfPointers,
-                .data = { buffer->getDeviceAddress() + instances->Offset }
+                .arrayOfPointers = Instances->ArrayOfPointers,
+                .data = { Buffer->getDeviceAddress() + Instances->Offset }
             };
-            output.Resources.emplace_back(instances->Buffer);
+            Output.Resources.emplace_back(Instances->Buffer);
         }
-        output.Geometries.emplace_back(converted);
-        output.PrimitiveCounts.emplace_back(geometry.PrimitiveCount);
+        Output.Geometries.emplace_back(Converted);
+        Output.PrimitiveCounts.emplace_back(Geometry.PrimitiveCount);
         if (IncludeRanges)
-            output.Ranges.push_back({ geometry.PrimitiveCount, geometry.PrimitiveOffset,
-                geometry.FirstVertex, geometry.TransformOffset });
+            Output.Ranges.push_back({ Geometry.PrimitiveCount, Geometry.PrimitiveOffset,
+                Geometry.FirstVertex, Geometry.TransformOffset });
     }
-    return output;
+    return Output;
 }
 
 VkShaderStageFlagBits rayStage(EShaderStage_t Stage)
@@ -212,27 +212,27 @@ VkShaderStageFlagBits rayStage(EShaderStage_t Stage)
 
 uint64_t hashRayTracingPipeline(const RayTracingPipelineDescriptor& Desc)
 {
-    uint64_t hash = 14695981039346656037ull;
-    auto append = [&](const void* data, size_t size) {
-        for (size_t index = 0; index < size; ++index) { hash ^= static_cast<const uint8_t*>(data)[index]; hash *= 1099511628211ull; }
+    uint64_t Hash = 14695981039346656037ull;
+    auto Append = [&](const void* Data, size_t Size) {
+        for (size_t Index = 0; Index < Size; ++Index) { Hash ^= static_cast<const uint8_t*>(Data)[Index]; Hash *= 1099511628211ull; }
     };
-    const auto layout_hash = Desc.Layout->getCompatibilityHash(); append(&layout_hash, sizeof(layout_hash));
-    append(&Desc.MaxRecursionDepth, sizeof(Desc.MaxRecursionDepth));
-    for (const auto& stage : Desc.Stages)
+    const auto LayoutHash = Desc.Layout->getCompatibilityHash(); Append(&LayoutHash, sizeof(LayoutHash));
+    Append(&Desc.MaxRecursionDepth, sizeof(Desc.MaxRecursionDepth));
+    for (const auto& Stage : Desc.Stages)
     {
-        const auto shader_hash = stage.Shader->getContentHash(); append(&shader_hash, sizeof(shader_hash));
-        auto constants = stage.SpecializationConstants;
-        std::ranges::sort(constants, {}, &SpecializationConstant::Id);
-        for (const auto& constant : constants) { append(&constant.Id, sizeof(constant.Id)); append(constant.Data.data(), constant.Data.size()); }
+        const auto ShaderHash = Stage.Shader->getContentHash(); Append(&ShaderHash, sizeof(ShaderHash));
+        auto Constants = Stage.SpecializationConstants;
+        std::ranges::sort(Constants, {}, &SpecializationConstant::Id);
+        for (const auto& Constant : Constants) { Append(&Constant.Id, sizeof(Constant.Id)); Append(Constant.Data.data(), Constant.Data.size()); }
     }
-    for (const auto& group : Desc.Groups)
+    for (const auto& Group : Desc.Groups)
     {
-        append(&group.Type, sizeof(group.Type)); append(&group.GeneralShader, sizeof(group.GeneralShader));
-        append(&group.ClosestHitShader, sizeof(group.ClosestHitShader)); append(&group.AnyHitShader, sizeof(group.AnyHitShader));
-        append(&group.IntersectionShader, sizeof(group.IntersectionShader));
+        Append(&Group.Type, sizeof(Group.Type)); Append(&Group.GeneralShader, sizeof(Group.GeneralShader));
+        Append(&Group.ClosestHitShader, sizeof(Group.ClosestHitShader)); Append(&Group.AnyHitShader, sizeof(Group.AnyHitShader));
+        Append(&Group.IntersectionShader, sizeof(Group.IntersectionShader));
     }
-    append(&Desc.Compile.Flags.Value, sizeof(Desc.Compile.Flags.Value));
-    return hash;
+    Append(&Desc.Compile.Flags.Value, sizeof(Desc.Compile.Flags.Value));
+    return Hash;
 }
 } // namespace
 
@@ -244,20 +244,20 @@ VulkanAccelerationStructure::VulkanAccelerationStructure(
     if (Desc.Type != EAccelerationStructureType::BottomLevel &&
         Desc.Type != EAccelerationStructureType::TopLevel)
         throw std::invalid_argument("Acceleration-structure type is invalid.");
-    auto* buffer = dynamic_cast<VulkanBuffer*>(Storage.get());
-    if (!buffer || &buffer->getDevice() != Device || !buffer->isValid() ||
+    auto* Buffer = dynamic_cast<VulkanBuffer*>(Storage.get());
+    if (!Buffer || &Buffer->getDevice() != Device || !Buffer->isValid() ||
         !Storage->getDescriptor().Usage.has(EBufferUsage::AccelerationStructureStorage) ||
         Desc.Size == 0 || Desc.Offset % 256 != 0 || Desc.Offset >= Storage->getDescriptor().Size ||
         Desc.Size > Storage->getDescriptor().Size - Desc.Offset)
         throw std::invalid_argument("Acceleration-structure storage range is invalid or not 256-byte aligned.");
-    const VkAccelerationStructureCreateInfoKHR info {
+    const VkAccelerationStructureCreateInfoKHR Info {
         .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
         .pNext = nullptr, .createFlags = 0,
-        .buffer = static_cast<VkBuffer>(buffer->getVkBuffer()),
+        .buffer = static_cast<VkBuffer>(Buffer->getVkBuffer()),
         .offset = Desc.Offset, .size = Desc.Size, .type = toVk(Desc.Type), .deviceAddress = 0
     };
-    const auto create = load<PFN_vkCreateAccelerationStructureKHR>(*Device, "vkCreateAccelerationStructureKHR");
-    if (create(static_cast<VkDevice>(Device->getVkDevice()), &info, nullptr,
+    const auto Create = load<PFN_vkCreateAccelerationStructureKHR>(*Device, "vkCreateAccelerationStructureKHR");
+    if (Create(static_cast<VkDevice>(Device->getVkDevice()), &Info, nullptr,
         reinterpret_cast<VkAccelerationStructureKHR*>(&Handle)) != VK_SUCCESS)
         throw std::runtime_error("vkCreateAccelerationStructureKHR failed.");
 }
@@ -266,8 +266,8 @@ VulkanAccelerationStructure::~VulkanAccelerationStructure()
 {
     if (Handle && Device)
     {
-        auto destroy = reinterpret_cast<PFN_vkDestroyAccelerationStructureKHR>(Device->getVkDevice().getProcAddr("vkDestroyAccelerationStructureKHR"));
-        if (destroy) destroy(static_cast<VkDevice>(Device->getVkDevice()), static_cast<VkAccelerationStructureKHR>(Handle), nullptr);
+        auto Destroy = reinterpret_cast<PFN_vkDestroyAccelerationStructureKHR>(Device->getVkDevice().getProcAddr("vkDestroyAccelerationStructureKHR"));
+        if (Destroy) Destroy(static_cast<VkDevice>(Device->getVkDevice()), static_cast<VkAccelerationStructureKHR>(Handle), nullptr);
     }
 }
 
@@ -279,13 +279,13 @@ void* VulkanAccelerationStructure::getNativeHandle() const noexcept
 DeviceAddress VulkanAccelerationStructure::getDeviceAddress() const noexcept
 {
     if (!Handle || !Device) return 0;
-    auto get_address = reinterpret_cast<PFN_vkGetAccelerationStructureDeviceAddressKHR>(
+    auto GetAddress = reinterpret_cast<PFN_vkGetAccelerationStructureDeviceAddressKHR>(
         Device->getVkDevice().getProcAddr("vkGetAccelerationStructureDeviceAddressKHR"));
-    if (!get_address) return 0;
-    const VkAccelerationStructureDeviceAddressInfoKHR info {
+    if (!GetAddress) return 0;
+    const VkAccelerationStructureDeviceAddressInfoKHR Info {
         VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR, nullptr,
         static_cast<VkAccelerationStructureKHR>(Handle) };
-    return get_address(static_cast<VkDevice>(Device->getVkDevice()), &info);
+    return GetAddress(static_cast<VkDevice>(Device->getVkDevice()), &Info);
 }
 
 AccelerationStructureBuildSizes queryVulkanAccelerationStructureBuildSizes(
@@ -296,32 +296,32 @@ AccelerationStructureBuildSizes queryVulkanAccelerationStructureBuildSizes(
     if (!Device.getFeatures().AccelerationStructure) return {};
     try
     {
-        constexpr uint8_t known_build_flags =
+        constexpr uint8_t KnownBuildFlags =
             static_cast<uint8_t>(EAccelerationStructureBuildFlag_t::AllowUpdate) |
             static_cast<uint8_t>(EAccelerationStructureBuildFlag_t::AllowCompaction) |
             static_cast<uint8_t>(EAccelerationStructureBuildFlag_t::PreferFastTrace) |
             static_cast<uint8_t>(EAccelerationStructureBuildFlag_t::PreferFastBuild) |
             static_cast<uint8_t>(EAccelerationStructureBuildFlag_t::LowMemory);
-        if ((Flags.Value & ~known_build_flags) != 0) return {};
-        auto geometry = convertGeometries(Device, Type, Geometries, false);
-        const VkAccelerationStructureBuildGeometryInfoKHR info {
+        if ((Flags.Value & ~KnownBuildFlags) != 0) return {};
+        auto Geometry = convertGeometries(Device, Type, Geometries, false);
+        const VkAccelerationStructureBuildGeometryInfoKHR Info {
             .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
             .pNext = nullptr, .type = toVk(Type), .flags = toVk(Flags),
             .mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
             .srcAccelerationStructure = VK_NULL_HANDLE, .dstAccelerationStructure = VK_NULL_HANDLE,
-            .geometryCount = static_cast<uint32_t>(geometry.Geometries.size()),
-            .pGeometries = geometry.Geometries.data(), .ppGeometries = nullptr,
+            .geometryCount = static_cast<uint32_t>(Geometry.Geometries.size()),
+            .pGeometries = Geometry.Geometries.data(), .ppGeometries = nullptr,
             .scratchData = { 0 }
         };
-        VkAccelerationStructureBuildSizesInfoKHR sizes {
+        VkAccelerationStructureBuildSizesInfoKHR Sizes {
             VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR };
-        auto query = reinterpret_cast<PFN_vkGetAccelerationStructureBuildSizesKHR>(
+        auto Query = reinterpret_cast<PFN_vkGetAccelerationStructureBuildSizesKHR>(
             Device.getVkDevice().getProcAddr("vkGetAccelerationStructureBuildSizesKHR"));
-        if (!query) return {};
-        query(static_cast<VkDevice>(Device.getVkDevice()),
-            VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &info,
-            geometry.PrimitiveCounts.data(), &sizes);
-        return { sizes.accelerationStructureSize, sizes.buildScratchSize, sizes.updateScratchSize };
+        if (!Query) return {};
+        Query(static_cast<VkDevice>(Device.getVkDevice()),
+            VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &Info,
+            Geometry.PrimitiveCounts.data(), &Sizes);
+        return { Sizes.accelerationStructureSize, Sizes.buildScratchSize, Sizes.updateScratchSize };
     }
     catch (const std::invalid_argument&) { return {}; }
 }
@@ -334,56 +334,56 @@ bool recordVulkanAccelerationStructureBuilds(
     if (!Device.getFeatures().AccelerationStructure || Builds.empty()) return false;
     try
     {
-        std::vector<GeometryStorage> geometry_storage;
-        std::vector<VkAccelerationStructureBuildGeometryInfoKHR> infos;
-        std::vector<const VkAccelerationStructureBuildRangeInfoKHR*> ranges;
-        geometry_storage.reserve(Builds.size()); infos.reserve(Builds.size()); ranges.reserve(Builds.size());
-        for (const auto& build : Builds)
+        std::vector<GeometryStorage> GeometryStorage;
+        std::vector<VkAccelerationStructureBuildGeometryInfoKHR> Infos;
+        std::vector<const VkAccelerationStructureBuildRangeInfoKHR*> Ranges;
+        GeometryStorage.reserve(Builds.size()); Infos.reserve(Builds.size()); Ranges.reserve(Builds.size());
+        for (const auto& Build : Builds)
         {
-            auto destination = std::dynamic_pointer_cast<VulkanAccelerationStructure>(build.Destination);
-            auto source = std::dynamic_pointer_cast<VulkanAccelerationStructure>(build.Source);
-            if (!destination || &destination->getDevice() != &Device || !destination->isValid() ||
-                (build.Mode == EAccelerationStructureBuildMode::Update &&
-                 (!source || &source->getDevice() != &Device || source->getType() != destination->getType())))
+            auto Destination = std::dynamic_pointer_cast<VulkanAccelerationStructure>(Build.Destination);
+            auto Source = std::dynamic_pointer_cast<VulkanAccelerationStructure>(Build.Source);
+            if (!Destination || &Destination->getDevice() != &Device || !Destination->isValid() ||
+                (Build.Mode == EAccelerationStructureBuildMode::Update &&
+                 (!Source || &Source->getDevice() != &Device || Source->getType() != Destination->getType())))
                 return false;
-            if ((build.Mode == EAccelerationStructureBuildMode::Build && source) ||
-                (build.Mode == EAccelerationStructureBuildMode::Update &&
-                 !build.Flags.has(EAccelerationStructureBuildFlag_t::AllowUpdate)))
+            if ((Build.Mode == EAccelerationStructureBuildMode::Build && Source) ||
+                (Build.Mode == EAccelerationStructureBuildMode::Update &&
+                 !Build.Flags.has(EAccelerationStructureBuildFlag_t::AllowUpdate)))
                 return false;
-            auto* scratch = requireBuffer(build.ScratchBuffer, Device, EBufferUsage::DeviceAddress, build.ScratchOffset);
-            if (!build.ScratchBuffer->getDescriptor().Usage.has(EBufferUsage::Storage) ||
-                (scratch->getDeviceAddress() + build.ScratchOffset) %
+            auto* Scratch = requireBuffer(Build.ScratchBuffer, Device, EBufferUsage::DeviceAddress, Build.ScratchOffset);
+            if (!Build.ScratchBuffer->getDescriptor().Usage.has(EBufferUsage::Storage) ||
+                (Scratch->getDeviceAddress() + Build.ScratchOffset) %
                     Device.getLimits().MinAccelerationStructureScratchOffsetAlignment != 0)
                 return false;
-            const auto sizes = queryVulkanAccelerationStructureBuildSizes(Device, destination->getType(), build.Flags, build.Geometries);
-            const uint64_t required_scratch = build.Mode == EAccelerationStructureBuildMode::Update
-                ? sizes.UpdateScratchSize : sizes.BuildScratchSize;
-            if (!sizes.AccelerationStructureSize || destination->getSize() < sizes.AccelerationStructureSize ||
-                build.ScratchOffset >= build.ScratchBuffer->getDescriptor().Size ||
-                required_scratch > build.ScratchBuffer->getDescriptor().Size - build.ScratchOffset)
+            const auto Sizes = queryVulkanAccelerationStructureBuildSizes(Device, Destination->getType(), Build.Flags, Build.Geometries);
+            const uint64_t RequiredScratch = Build.Mode == EAccelerationStructureBuildMode::Update
+                ? Sizes.UpdateScratchSize : Sizes.BuildScratchSize;
+            if (!Sizes.AccelerationStructureSize || Destination->getSize() < Sizes.AccelerationStructureSize ||
+                Build.ScratchOffset >= Build.ScratchBuffer->getDescriptor().Size ||
+                RequiredScratch > Build.ScratchBuffer->getDescriptor().Size - Build.ScratchOffset)
                 return false;
-            geometry_storage.emplace_back(convertGeometries(Device, destination->getType(), build.Geometries, true));
-            auto& converted = geometry_storage.back();
-            infos.push_back({
+            GeometryStorage.emplace_back(convertGeometries(Device, Destination->getType(), Build.Geometries, true));
+            auto& Converted = GeometryStorage.back();
+            Infos.push_back({
                 .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
-                .pNext = nullptr, .type = toVk(destination->getType()), .flags = toVk(build.Flags),
-                .mode = build.Mode == EAccelerationStructureBuildMode::Update
+                .pNext = nullptr, .type = toVk(Destination->getType()), .flags = toVk(Build.Flags),
+                .mode = Build.Mode == EAccelerationStructureBuildMode::Update
                     ? VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR : VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
-                .srcAccelerationStructure = source ? static_cast<VkAccelerationStructureKHR>(source->getVkHandle()) : VK_NULL_HANDLE,
-                .dstAccelerationStructure = static_cast<VkAccelerationStructureKHR>(destination->getVkHandle()),
-                .geometryCount = static_cast<uint32_t>(converted.Geometries.size()),
-                .pGeometries = converted.Geometries.data(), .ppGeometries = nullptr,
-                .scratchData = { scratch->getDeviceAddress() + build.ScratchOffset }
+                .srcAccelerationStructure = Source ? static_cast<VkAccelerationStructureKHR>(Source->getVkHandle()) : VK_NULL_HANDLE,
+                .dstAccelerationStructure = static_cast<VkAccelerationStructureKHR>(Destination->getVkHandle()),
+                .geometryCount = static_cast<uint32_t>(Converted.Geometries.size()),
+                .pGeometries = Converted.Geometries.data(), .ppGeometries = nullptr,
+                .scratchData = { Scratch->getDeviceAddress() + Build.ScratchOffset }
             });
-            ranges.emplace_back(converted.Ranges.data());
-            RetainedResources.emplace_back(build.Destination);
-            if (build.Source) RetainedResources.emplace_back(build.Source);
-            RetainedResources.emplace_back(build.ScratchBuffer);
-            RetainedResources.insert(RetainedResources.end(), converted.Resources.begin(), converted.Resources.end());
+            Ranges.emplace_back(Converted.Ranges.data());
+            RetainedResources.emplace_back(Build.Destination);
+            if (Build.Source) RetainedResources.emplace_back(Build.Source);
+            RetainedResources.emplace_back(Build.ScratchBuffer);
+            RetainedResources.insert(RetainedResources.end(), Converted.Resources.begin(), Converted.Resources.end());
         }
         // vkCmdBuildAccelerationStructuresKHR consumes one range-array pointer per build info.
         load<PFN_vkCmdBuildAccelerationStructuresKHR>(Device, "vkCmdBuildAccelerationStructuresKHR")(
-            static_cast<VkCommandBuffer>(CommandBuffer), static_cast<uint32_t>(infos.size()), infos.data(), ranges.data());
+            static_cast<VkCommandBuffer>(CommandBuffer), static_cast<uint32_t>(Infos.size()), Infos.data(), Ranges.data());
         return true;
     }
     catch (const std::invalid_argument&) { return false; }
@@ -393,109 +393,109 @@ std::shared_ptr<RPipeline> createVulkanRayTracingPipeline(
     VulkanDevice& Device, const RayTracingPipelineDescriptor& Desc)
 {
     if (!Device.getFeatures().RayTracingPipeline) return {};
-    auto layout = std::dynamic_pointer_cast<VulkanPipelineLayout>(Desc.Layout);
-    if (!layout || &layout->getDevice() != &Device || !layout->isValid() || Desc.Stages.empty() || Desc.Groups.empty())
+    auto Layout = std::dynamic_pointer_cast<VulkanPipelineLayout>(Desc.Layout);
+    if (!Layout || &Layout->getDevice() != &Device || !Layout->isValid() || Desc.Stages.empty() || Desc.Groups.empty())
         throw std::invalid_argument("Ray-tracing pipeline layout, stages, or groups are invalid.");
     if (Desc.MaxRecursionDepth == 0 || Desc.MaxRecursionDepth > Device.getLimits().MaxRayRecursionDepth)
         throw std::invalid_argument("Ray-tracing recursion depth exceeds the device limit.");
 
     struct StageData { std::shared_ptr<VulkanShader> Shader; std::vector<VkSpecializationMapEntry> Map; std::vector<std::byte> Data; VkSpecializationInfo Specialization {}; VkPipelineShaderStageCreateInfo Info {}; };
-    std::vector<StageData> storage(Desc.Stages.size());
-    std::vector<VkPipelineShaderStageCreateInfo> stages; stages.reserve(storage.size());
-    for (size_t index = 0; index < Desc.Stages.size(); ++index)
+    std::vector<StageData> Storage(Desc.Stages.size());
+    std::vector<VkPipelineShaderStageCreateInfo> Stages; Stages.reserve(Storage.size());
+    for (size_t Index = 0; Index < Desc.Stages.size(); ++Index)
     {
-        auto& out = storage[index]; const auto& in = Desc.Stages[index];
-        out.Shader = std::dynamic_pointer_cast<VulkanShader>(in.Shader);
-        if (!out.Shader || &out.Shader->getDevice() != &Device || !out.Shader->isValid())
+        auto& Out = Storage[Index]; const auto& In = Desc.Stages[Index];
+        Out.Shader = std::dynamic_pointer_cast<VulkanShader>(In.Shader);
+        if (!Out.Shader || &Out.Shader->getDevice() != &Device || !Out.Shader->isValid())
             throw std::invalid_argument("Ray-tracing shader belongs to another backend or device.");
-        std::unordered_set<uint32_t> ids;
-        for (const auto& constant : in.SpecializationConstants)
+        std::unordered_set<uint32_t> Ids;
+        for (const auto& Constant : In.SpecializationConstants)
         {
-            if (constant.Data.empty() || !ids.emplace(constant.Id).second) throw std::invalid_argument("Invalid specialization constant.");
-            out.Map.push_back({ constant.Id, static_cast<uint32_t>(out.Data.size()), constant.Data.size() });
-            out.Data.insert(out.Data.end(), constant.Data.begin(), constant.Data.end());
+            if (Constant.Data.empty() || !Ids.emplace(Constant.Id).second) throw std::invalid_argument("Invalid specialization constant.");
+            Out.Map.push_back({ Constant.Id, static_cast<uint32_t>(Out.Data.size()), Constant.Data.size() });
+            Out.Data.insert(Out.Data.end(), Constant.Data.begin(), Constant.Data.end());
         }
-        out.Specialization = { static_cast<uint32_t>(out.Map.size()), out.Map.data(), out.Data.size(), out.Data.data() };
-        out.Info = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0,
-            rayStage(out.Shader->getStage()), static_cast<VkShaderModule>(out.Shader->getVkShaderModule()),
-            out.Shader->getEntryPoint().c_str(), out.Map.empty() ? nullptr : &out.Specialization };
-        stages.emplace_back(out.Info);
+        Out.Specialization = { static_cast<uint32_t>(Out.Map.size()), Out.Map.data(), Out.Data.size(), Out.Data.data() };
+        Out.Info = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0,
+            rayStage(Out.Shader->getStage()), static_cast<VkShaderModule>(Out.Shader->getVkShaderModule()),
+            Out.Shader->getEntryPoint().c_str(), Out.Map.empty() ? nullptr : &Out.Specialization };
+        Stages.emplace_back(Out.Info);
     }
 
-    std::vector<VkRayTracingShaderGroupCreateInfoKHR> groups; groups.reserve(Desc.Groups.size());
-    auto valid = [&](uint32_t shader, std::initializer_list<EShaderStage_t> allowed) {
-        if (shader == RayTracingShaderGroup::UnusedShader) return false;
-        if (shader >= storage.size()) throw std::invalid_argument("Ray-tracing group shader index is out of range.");
-        return std::ranges::find(allowed, storage[shader].Shader->getStage()) != allowed.end();
+    std::vector<VkRayTracingShaderGroupCreateInfoKHR> Groups; Groups.reserve(Desc.Groups.size());
+    auto Valid = [&](uint32_t Shader, std::initializer_list<EShaderStage_t> Allowed) {
+        if (Shader == RayTracingShaderGroup::UnusedShader) return false;
+        if (Shader >= Storage.size()) throw std::invalid_argument("Ray-tracing group shader index is out of range.");
+        return std::ranges::find(Allowed, Storage[Shader].Shader->getStage()) != Allowed.end();
     };
-    uint32_t ray_generation_group_count = 0;
-    for (const auto& group : Desc.Groups)
+    uint32_t RayGenerationGroupCount = 0;
+    for (const auto& Group : Desc.Groups)
     {
-        VkRayTracingShaderGroupCreateInfoKHR out { VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR };
-        out.generalShader = out.closestHitShader = out.anyHitShader = out.intersectionShader = VK_SHADER_UNUSED_KHR;
-        if (group.Type == ERayTracingShaderGroupType::General)
+        VkRayTracingShaderGroupCreateInfoKHR Out { VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR };
+        Out.generalShader = Out.closestHitShader = Out.anyHitShader = Out.intersectionShader = VK_SHADER_UNUSED_KHR;
+        if (Group.Type == ERayTracingShaderGroupType::General)
         {
-            if (!valid(group.GeneralShader, { EShaderStage_t::RayGeneration, EShaderStage_t::Miss, EShaderStage_t::Callable }) ||
-                group.ClosestHitShader != RayTracingShaderGroup::UnusedShader || group.AnyHitShader != RayTracingShaderGroup::UnusedShader || group.IntersectionShader != RayTracingShaderGroup::UnusedShader)
+            if (!Valid(Group.GeneralShader, { EShaderStage_t::RayGeneration, EShaderStage_t::Miss, EShaderStage_t::Callable }) ||
+                Group.ClosestHitShader != RayTracingShaderGroup::UnusedShader || Group.AnyHitShader != RayTracingShaderGroup::UnusedShader || Group.IntersectionShader != RayTracingShaderGroup::UnusedShader)
                 throw std::invalid_argument("General ray-tracing group has invalid shader roles.");
-            out.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR; out.generalShader = group.GeneralShader;
-            if (storage[group.GeneralShader].Shader->getStage() == EShaderStage_t::RayGeneration)
-                ++ray_generation_group_count;
+            Out.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR; Out.generalShader = Group.GeneralShader;
+            if (Storage[Group.GeneralShader].Shader->getStage() == EShaderStage_t::RayGeneration)
+                ++RayGenerationGroupCount;
         }
         else
         {
-            if (group.GeneralShader != RayTracingShaderGroup::UnusedShader ||
-                (group.ClosestHitShader != RayTracingShaderGroup::UnusedShader && !valid(group.ClosestHitShader, { EShaderStage_t::ClosestHit })) ||
-                (group.AnyHitShader != RayTracingShaderGroup::UnusedShader && !valid(group.AnyHitShader, { EShaderStage_t::AnyHit })))
+            if (Group.GeneralShader != RayTracingShaderGroup::UnusedShader ||
+                (Group.ClosestHitShader != RayTracingShaderGroup::UnusedShader && !Valid(Group.ClosestHitShader, { EShaderStage_t::ClosestHit })) ||
+                (Group.AnyHitShader != RayTracingShaderGroup::UnusedShader && !Valid(Group.AnyHitShader, { EShaderStage_t::AnyHit })))
                 throw std::invalid_argument("Hit group has invalid shader roles.");
-            out.type = group.Type == ERayTracingShaderGroupType::ProceduralHitGroup
+            Out.type = Group.Type == ERayTracingShaderGroupType::ProceduralHitGroup
                 ? VK_RAY_TRACING_SHADER_GROUP_TYPE_PROCEDURAL_HIT_GROUP_KHR : VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
-            out.closestHitShader = group.ClosestHitShader; out.anyHitShader = group.AnyHitShader;
-            if (group.Type == ERayTracingShaderGroupType::ProceduralHitGroup)
+            Out.closestHitShader = Group.ClosestHitShader; Out.anyHitShader = Group.AnyHitShader;
+            if (Group.Type == ERayTracingShaderGroupType::ProceduralHitGroup)
             {
-                if (!valid(group.IntersectionShader, { EShaderStage_t::Intersection })) throw std::invalid_argument("Procedural hit group requires an intersection shader.");
-                out.intersectionShader = group.IntersectionShader;
+                if (!Valid(Group.IntersectionShader, { EShaderStage_t::Intersection })) throw std::invalid_argument("Procedural hit group requires an intersection shader.");
+                Out.intersectionShader = Group.IntersectionShader;
             }
-            else if (group.IntersectionShader != RayTracingShaderGroup::UnusedShader) throw std::invalid_argument("Triangle hit group cannot contain an intersection shader.");
+            else if (Group.IntersectionShader != RayTracingShaderGroup::UnusedShader) throw std::invalid_argument("Triangle hit group cannot contain an intersection shader.");
         }
-        groups.emplace_back(out);
+        Groups.emplace_back(Out);
     }
-    if (ray_generation_group_count == 0)
+    if (RayGenerationGroupCount == 0)
         throw std::invalid_argument("Ray-tracing pipeline requires a ray-generation shader group.");
 
-    VkPipelineCreateFlags flags = Desc.Compile.Flags.has(EPipelineCompileFlag_t::Optimize) ? 0 : VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT;
+    VkPipelineCreateFlags Flags = Desc.Compile.Flags.has(EPipelineCompileFlag_t::Optimize) ? 0 : VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT;
     #ifdef VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT
     if (Desc.Compile.Flags.has(EPipelineCompileFlag_t::FailIfCompileNeeded)) flags |= VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT;
     #endif
-    VulkanPipelineCache* cache = nullptr;
+    VulkanPipelineCache* Cache = nullptr;
     if (Desc.Compile.Cache)
     {
-        cache = dynamic_cast<VulkanPipelineCache*>(Desc.Compile.Cache.get());
-        if (!cache || &cache->getDevice() != &Device || !cache->isValid()) throw std::invalid_argument("Ray-tracing pipeline cache is invalid.");
+        Cache = dynamic_cast<VulkanPipelineCache*>(Desc.Compile.Cache.get());
+        if (!Cache || &Cache->getDevice() != &Device || !Cache->isValid()) throw std::invalid_argument("Ray-tracing pipeline cache is invalid.");
     }
-    const VkRayTracingPipelineCreateInfoKHR info {
+    const VkRayTracingPipelineCreateInfoKHR Info {
         .sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR, .pNext = nullptr,
-        .flags = flags, .stageCount = static_cast<uint32_t>(stages.size()), .pStages = stages.data(),
-        .groupCount = static_cast<uint32_t>(groups.size()), .pGroups = groups.data(),
+        .flags = Flags, .stageCount = static_cast<uint32_t>(Stages.size()), .pStages = Stages.data(),
+        .groupCount = static_cast<uint32_t>(Groups.size()), .pGroups = Groups.data(),
         .maxPipelineRayRecursionDepth = Desc.MaxRecursionDepth,
         .pLibraryInfo = nullptr, .pLibraryInterface = nullptr, .pDynamicState = nullptr,
-        .layout = static_cast<VkPipelineLayout>(layout->getVkPipelineLayout()),
+        .layout = static_cast<VkPipelineLayout>(Layout->getVkPipelineLayout()),
         .basePipelineHandle = VK_NULL_HANDLE, .basePipelineIndex = -1
     };
-    std::unique_lock<std::mutex> cache_lock;
-    if (cache) cache_lock = std::unique_lock(cache->getMutex());
-    VkPipeline native = VK_NULL_HANDLE;
-    const VkResult result = load<PFN_vkCreateRayTracingPipelinesKHR>(Device, "vkCreateRayTracingPipelinesKHR")(
+    std::unique_lock<std::mutex> CacheLock;
+    if (Cache) CacheLock = std::unique_lock(Cache->getMutex());
+    VkPipeline Native = VK_NULL_HANDLE;
+    const VkResult Result = load<PFN_vkCreateRayTracingPipelinesKHR>(Device, "vkCreateRayTracingPipelinesKHR")(
         static_cast<VkDevice>(Device.getVkDevice()), VK_NULL_HANDLE,
-        cache ? static_cast<VkPipelineCache>(cache->getVkPipelineCache()) : VK_NULL_HANDLE, 1, &info, nullptr, &native);
-    if (result == VK_PIPELINE_COMPILE_REQUIRED) return {};
-    if (result != VK_SUCCESS) throw std::runtime_error("vkCreateRayTracingPipelinesKHR failed.");
-    vk::UniquePipeline pipeline(
-        vk::Pipeline(native),
+        Cache ? static_cast<VkPipelineCache>(Cache->getVkPipelineCache()) : VK_NULL_HANDLE, 1, &Info, nullptr, &Native);
+    if (Result == VK_PIPELINE_COMPILE_REQUIRED) return {};
+    if (Result != VK_SUCCESS) throw std::runtime_error("vkCreateRayTracingPipelinesKHR failed.");
+    vk::UniquePipeline Pipeline(
+        vk::Pipeline(Native),
         vk::detail::ObjectDestroy<vk::Device, VULKAN_HPP_DEFAULT_DISPATCHER_TYPE>(Device.getVkDevice()));
     return std::make_shared<VulkanPipeline>(Device, EPipelineType::RayTracing, Desc.Layout,
         RenderingSignature {}, EDynamicStates {}, EPrimitiveTopology::TriangleList, false,
-        hashRayTracingPipeline(Desc), Desc.DebugName, std::move(pipeline), static_cast<uint32_t>(groups.size()));
+        hashRayTracingPipeline(Desc), Desc.DebugName, std::move(Pipeline), static_cast<uint32_t>(Groups.size()));
 }
 
 } // namespace rhi

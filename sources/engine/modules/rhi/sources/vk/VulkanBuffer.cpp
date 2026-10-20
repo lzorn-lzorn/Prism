@@ -29,17 +29,17 @@ void validateBufferDescriptor(VulkanDevice& Device, const RBuffer::Descriptor_t&
     {
         throw std::invalid_argument("Host-cached buffer memory must also be host-visible.");
     }
-    const bool memory_usage_is_host_visible = Desc.MemoryUsage == EMemoryUsage::CPUToGPU ||
+    const bool MemoryUsageIsHostVisible = Desc.MemoryUsage == EMemoryUsage::CPUToGPU ||
         Desc.MemoryUsage == EMemoryUsage::GPUToCPU || Desc.MemoryUsage == EMemoryUsage::CPUOnly;
     if (Desc.PersistentlyMapped && !Desc.MemoryProperty.has(EMemoryProperty::HostVisible) &&
-        !memory_usage_is_host_visible)
+        !MemoryUsageIsHostVisible)
         throw std::invalid_argument("Persistently mapped Vulkan buffers must be host-visible.");
-    const bool requires_device_address =
+    const bool RequiresDeviceAddress =
         Desc.Usage.has(EBufferUsage::DeviceAddress) ||
         Desc.Usage.has(EBufferUsage::AccelerationStructureBuildInput) ||
         Desc.Usage.has(EBufferUsage::AccelerationStructureStorage) ||
         Desc.Usage.has(EBufferUsage::ShaderBindingTable);
-    if (requires_device_address && !Device.getFeatures().BufferDeviceAddress)
+    if (RequiresDeviceAddress && !Device.getFeatures().BufferDeviceAddress)
         throw std::invalid_argument("Vulkan buffer device address was requested but is not enabled.");
     if ((Desc.Usage.has(EBufferUsage::AccelerationStructureBuildInput) ||
         Desc.Usage.has(EBufferUsage::AccelerationStructureStorage)) &&
@@ -64,27 +64,27 @@ std::shared_ptr<VulkanBuffer> VulkanBuffer::createUnbound(
     const Descriptor_t& Desc)
 {
     validateBufferDescriptor(Device, Desc);
-    auto buffer = Device.getVkDevice().createBufferUnique(vk::BufferCreateInfo(
+    auto Buffer = Device.getVkDevice().createBufferUnique(vk::BufferCreateInfo(
         {}, Desc.Size, toVk(Desc.Usage), vk::SharingMode::eExclusive));
-    return std::shared_ptr<VulkanBuffer>(new VulkanBuffer(Device, Desc, {}, std::move(buffer)));
+    return std::shared_ptr<VulkanBuffer>(new VulkanBuffer(Device, Desc, {}, std::move(Buffer)));
 }
 
 MemoryRequirements VulkanBuffer::getMemoryRequirements() const
 {
     if (!Buffer)
         throw std::logic_error("Vulkan buffer is invalid.");
-    vk::MemoryDedicatedRequirements dedicated_requirements;
-    vk::MemoryRequirements2 vk_requirements;
-    vk_requirements.pNext = &dedicated_requirements;
-    const vk::BufferMemoryRequirementsInfo2 requirements_info(Buffer.get());
-    Device->getVkDevice().getBufferMemoryRequirements2(&requirements_info, &vk_requirements);
+    vk::MemoryDedicatedRequirements DedicatedRequirements;
+    vk::MemoryRequirements2 VkRequirements;
+    VkRequirements.pNext = &DedicatedRequirements;
+    const vk::BufferMemoryRequirementsInfo2 RequirementsInfo(Buffer.get());
+    Device->getVkDevice().getBufferMemoryRequirements2(&RequirementsInfo, &VkRequirements);
     return MemoryRequirements {
-        .Size = vk_requirements.memoryRequirements.size,
-        .Alignment = vk_requirements.memoryRequirements.alignment,
-        .MemoryTypeBits = vk_requirements.memoryRequirements.memoryTypeBits,
-        .PrefersDedicatedAllocation = dedicated_requirements.prefersDedicatedAllocation == VK_TRUE ||
+        .Size = VkRequirements.memoryRequirements.size,
+        .Alignment = VkRequirements.memoryRequirements.alignment,
+        .MemoryTypeBits = VkRequirements.memoryRequirements.memoryTypeBits,
+        .PrefersDedicatedAllocation = DedicatedRequirements.prefersDedicatedAllocation == VK_TRUE ||
             Descriptor.DedicatedAllocation,
-        .RequiresDedicatedAllocation = dedicated_requirements.requiresDedicatedAllocation == VK_TRUE
+        .RequiresDedicatedAllocation = DedicatedRequirements.requiresDedicatedAllocation == VK_TRUE
     };
 }
 
@@ -100,51 +100,51 @@ std::shared_ptr<VulkanBuffer> VulkanBuffer::create(
 {
     validateBufferDescriptor(Device, Desc);
 
-    auto buffer = Device.getVkDevice().createBufferUnique(vk::BufferCreateInfo(
+    auto Buffer = Device.getVkDevice().createBufferUnique(vk::BufferCreateInfo(
         {}, Desc.Size, toVk(Desc.Usage), vk::SharingMode::eExclusive));
-    vk::MemoryDedicatedRequirements dedicated_requirements;
-    vk::MemoryRequirements2 vk_requirements;
-    vk_requirements.pNext = &dedicated_requirements;
-    const vk::BufferMemoryRequirementsInfo2 requirements_info(buffer.get());
-    Device.getVkDevice().getBufferMemoryRequirements2(&requirements_info, &vk_requirements);
-    const MemoryRequirements requirements {
-        .Size = vk_requirements.memoryRequirements.size,
-        .Alignment = vk_requirements.memoryRequirements.alignment,
-        .MemoryTypeBits = vk_requirements.memoryRequirements.memoryTypeBits,
-        .PrefersDedicatedAllocation = dedicated_requirements.prefersDedicatedAllocation == VK_TRUE || Desc.DedicatedAllocation,
-        .RequiresDedicatedAllocation = dedicated_requirements.requiresDedicatedAllocation == VK_TRUE
+    vk::MemoryDedicatedRequirements DedicatedRequirements;
+    vk::MemoryRequirements2 VkRequirements;
+    VkRequirements.pNext = &DedicatedRequirements;
+    const vk::BufferMemoryRequirementsInfo2 RequirementsInfo(Buffer.get());
+    Device.getVkDevice().getBufferMemoryRequirements2(&RequirementsInfo, &VkRequirements);
+    const MemoryRequirements Requirements {
+        .Size = VkRequirements.memoryRequirements.size,
+        .Alignment = VkRequirements.memoryRequirements.alignment,
+        .MemoryTypeBits = VkRequirements.memoryRequirements.memoryTypeBits,
+        .PrefersDedicatedAllocation = DedicatedRequirements.prefersDedicatedAllocation == VK_TRUE || Desc.DedicatedAllocation,
+        .RequiresDedicatedAllocation = DedicatedRequirements.requiresDedicatedAllocation == VK_TRUE
     };
-    const bool memory_usage_is_host_visible = Desc.MemoryUsage == EMemoryUsage::CPUToGPU ||
+    const bool MemoryUsageIsHostVisible = Desc.MemoryUsage == EMemoryUsage::CPUToGPU ||
         Desc.MemoryUsage == EMemoryUsage::GPUToCPU || Desc.MemoryUsage == EMemoryUsage::CPUOnly;
-    const bool requires_device_address =
+    const bool RequiresDeviceAddress =
         Desc.Usage.has(EBufferUsage::DeviceAddress) ||
         Desc.Usage.has(EBufferUsage::AccelerationStructureBuildInput) ||
         Desc.Usage.has(EBufferUsage::AccelerationStructureStorage) ||
         Desc.Usage.has(EBufferUsage::ShaderBindingTable);
-    auto required_properties = Desc.MemoryProperty;
+    auto RequiredProperties = Desc.MemoryProperty;
     // RBuffer::Descriptor_t defaults to GPU-local memory. An explicit CPU allocation intent
     // replaces that default unless the caller supplied additional required properties.
-    if (memory_usage_is_host_visible &&
-        required_properties == EMemoryPropertyFlags(EMemoryProperty::DeviceLocal))
-        required_properties.clear(EMemoryProperty::DeviceLocal);
-    auto memory = Device.allocateBufferMemory(MemoryAllocationDescriptor {
-        .Requirements = requirements,
+    if (MemoryUsageIsHostVisible &&
+        RequiredProperties == EMemoryPropertyFlags(EMemoryProperty::DeviceLocal))
+        RequiredProperties.clear(EMemoryProperty::DeviceLocal);
+    auto Memory = Device.allocateBufferMemory(MemoryAllocationDescriptor {
+        .Requirements = Requirements,
         .Usage = Desc.MemoryUsage,
-        .RequiredProperties = required_properties,
+        .RequiredProperties = RequiredProperties,
         .PreferredProperties = Desc.PreferredMemoryProperty,
         .Priority = Desc.MemoryPriority,
         .PersistentlyMapped = Desc.PersistentlyMapped,
         .DebugName = Desc.DebugName
-    }, requires_device_address, buffer.get());
-    auto vulkan_memory = std::dynamic_pointer_cast<VulkanMemoryAllocation>(memory);
-    if (!vulkan_memory)
+    }, RequiresDeviceAddress, Buffer.get());
+    auto VulkanMemory = std::dynamic_pointer_cast<VulkanMemoryAllocation>(Memory);
+    if (!VulkanMemory)
         throw std::logic_error("Vulkan device returned non-Vulkan memory for a buffer.");
-    const auto allocation_info = vulkan_memory->getAllocationInfo();
+    const auto AllocationInfo = VulkanMemory->getAllocationInfo();
     Device.getVkDevice().bindBufferMemory(
-        buffer.get(), vulkan_memory->getVkDeviceMemory(), allocation_info->Offset);
+        Buffer.get(), VulkanMemory->getVkDeviceMemory(), AllocationInfo->Offset);
 
     return std::shared_ptr<VulkanBuffer>(new VulkanBuffer(
-        Device, Desc, std::move(memory), std::move(buffer)));
+        Device, Desc, std::move(Memory), std::move(Buffer)));
 }
 
 RDevice& VulkanBuffer::getDevice() const noexcept
@@ -167,13 +167,13 @@ DeviceAddress VulkanBuffer::getDeviceAddress() const noexcept
         return 0;
     // Vulkan 1.3 includes the Vulkan 1.2 bufferDeviceAddress feature; the KHR path has
     // equivalent requirements. Address-capable allocations carry DEVICE_ADDRESS_BIT.
-    const VkBufferDeviceAddressInfo info {
+    const VkBufferDeviceAddressInfo Info {
         .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
         .pNext = nullptr,
         .buffer = static_cast<VkBuffer>(Buffer.get())
     };
     return vkGetBufferDeviceAddress(
-        static_cast<VkDevice>(Device->getVkDevice()), &info);
+        static_cast<VkDevice>(Device->getVkDevice()), &Info);
 }
 
 void* VulkanBuffer::map(DeviceSizeType Offset, DeviceSizeType Size)
@@ -184,9 +184,9 @@ void* VulkanBuffer::map(DeviceSizeType Offset, DeviceSizeType Size)
         throw std::logic_error("Vulkan buffer memory is already mapped.");
     if (Offset >= Descriptor.Size || (Size != 0 && Size > Descriptor.Size - Offset))
         throw std::out_of_range("Vulkan buffer map range is out of bounds.");
-    void* result = Memory->map(Offset, Size == 0 ? Descriptor.Size - Offset : Size);
+    void* Result = Memory->map(Offset, Size == 0 ? Descriptor.Size - Offset : Size);
     IsMapped = true;
-    return result;
+    return Result;
 }
 
 void VulkanBuffer::unmap()

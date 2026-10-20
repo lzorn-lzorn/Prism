@@ -14,46 +14,46 @@ namespace
 {
 VulkanSemaphore& semaphoreOf(const std::shared_ptr<RSemaphore>& Semaphore, VulkanDevice& Device)
 {
-    auto* result = dynamic_cast<VulkanSemaphore*>(Semaphore.get());
-    if (!result || &result->getDevice() != &Device)
+    auto* Result = dynamic_cast<VulkanSemaphore*>(Semaphore.get());
+    if (!Result || &Result->getDevice() != &Device)
         throw std::invalid_argument("Semaphore belongs to another RHI device or backend.");
-    return *result;
+    return *Result;
 }
 
 VulkanFence& fenceOf(const std::shared_ptr<RFence>& Fence, VulkanDevice& Device)
 {
-    auto* result = dynamic_cast<VulkanFence*>(Fence.get());
-    if (!result || &result->getDevice() != &Device)
+    auto* Result = dynamic_cast<VulkanFence*>(Fence.get());
+    if (!Result || &Result->getDevice() != &Device)
         throw std::invalid_argument("Fence belongs to another RHI device or backend.");
-    return *result;
+    return *Result;
 }
 
 vk::QueryPipelineStatisticFlags pipelineStatistics(EPipelineStatistics Statistics)
 {
-    vk::QueryPipelineStatisticFlags result;
+    vk::QueryPipelineStatisticFlags Result;
     if (Statistics.has(EPipelineStatistic_t::InputAssemblyVertices))
-        result |= vk::QueryPipelineStatisticFlagBits::eInputAssemblyVertices;
+        Result |= vk::QueryPipelineStatisticFlagBits::eInputAssemblyVertices;
     if (Statistics.has(EPipelineStatistic_t::InputAssemblyPrimitives))
-        result |= vk::QueryPipelineStatisticFlagBits::eInputAssemblyPrimitives;
+        Result |= vk::QueryPipelineStatisticFlagBits::eInputAssemblyPrimitives;
     if (Statistics.has(EPipelineStatistic_t::VertexShaderInvocations))
-        result |= vk::QueryPipelineStatisticFlagBits::eVertexShaderInvocations;
+        Result |= vk::QueryPipelineStatisticFlagBits::eVertexShaderInvocations;
     if (Statistics.has(EPipelineStatistic_t::GeometryShaderInvocations))
-        result |= vk::QueryPipelineStatisticFlagBits::eGeometryShaderInvocations;
+        Result |= vk::QueryPipelineStatisticFlagBits::eGeometryShaderInvocations;
     if (Statistics.has(EPipelineStatistic_t::GeometryShaderPrimitives))
-        result |= vk::QueryPipelineStatisticFlagBits::eGeometryShaderPrimitives;
+        Result |= vk::QueryPipelineStatisticFlagBits::eGeometryShaderPrimitives;
     if (Statistics.has(EPipelineStatistic_t::ClippingInvocations))
-        result |= vk::QueryPipelineStatisticFlagBits::eClippingInvocations;
+        Result |= vk::QueryPipelineStatisticFlagBits::eClippingInvocations;
     if (Statistics.has(EPipelineStatistic_t::ClippingPrimitives))
-        result |= vk::QueryPipelineStatisticFlagBits::eClippingPrimitives;
+        Result |= vk::QueryPipelineStatisticFlagBits::eClippingPrimitives;
     if (Statistics.has(EPipelineStatistic_t::PixelShaderInvocations))
-        result |= vk::QueryPipelineStatisticFlagBits::eFragmentShaderInvocations;
+        Result |= vk::QueryPipelineStatisticFlagBits::eFragmentShaderInvocations;
     if (Statistics.has(EPipelineStatistic_t::HullShaderPatches))
-        result |= vk::QueryPipelineStatisticFlagBits::eTessellationControlShaderPatches;
+        Result |= vk::QueryPipelineStatisticFlagBits::eTessellationControlShaderPatches;
     if (Statistics.has(EPipelineStatistic_t::DomainShaderInvocations))
-        result |= vk::QueryPipelineStatisticFlagBits::eTessellationEvaluationShaderInvocations;
+        Result |= vk::QueryPipelineStatisticFlagBits::eTessellationEvaluationShaderInvocations;
     if (Statistics.has(EPipelineStatistic_t::ComputeShaderInvocations))
-        result |= vk::QueryPipelineStatisticFlagBits::eComputeShaderInvocations;
-    return result;
+        Result |= vk::QueryPipelineStatisticFlagBits::eComputeShaderInvocations;
+    return Result;
 }
 
 constexpr uint32_t PipelineStatisticMask = (1u << 11) - 1;
@@ -80,20 +80,20 @@ bool VulkanFence::isSignaled() const
 
 bool VulkanFence::wait(uint64_t TimeoutNanoseconds)
 {
-    vk::Result result;
-    try { result = Context->Device->waitForFences(Fence.get(), true, TimeoutNanoseconds); }
-    catch (const vk::SystemError& error)
+    vk::Result Result;
+    try { Result = Context->Device->waitForFences(Fence.get(), true, TimeoutNanoseconds); }
+    catch (const vk::SystemError& Error)
     {
-        if (vulkan_wsi::resultFromSystemError(error) == vk::Result::eErrorDeviceLost)
+        if (vulkan_wsi::resultFromSystemError(Error) == vk::Result::eErrorDeviceLost)
         {
             Context->markDeviceLost();
             return false;
         }
         throw;
     }
-    if (result == vk::Result::eTimeout)
+    if (Result == vk::Result::eTimeout)
         return false;
-    if (result != vk::Result::eSuccess)
+    if (Result != vk::Result::eSuccess)
         throw std::runtime_error("Failed to wait for a Vulkan fence.");
     return true;
 }
@@ -110,12 +110,12 @@ VulkanSemaphore::VulkanSemaphore(
     , Context(std::move(InContext))
     , Timeline(InTimeline)
 {
-    vk::SemaphoreTypeCreateInfo type_info(
+    vk::SemaphoreTypeCreateInfo TypeInfo(
         Timeline ? vk::SemaphoreType::eTimeline : vk::SemaphoreType::eBinary,
         Timeline ? InitialValue : 0);
-    vk::SemaphoreCreateInfo create_info;
-    create_info.pNext = Timeline ? &type_info : nullptr;
-    Semaphore = Context->Device->createSemaphoreUnique(create_info);
+    vk::SemaphoreCreateInfo CreateInfo;
+    CreateInfo.pNext = Timeline ? &TypeInfo : nullptr;
+    Semaphore = Context->Device->createSemaphoreUnique(CreateInfo);
 }
 
 RDevice& VulkanSemaphore::getDevice() const noexcept { return *Device; }
@@ -138,22 +138,22 @@ bool VulkanSemaphore::wait(uint64_t Value, uint64_t TimeoutNanoseconds)
 {
     if (!Timeline)
         throw std::logic_error("A binary semaphore cannot be waited by the CPU.");
-    vk::Semaphore semaphore = Semaphore.get();
-    const vk::SemaphoreWaitInfo wait_info({}, 1, &semaphore, &Value);
-    vk::Result result;
-    try { result = Context->Device->waitSemaphores(wait_info, TimeoutNanoseconds); }
-    catch (const vk::SystemError& error)
+    vk::Semaphore SemaphoreHandle = Semaphore.get();
+    const vk::SemaphoreWaitInfo WaitInfo({}, 1, &SemaphoreHandle, &Value);
+    vk::Result Result;
+    try { Result = Context->Device->waitSemaphores(WaitInfo, TimeoutNanoseconds); }
+    catch (const vk::SystemError& Error)
     {
-        if (vulkan_wsi::resultFromSystemError(error) == vk::Result::eErrorDeviceLost)
+        if (vulkan_wsi::resultFromSystemError(Error) == vk::Result::eErrorDeviceLost)
         {
             Context->markDeviceLost();
             return false;
         }
         throw;
     }
-    if (result == vk::Result::eTimeout)
+    if (Result == vk::Result::eTimeout)
         return false;
-    if (result != vk::Result::eSuccess)
+    if (Result != vk::Result::eSuccess)
         throw std::runtime_error("Failed to wait for a Vulkan timeline semaphore.");
     return true;
 }
@@ -176,17 +176,17 @@ VulkanQueryPool::VulkanQueryPool(
     if ((Descriptor.PipelineStatistics.Value & ~PipelineStatisticMask) != 0 ||
         (Descriptor.Type == EQueryType::PipelineStatistics) != static_cast<bool>(Descriptor.PipelineStatistics))
         throw std::invalid_argument("Pipeline-statistics queries require a non-empty, known statistics mask only.");
-    vk::QueryType type;
+    vk::QueryType Type;
     switch (Descriptor.Type)
     {
-    case EQueryType::Occlusion: type = vk::QueryType::eOcclusion; break;
-    case EQueryType::PipelineStatistics: type = vk::QueryType::ePipelineStatistics; break;
+    case EQueryType::Occlusion: Type = vk::QueryType::eOcclusion; break;
+    case EQueryType::PipelineStatistics: Type = vk::QueryType::ePipelineStatistics; break;
     case EQueryType::Timestamp:
-    default: type = vk::QueryType::eTimestamp; break;
+    default: Type = vk::QueryType::eTimestamp; break;
     }
     // VkQueryPoolCreateInfo::pipelineStatistics defines ascending-bit result word order.
     Pool = Context->Device->createQueryPoolUnique(vk::QueryPoolCreateInfo(
-        {}, type, Descriptor.Count, pipelineStatistics(Descriptor.PipelineStatistics)));
+        {}, Type, Descriptor.Count, pipelineStatistics(Descriptor.PipelineStatistics)));
 }
 
 RDevice& VulkanQueryPool::getDevice() const noexcept { return *Device; }
@@ -198,14 +198,14 @@ bool VulkanQueryPool::getResults(
 {
     if (Results.empty())
         return true;
-    const uint32_t values_per_query = getResultValuesPerQuery();
-    if (Results.size() % values_per_query != 0)
+    const uint32_t ValuesPerQuery = getResultValuesPerQuery();
+    if (Results.size() % ValuesPerQuery != 0)
         throw std::invalid_argument("Legacy query readback requires complete query records.");
-    EQueryResultFlags flags;
-    flags.set(EQueryResultFlag_t::Result64);
-    if (Wait) flags.set(EQueryResultFlag_t::Wait);
+    EQueryResultFlags Flags;
+    Flags.set(EQueryResultFlag_t::Result64);
+    if (Wait) Flags.set(EQueryResultFlag_t::Wait);
     return getResults(FirstQuery,
-        static_cast<uint32_t>(Results.size() / values_per_query), Results, flags);
+        static_cast<uint32_t>(Results.size() / ValuesPerQuery), Results, Flags);
 }
 
 uint32_t VulkanQueryPool::getResultValuesPerQuery() const noexcept
@@ -232,38 +232,38 @@ bool VulkanQueryPool::getResults(
     }
     if (FirstQuery >= Descriptor.Count || QueryCount > Descriptor.Count - FirstQuery)
         throw std::out_of_range("Query result range exceeds the query pool.");
-    const uint32_t values = getResultValuesPerQuery();
-    const bool requested_availability = Flags.has(EQueryResultFlag_t::WithAvailability);
-    const size_t output_stride = values + (requested_availability ? 1u : 0u);
-    if (Results.size() != static_cast<size_t>(QueryCount) * output_stride)
+    const uint32_t Values = getResultValuesPerQuery();
+    const bool RequestedAvailability = Flags.has(EQueryResultFlag_t::WithAvailability);
+    const size_t OutputStride = Values + (RequestedAvailability ? 1u : 0u);
+    if (Results.size() != static_cast<size_t>(QueryCount) * OutputStride)
         throw std::invalid_argument("Query destination size does not match count and result stride.");
 
     // Always ask vkGetQueryPoolResults for availability internally so the bool contract is exact.
-    const size_t native_stride = values + 1u;
-    std::vector<uint64_t> temporary(static_cast<size_t>(QueryCount) * native_stride, 0);
-    vk::QueryResultFlags vk_flags = vk::QueryResultFlagBits::e64 |
+    const size_t NativeStride = Values + 1u;
+    std::vector<uint64_t> Temporary(static_cast<size_t>(QueryCount) * NativeStride, 0);
+    vk::QueryResultFlags VkFlags = vk::QueryResultFlagBits::e64 |
         vk::QueryResultFlagBits::eWithAvailability;
-    if (Flags.has(EQueryResultFlag_t::Wait)) vk_flags |= vk::QueryResultFlagBits::eWait;
-    if (Flags.has(EQueryResultFlag_t::Partial)) vk_flags |= vk::QueryResultFlagBits::ePartial;
-    const vk::Result result = Context->Device->getQueryPoolResults(
-        Pool.get(), FirstQuery, QueryCount, temporary.size() * sizeof(uint64_t), temporary.data(),
-        native_stride * sizeof(uint64_t), vk_flags);
-    if (result != vk::Result::eSuccess && result != vk::Result::eNotReady)
+    if (Flags.has(EQueryResultFlag_t::Wait)) VkFlags |= vk::QueryResultFlagBits::eWait;
+    if (Flags.has(EQueryResultFlag_t::Partial)) VkFlags |= vk::QueryResultFlagBits::ePartial;
+    const vk::Result Result = Context->Device->getQueryPoolResults(
+        Pool.get(), FirstQuery, QueryCount, Temporary.size() * sizeof(uint64_t), Temporary.data(),
+        NativeStride * sizeof(uint64_t), VkFlags);
+    if (Result != vk::Result::eSuccess && Result != vk::Result::eNotReady)
         throw std::runtime_error("Failed to retrieve Vulkan query results.");
 
-    bool all_available = true;
-    for (uint32_t query = 0; query < QueryCount; ++query)
+    bool AllAvailable = true;
+    for (uint32_t Query = 0; Query < QueryCount; ++Query)
     {
-        const auto native = temporary.data() + static_cast<size_t>(query) * native_stride;
-        auto output = Results.data() + static_cast<size_t>(query) * output_stride;
-        const bool available = native[values] != 0;
-        all_available &= available;
-        if (available || Flags.has(EQueryResultFlag_t::Partial))
-            std::copy_n(native, values, output);
-        if (requested_availability)
-            output[values] = native[values];
+        const auto Native = Temporary.data() + static_cast<size_t>(Query) * NativeStride;
+        auto Output = Results.data() + static_cast<size_t>(Query) * OutputStride;
+        const bool Available = Native[Values] != 0;
+        AllAvailable &= Available;
+        if (Available || Flags.has(EQueryResultFlag_t::Partial))
+            std::copy_n(Native, Values, Output);
+        if (RequestedAvailability)
+            Output[Values] = Native[Values];
     }
-    return all_available;
+    return AllAvailable;
 }
 
 double VulkanQueryPool::timestampTicksToNanoseconds(uint64_t TickDelta) const noexcept
@@ -302,118 +302,118 @@ void VulkanQueue::submit(const QueueSubmitDescriptor& Desc)
 {
     if (Context->isDeviceLost())
         throw std::runtime_error("Vulkan device is lost; rebuild the RHI/device and all resources.");
-    std::scoped_lock lock(Mutex);
+    std::scoped_lock Lock(Mutex);
     collectCompleted();
     if (Desc.CommandLists.empty())
         throw std::invalid_argument("A queue submission requires at least one command list.");
 
-    PendingSubmission pending;
-    pending.CommandLists.assign(Desc.CommandLists.begin(), Desc.CommandLists.end());
-    pending.WaitSemaphores.assign(Desc.WaitSemaphores.begin(), Desc.WaitSemaphores.end());
-    pending.SignalSemaphores.assign(Desc.SignalSemaphores.begin(), Desc.SignalSemaphores.end());
-    pending.ExternalFence = Desc.Fence;
+    PendingSubmission Submission;
+    Submission.CommandLists.assign(Desc.CommandLists.begin(), Desc.CommandLists.end());
+    Submission.WaitSemaphores.assign(Desc.WaitSemaphores.begin(), Desc.WaitSemaphores.end());
+    Submission.SignalSemaphores.assign(Desc.SignalSemaphores.begin(), Desc.SignalSemaphores.end());
+    Submission.ExternalFence = Desc.Fence;
 
-    std::vector<vk::CommandBufferSubmitInfo> command_infos;
-    command_infos.reserve(pending.CommandLists.size());
-    for (const auto& command : pending.CommandLists)
+    std::vector<vk::CommandBufferSubmitInfo> CommandInfos;
+    CommandInfos.reserve(Submission.CommandLists.size());
+    for (const auto& Command : Submission.CommandLists)
     {
-        auto* vk_command = dynamic_cast<VulkanCommandList*>(command.get());
-        if (!vk_command || &vk_command->getDevice() != Device)
+        auto* VkCommand = dynamic_cast<VulkanCommandList*>(Command.get());
+        if (!VkCommand || &VkCommand->getDevice() != Device)
             throw std::invalid_argument("Command list belongs to another RHI device or backend.");
-        if (command->getQueueType() != Type || command->getState() != ECommandListState::Executable)
+        if (Command->getQueueType() != Type || Command->getState() != ECommandListState::Executable)
             throw std::logic_error("Submitted command list has the wrong queue type or state.");
-        if (command->getLevel() != ECommandListLevel::Primary)
+        if (Command->getLevel() != ECommandListLevel::Primary)
             throw std::logic_error("A secondary command list cannot be submitted directly.");
-        command_infos.emplace_back(vk_command->getVkCommandBuffer(), 0);
+        CommandInfos.emplace_back(VkCommand->getVkCommandBuffer(), 0);
     }
 
-    auto make_semaphore_infos = [&](const std::vector<SemaphoreSubmitInfo>& infos)
+    auto MakeSemaphoreInfos = [&](const std::vector<SemaphoreSubmitInfo>& Infos)
     {
-        std::vector<vk::SemaphoreSubmitInfo> result;
-        result.reserve(infos.size());
-        for (const auto& info : infos)
+        std::vector<vk::SemaphoreSubmitInfo> Result;
+        Result.reserve(Infos.size());
+        for (const auto& Info : Infos)
         {
-            auto& semaphore = semaphoreOf(info.Semaphore, *Device);
-            if (!semaphore.isTimeline() && info.Value != 0)
+            auto& Semaphore = semaphoreOf(Info.Semaphore, *Device);
+            if (!Semaphore.isTimeline() && Info.Value != 0)
                 throw std::invalid_argument("Binary semaphore submit values must be zero.");
-            result.emplace_back(
-                semaphore.getVkSemaphore(),
-                semaphore.isTimeline() ? info.Value : 0,
+            Result.emplace_back(
+                Semaphore.getVkSemaphore(),
+                Semaphore.isTimeline() ? Info.Value : 0,
                 vk::PipelineStageFlagBits2::eAllCommands,
                 0);
         }
-        return result;
+        return Result;
     };
-    const auto wait_infos = make_semaphore_infos(pending.WaitSemaphores);
-    const auto signal_infos = make_semaphore_infos(pending.SignalSemaphores);
+    const auto WaitInfos = MakeSemaphoreInfos(Submission.WaitSemaphores);
+    const auto SignalInfos = MakeSemaphoreInfos(Submission.SignalSemaphores);
 
-    vk::Fence fence;
-    if (pending.ExternalFence)
-        fence = fenceOf(pending.ExternalFence, *Device).getVkFence();
+    vk::Fence Fence;
+    if (Submission.ExternalFence)
+        Fence = fenceOf(Submission.ExternalFence, *Device).getVkFence();
     else
     {
-        pending.InternalFence = Context->Device->createFenceUnique({});
-        fence = pending.InternalFence.get();
+        Submission.InternalFence = Context->Device->createFenceUnique({});
+        Fence = Submission.InternalFence.get();
     }
 
-    const vk::SubmitInfo2 submit_info(
+    const vk::SubmitInfo2 SubmitInfo(
         {},
-        static_cast<uint32_t>(wait_infos.size()), wait_infos.data(),
-        static_cast<uint32_t>(command_infos.size()), command_infos.data(),
-        static_cast<uint32_t>(signal_infos.size()), signal_infos.data());
-    try { Queue.submit2(submit_info, fence); }
-    catch (const vk::SystemError& error)
+        static_cast<uint32_t>(WaitInfos.size()), WaitInfos.data(),
+        static_cast<uint32_t>(CommandInfos.size()), CommandInfos.data(),
+        static_cast<uint32_t>(SignalInfos.size()), SignalInfos.data());
+    try { Queue.submit2(SubmitInfo, Fence); }
+    catch (const vk::SystemError& Error)
     {
-        if (vulkan_wsi::resultFromSystemError(error) == vk::Result::eErrorDeviceLost)
+        if (vulkan_wsi::resultFromSystemError(Error) == vk::Result::eErrorDeviceLost)
             Context->markDeviceLost();
         throw;
     }
-    for (const auto& command : pending.CommandLists)
-        static_cast<VulkanCommandList*>(command.get())->markSubmitted();
-    Pending.emplace_back(std::move(pending));
+    for (const auto& Command : Submission.CommandLists)
+        static_cast<VulkanCommandList*>(Command.get())->markSubmitted();
+    Pending.emplace_back(std::move(Submission));
 }
 
 EPresentStatus VulkanQueue::present(const PresentDescriptor& Desc)
 {
     if (Context->isDeviceLost()) return EPresentStatus::DeviceLost;
-    std::scoped_lock lock(Mutex);
+    std::scoped_lock Lock(Mutex);
     collectCompleted();
-    auto* swapchain = dynamic_cast<VulkanSwapchain*>(Desc.Swapchain.get());
-    if (!swapchain || &swapchain->getDevice() != Device)
+    auto* Swapchain = dynamic_cast<VulkanSwapchain*>(Desc.Swapchain.get());
+    if (!Swapchain || &Swapchain->getDevice() != Device)
         throw std::invalid_argument("Swapchain belongs to another RHI device or backend.");
-    if (Desc.Generation == 0 || Desc.Generation != swapchain->getGeneration())
+    if (Desc.Generation == 0 || Desc.Generation != Swapchain->getGeneration())
         return EPresentStatus::OutOfDate;
-    if (Desc.ImageIndex >= swapchain->getImageCount())
+    if (Desc.ImageIndex >= Swapchain->getImageCount())
         throw std::out_of_range("Present image index exceeds the swapchain.");
 
-    std::vector<vk::Semaphore> waits;
-    waits.reserve(Desc.WaitSemaphores.size());
-    for (const auto& semaphore : Desc.WaitSemaphores)
+    std::vector<vk::Semaphore> Waits;
+    Waits.reserve(Desc.WaitSemaphores.size());
+    for (const auto& Semaphore : Desc.WaitSemaphores)
     {
-        auto& native = semaphoreOf(semaphore, *Device);
-        if (native.isTimeline())
+        auto& Native = semaphoreOf(Semaphore, *Device);
+        if (Native.isTimeline())
             throw std::invalid_argument("Vulkan presentation requires binary wait semaphores.");
-        waits.emplace_back(native.getVkSemaphore());
+        Waits.emplace_back(Native.getVkSemaphore());
     }
-    const vk::SwapchainKHR native_swapchain = swapchain->getVkSwapchain();
-    const vk::PresentInfoKHR info(
-        static_cast<uint32_t>(waits.size()), waits.data(),
-        1, &native_swapchain, &Desc.ImageIndex);
+    const vk::SwapchainKHR NativeSwapchain = Swapchain->getVkSwapchain();
+    const vk::PresentInfoKHR Info(
+        static_cast<uint32_t>(Waits.size()), Waits.data(),
+        1, &NativeSwapchain, &Desc.ImageIndex);
     try
     {
-        const vk::Result result = PresentQueue.presentKHR(info);
-        const auto status = vulkan_wsi::mapPresent(result);
-        if (!status) throw std::runtime_error("Unexpected Vulkan presentation result.");
-        if (const auto health = vulkan_wsi::mapStatus(result)) swapchain->recordStatus(*health);
-        return *status;
+        const vk::Result Result = PresentQueue.presentKHR(Info);
+        const auto Status = vulkan_wsi::mapPresent(Result);
+        if (!Status) throw std::runtime_error("Unexpected Vulkan presentation result.");
+        if (const auto Health = vulkan_wsi::mapStatus(Result)) Swapchain->recordStatus(*Health);
+        return *Status;
     }
-    catch (const vk::SystemError& error)
+    catch (const vk::SystemError& Error)
     {
-        const auto result = vulkan_wsi::resultFromSystemError(error);
-        const auto status = vulkan_wsi::mapPresent(result);
-        if (!status) throw;
-        if (const auto health = vulkan_wsi::mapStatus(result)) swapchain->recordStatus(*health);
-        return *status;
+        const auto Result = vulkan_wsi::resultFromSystemError(Error);
+        const auto Status = vulkan_wsi::mapPresent(Result);
+        if (!Status) throw;
+        if (const auto Health = vulkan_wsi::mapStatus(Result)) Swapchain->recordStatus(*Health);
+        return *Status;
     }
 }
 
@@ -421,7 +421,7 @@ void VulkanQueue::poll()
 {
     if (Context->isDeviceLost())
         throw std::runtime_error("Vulkan device is lost; rebuild the RHI/device and all resources.");
-    std::scoped_lock lock(Mutex);
+    std::scoped_lock Lock(Mutex);
     collectCompleted();
 }
 
@@ -429,20 +429,20 @@ void VulkanQueue::waitIdle()
 {
     if (Context->isDeviceLost())
         throw std::runtime_error("Vulkan device is lost; rebuild the RHI/device and all resources.");
-    std::scoped_lock lock(Mutex);
+    std::scoped_lock Lock(Mutex);
     try
     {
         Queue.waitIdle();
         if (PresentQueue != Queue) PresentQueue.waitIdle();
     }
-    catch (const vk::SystemError& error)
+    catch (const vk::SystemError& Error)
     {
-        if (vulkan_wsi::resultFromSystemError(error) == vk::Result::eErrorDeviceLost)
+        if (vulkan_wsi::resultFromSystemError(Error) == vk::Result::eErrorDeviceLost)
             Context->markDeviceLost();
         throw;
     }
-    for (auto& pending : Pending)
-        complete(pending);
+    for (auto& Pending : Pending)
+        complete(Pending);
     Pending.clear();
 }
 
@@ -450,34 +450,34 @@ void* VulkanQueue::getNativeHandle() const noexcept { return static_cast<VkQueue
 
 void VulkanQueue::collectCompleted()
 {
-    auto iterator = Pending.begin();
-    while (iterator != Pending.end())
+    auto Iterator = Pending.begin();
+    while (Iterator != Pending.end())
     {
-        const vk::Fence fence = iterator->ExternalFence
-            ? fenceOf(iterator->ExternalFence, *Device).getVkFence()
-            : iterator->InternalFence.get();
-        vk::Result status;
-        try { status = Context->Device->getFenceStatus(fence); }
-        catch (const vk::SystemError& error)
+        const vk::Fence Fence = Iterator->ExternalFence
+            ? fenceOf(Iterator->ExternalFence, *Device).getVkFence()
+            : Iterator->InternalFence.get();
+        vk::Result Status;
+        try { Status = Context->Device->getFenceStatus(Fence); }
+        catch (const vk::SystemError& Error)
         {
-            if (vulkan_wsi::resultFromSystemError(error) == vk::Result::eErrorDeviceLost)
+            if (vulkan_wsi::resultFromSystemError(Error) == vk::Result::eErrorDeviceLost)
                 Context->markDeviceLost();
             throw;
         }
-        if (status == vk::Result::eSuccess)
+        if (Status == vk::Result::eSuccess)
         {
-            complete(*iterator);
-            iterator = Pending.erase(iterator);
+            complete(*Iterator);
+            Iterator = Pending.erase(Iterator);
         }
         else
-            ++iterator;
+            ++Iterator;
     }
 }
 
 void VulkanQueue::complete(PendingSubmission& Submission)
 {
-    for (const auto& command : Submission.CommandLists)
-        static_cast<VulkanCommandList*>(command.get())->markComplete();
+    for (const auto& Command : Submission.CommandLists)
+        static_cast<VulkanCommandList*>(Command.get())->markComplete();
 }
 
 } // namespace rhi

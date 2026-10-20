@@ -30,25 +30,25 @@ EImageAspect inferAspect(EFormat Format)
 
 void validateAspect(EImageAspect Aspect, EFormat Format)
 {
-    const bool has_depth = hasDepthAspect(Format);
-    const bool has_stencil = hasStencilAspect(Format);
+    const bool HasDepth = hasDepthAspect(Format);
+    const bool HasStencil = hasStencilAspect(Format);
 
     switch (Aspect)
     {
     case EImageAspect::Color:
-        if (has_depth || has_stencil)
+        if (HasDepth || HasStencil)
             throw std::invalid_argument("A color image view requires a color format.");
         break;
     case EImageAspect::Depth:
-        if (!has_depth)
+        if (!HasDepth)
             throw std::invalid_argument("A depth image view requires a depth format.");
         break;
     case EImageAspect::Stencil:
-        if (!has_stencil)
+        if (!HasStencil)
             throw std::invalid_argument("A stencil image view requires a stencil format.");
         break;
     case EImageAspect::DepthStencil:
-        if (!has_depth || !has_stencil)
+        if (!HasDepth || !HasStencil)
             throw std::invalid_argument("A depth-stencil image view requires both format aspects.");
         break;
     case EImageAspect::Auto:
@@ -163,13 +163,13 @@ std::shared_ptr<VulkanImageView> VulkanImageView::create(
     VulkanDevice& Device,
     const Descriptor_t& Desc)
 {
-    auto normalized_desc = normalizeDescriptor(Device, Desc);
-    auto* image = static_cast<VulkanImage*>(normalized_desc.Image.get());
-    auto image_view = Device.getVkDevice().createImageViewUnique(
-        makeCreateInfo(normalized_desc, image->getVkImage()));
+    auto NormalizedDesc = normalizeDescriptor(Device, Desc);
+    auto* Image = static_cast<VulkanImage*>(NormalizedDesc.Image.get());
+    auto ImageView = Device.getVkDevice().createImageViewUnique(
+        makeCreateInfo(NormalizedDesc, Image->getVkImage()));
 
     return std::shared_ptr<VulkanImageView>(
-        new VulkanImageView(std::move(normalized_desc), std::move(image_view)));
+        new VulkanImageView(std::move(NormalizedDesc), std::move(ImageView)));
 }
 
 void* VulkanImageView::getNativeHandle() const noexcept
@@ -186,52 +186,52 @@ RImageView::Descriptor_t VulkanImageView::normalizeDescriptor(
     if (!Desc.Image->isValid())
         throw std::invalid_argument("Vulkan image view requires a valid image.");
 
-    auto* image = static_cast<VulkanImage*>(Desc.Image.get());
-    if (&image->getDevice() != &Device)
+    auto* Image = static_cast<VulkanImage*>(Desc.Image.get());
+    if (&Image->getDevice() != &Device)
         throw std::invalid_argument("Vulkan image and image view must belong to the same device.");
 
-    const auto& image_desc = Desc.Image->getDescriptor();
-    Descriptor_t result = Desc;
-    if (result.Format == EFormat::Undefined)
+    const auto& ImageDesc = Desc.Image->getDescriptor();
+    Descriptor_t Result = Desc;
+    if (Result.Format == EFormat::Undefined)
     {
-        result.Format = image_desc.Format;
+        Result.Format = ImageDesc.Format;
     }
-    else if (result.Format != image_desc.Format)
+    else if (Result.Format != ImageDesc.Format)
     {
         throw std::invalid_argument("Vulkan image view format reinterpretation is not supported.");
     }
 
-    if (result.MipLevelCount == 0 || result.ArrayLayerCount == 0)
+    if (Result.MipLevelCount == 0 || Result.ArrayLayerCount == 0)
         throw std::invalid_argument("Image view mip and array layer counts must be non-zero.");
-    if (result.BaseMipLevel >= image_desc.MipLevels ||
-        result.MipLevelCount > image_desc.MipLevels - result.BaseMipLevel)
+    if (Result.BaseMipLevel >= ImageDesc.MipLevels ||
+        Result.MipLevelCount > ImageDesc.MipLevels - Result.BaseMipLevel)
     {
         throw std::out_of_range("Image view mip range exceeds the image.");
     }
-    if (result.BaseArrayLayer >= image_desc.ArrayLayers ||
-        result.ArrayLayerCount > image_desc.ArrayLayers - result.BaseArrayLayer)
+    if (Result.BaseArrayLayer >= ImageDesc.ArrayLayers ||
+        Result.ArrayLayerCount > ImageDesc.ArrayLayers - Result.BaseArrayLayer)
     {
         throw std::out_of_range("Image view array layer range exceeds the image.");
     }
-    if (image_desc.Dimension == EImageDimension::Texture3D &&
-        (result.BaseArrayLayer != 0 || result.ArrayLayerCount != 1))
+    if (ImageDesc.Dimension == EImageDimension::Texture3D &&
+        (Result.BaseArrayLayer != 0 || Result.ArrayLayerCount != 1))
     {
         throw std::invalid_argument("A 3D image view must use its only array layer.");
     }
 
-    if (result.Aspect == EImageAspect::Auto)
-        result.Aspect = inferAspect(result.Format);
-    validateAspect(result.Aspect, result.Format);
+    if (Result.Aspect == EImageAspect::Auto)
+        Result.Aspect = inferAspect(Result.Format);
+    validateAspect(Result.Aspect, Result.Format);
 
-    if (result.Dimension == EImageViewDimension::Auto)
+    if (Result.Dimension == EImageViewDimension::Auto)
     {
-        result.Dimension = inferDimension(
-            image_desc.Dimension,
-            result.BaseArrayLayer,
-            result.ArrayLayerCount);
+        Result.Dimension = inferDimension(
+            ImageDesc.Dimension,
+            Result.BaseArrayLayer,
+            Result.ArrayLayerCount);
     }
-    validateDimension(result, image_desc.Dimension);
-    return result;
+    validateDimension(Result, ImageDesc.Dimension);
+    return Result;
 }
 
 vk::ImageViewCreateInfo VulkanImageView::makeCreateInfo(

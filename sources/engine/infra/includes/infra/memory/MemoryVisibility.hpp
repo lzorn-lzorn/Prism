@@ -428,11 +428,11 @@ class MemoryLeakDetectorObserver
 {
 public:
     /**
-     * @brief Consume allocator events and maintain live-allocation map.
+     * @brief 消费分配器事件并维护存活分配映射。
      * @param
-     *     - Event  const MemoryEvent&  Event emitted by allocator pipeline.
+     *     - Event  const MemoryEvent&  分配器管线发出的事件。
      * @usage
-     *     - Bind this observer when leak-tracking is required.
+     *     - 在需要泄漏跟踪时绑定此观测器。
      * @return
      *     - void
      */
@@ -462,13 +462,13 @@ public:
     }
 
     /**
-     * @brief Check whether there are remaining live allocations.
+     * @brief 检查是否仍有存活的分配。
      * @param
      *     - none
      * @usage
-     *     - Useful before shutdown assertion.
+     *     - 在关闭断言之前使用很有帮助。
      * @return
-     *     - bool  true if no leak Record exists.
+     *     - bool  不存在泄漏 Record 时为 true。
      */
     [[nodiscard]] bool isEmpty() const
     {
@@ -477,13 +477,13 @@ public:
     }
 
     /**
-     * @brief Get number of tracked live allocations.
+     * @brief 获取已跟踪的存活分配数量。
      * @param
      *     - none
      * @usage
-     *     - Use in leak report summary output.
+     *     - 用于泄漏报告摘要输出。
      * @return
-     *     - std::size_t  Live allocation Record count.
+     *     - std::size_t  存活分配 Record 数量。
      */
     [[nodiscard]] std::size_t getLeakCount() const
     {
@@ -492,13 +492,13 @@ public:
     }
 
     /**
-     * @brief Build a stable leak snapshot for reporting.
+     * @brief 构建用于报告的稳定泄漏快照。
      * @param
      *     - none
      * @usage
-     *     - Call at frame end or process shutdown to print unresolved allocations.
+     *     - 在帧结束或进程关闭时调用，以打印未解决的分配。
      * @return
-     *     - std::vector<std::pair<void*, LeakRecord>>  Copy of current leak records.
+     *     - std::vector<std::pair<void*, LeakRecord>>  当前泄漏记录的副本。
      */
     [[nodiscard]] std::vector<std::pair<void *, LeakRecord> > getLeakSnapshot() const
     {
@@ -513,13 +513,13 @@ public:
     }
 
     /**
-     * @brief Print current unresolved leaks into output stream.
+     * @brief 将当前未解决的泄漏打印到输出流。
      * @param
-     *     - Output  std::ostream&  Target stream for textual leak report.
+     *     - Output  std::ostream&  用于文本泄漏报告的目标流。
      * @usage
-     *     - Call explicitly on shutdown boundary instead of relying on destructors.
+     *     - 在关闭边界显式调用，而不是依赖析构函数。
      * @return
-     *     - bool  true when leaks are present and printed.
+     *     - bool  存在泄漏并已打印时为 true。
      */
     [[nodiscard]] bool reportLeaks(std::ostream &Output) const
     {
@@ -596,11 +596,11 @@ class MemoryStatisticsObserver
 {
 public:
     /**
-     * @brief Consume one memory event and update aggregated counters.
+     * @brief 消费一个内存事件并更新聚合计数器。
      * @param
-     *     - event  const MemoryEvent&  Event emitted by allocator pipeline.
+     *     - event  const MemoryEvent&  分配器管线发出的事件。
      * @usage
-     *     - Bind this observer to AllocatorFacade event bus for runtime metrics.
+     *     - 将此观测器绑定到 AllocatorFacade 事件总线以获取运行时指标。
      * @return
      *     - void
      */
@@ -657,13 +657,13 @@ public:
     }
 
     /**
-     * @brief Build an immutable statistics snapshot.
+     * @brief 构建不可变的统计快照。
      * @param
      *     - none
      * @usage
-     *     - Poll this periodically for HUD/telemetry output.
+     *     - 定期轮询以用于 HUD/遥测输出。
      * @return
-     *     - MemoryStatisticsSnapshot  Current accumulated counters.
+     *     - MemoryStatisticsSnapshot  当前累积的计数器。
      */
     [[nodiscard]] MemoryStatisticsSnapshot getSnapshot() const noexcept
     {
@@ -1131,11 +1131,11 @@ public:
     }
 
     /**
-     * @brief Convert memory events into tracker records and statistics.
+     * @brief 将内存事件转换为跟踪器记录与统计信息。
      * @param
-     *     - Event  const MemoryEvent&  Event emitted by allocator pipeline.
+     *     - Event  const MemoryEvent&  分配器管线发出的事件。
      * @usage
-     *     - Bind one tracker instance to AllocatorFacade event bus.
+     *     - 将一个跟踪器实例绑定到 AllocatorFacade 事件总线。
      * @return
      *     - void
      */
@@ -1151,15 +1151,15 @@ public:
     }
 
     /**
-     * @brief Notify tracker about an allocation captured by hook wrappers.
+     * @brief 通知跟踪器由 hook 包装捕获到的一次分配。
      * @param
-     *     - Operation  HookAllocationOp  Hook operation kind.
-     *     - Ptr        void*             Returned allocation pointer.
-     *     - Size       std::size_t       Requested size.
-     *     - Alignment  std::size_t       Requested alignment or unknown marker.
-     *     - Caller     void*             Caller return address if available.
+     *     - Operation  HookAllocationOp  Hook 操作类型。
+     *     - Ptr        void*             返回的分配指针。
+     *     - Size       std::size_t       请求的大小。
+     *     - Alignment  std::size_t       请求的对齐值或未知标记。
+     *     - Caller     void*             调用方返回地址（如果可用）。
      * @usage
-     *     - Called by new/malloc hook wrappers.
+     *     - 由 new/malloc hook 包装调用。
      * @return
      *     - void
      */
@@ -1184,15 +1184,15 @@ public:
     }
 
     /**
-     * @brief Notify tracker about a deallocation captured by hook wrappers.
+     * @brief 通知跟踪器由 hook 包装捕获到的一次释放。
      * @param
-     *     - Operation  HookAllocationOp  Hook operation kind.
-     *     - Ptr        void*             Pointer passed to free/delete.
-     *     - Size       std::size_t       Optional size (or unknown marker).
-     *     - Alignment  std::size_t       Optional alignment (or unknown marker).
-     *     - Caller     void*             Caller return address if available.
+     *     - Operation  HookAllocationOp  Hook 操作类型。
+     *     - Ptr        void*             传给 free/delete 的指针。
+     *     - Size       std::size_t       可选的大小（或未知标记）。
+     *     - Alignment  std::size_t       可选的对齐值（或未知标记）。
+     *     - Caller     void*             调用方返回地址（如果可用）。
      * @usage
-     *     - Called by new/malloc hook wrappers before real free.
+     *     - 在真正 free 之前由 new/malloc hook 包装调用。
      * @return
      *     - void
      */
@@ -1217,14 +1217,14 @@ public:
     }
 
     /**
-     * @brief Notify tracker about realloc behavior captured by hook wrappers.
+     * @brief 通知跟踪器由 hook 包装捕获的 realloc 行为。
      * @param
-     *     - OldPtr     void*        Old pointer passed to realloc.
-     *     - NewPtr     void*        Returned pointer from realloc.
-     *     - NewSize    std::size_t  Requested new size.
-     *     - Caller     void*        Caller return address if available.
+     *     - OldPtr     void*        传给 realloc 的旧指针。
+     *     - NewPtr     void*        realloc 返回的指针。
+     *     - NewSize    std::size_t  请求的新大小。
+     *     - Caller     void*        调用方返回地址（如果可用）。
      * @usage
-     *     - Called by realloc hook wrapper after real realloc returns.
+     *     - 在真正的 realloc 返回后由 realloc hook 包装调用。
      * @return
      *     - void
      */
@@ -1247,14 +1247,14 @@ public:
     }
 
     /**
-     * @brief Notify tracker about allocation failure captured by hook wrappers.
+     * @brief 通知跟踪器由 hook 包装捕获到的分配失败。
      * @param
-     *     - Operation  HookAllocationOp  Hook operation kind.
-     *     - Size       std::size_t       Requested size.
-     *     - Alignment  std::size_t       Requested alignment or unknown marker.
-     *     - Caller     void*             Caller return address if available.
+     *     - Operation  HookAllocationOp  Hook 操作类型。
+     *     - Size       std::size_t       请求的大小。
+     *     - Alignment  std::size_t       请求的对齐值或未知标记。
+     *     - Caller     void*             调用方返回地址（如果可用）。
      * @usage
-     *     - Called when hook wrapper receives null from allocator function.
+     *     - 当 hook 包装从分配器函数收到 null 时调用。
      * @return
      *     - void
      */
@@ -1374,13 +1374,13 @@ public:
     }
 
     /**
-     * @brief Flush the full tracker report by using JSON backend.
+     * @brief 使用 JSON 后端冲刷完整的跟踪器报告。
      * @param
-     *     - InPath  const std::filesystem::path&  Output path.
+     *     - InPath  const std::filesystem::path&  输出路径。
      * @usage
-     *     - Use when a persistent report file is required after test/runtime.
+     *     - 当测试/运行后需要持久化报告文件时使用。
      * @return
-     *     - bool  true when report is written successfully.
+     *     - bool  报告成功写入时为 true。
      */
     [[nodiscard]] bool flushToFile(const std::filesystem::path &InPath) const
     {
@@ -1389,14 +1389,14 @@ public:
     }
 
     /**
-     * @brief Flush tracker report through custom report backend.
+     * @brief 通过自定义报告后端冲刷跟踪器报告。
      * @param
-     *     - InPath    const std::filesystem::path&  Output path.
-     *     - Backend   const IMemoryTrackerReportBackend&  Backend implementation.
+     *     - InPath    const std::filesystem::path&       输出路径。
+     *     - Backend   const IMemoryTrackerReportBackend&  后端实现。
      * @usage
-     *     - Use to extend report format (json/yml/etc.) while sharing infra snapshot.
+     *     - 用于扩展报告格式（json/yml 等），同时共享 infra 快照。
      * @return
-     *     - bool  true when backend successfully writes report.
+     *     - bool  后端成功写入报告时为 true。
      */
     [[nodiscard]] bool flushReport(
         const std::filesystem::path &InPath,
@@ -1406,13 +1406,13 @@ public:
     }
 
     /**
-     * @brief Get immutable report snapshot.
+     * @brief 获取不可变的报告快照。
      * @param
      *     - none
      * @usage
-     *     - Read detailed statistics, issues and live allocations in-memory.
+     *     - 在内存中读取详细的统计信息、问题与存活分配。
      * @return
-     *     - MemoryTrackerReport  Snapshot copy.
+     *     - MemoryTrackerReport  快照副本。
      */
     [[nodiscard]] MemoryTrackerReport getReport() const
     {
@@ -1434,13 +1434,13 @@ public:
     }
 
     /**
-     * @brief Query current buffered event count.
+     * @brief 查询当前缓冲的事件数量。
      * @param
      *     - none
      * @usage
-     *     - Keep compatibility with existing tests checking tracker activity.
+     *     - 与检查跟踪器活动的现有测试保持兼容。
      * @return
-     *     - std::size_t  Number of timeline records.
+     *     - std::size_t  时间线记录的数量。
      */
     [[nodiscard]] std::size_t getEventCount() const
     {

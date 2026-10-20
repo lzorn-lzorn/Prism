@@ -118,12 +118,12 @@ class ThreadCacheRegistry
 {
 public:
     /**
-     * @brief Bind process-level central components for TLS cache creation.
+     * @brief 绑定进程级中央组件，用于 TLS 缓存创建。
      * @param
-     *     - CentralPool  CentralPool&          Shared central pool instance.
-     *     - Config       const AllocatorConfig&  Runtime allocator configuration.
+     *     - CentralPool  CentralPool&           共享的中央池实例。
+     *     - Config       const AllocatorConfig&  运行时分配器配置。
      * @usage
-     *     - Must be called before the first get() on a thread.
+     *     - 必须在线程上首次调用 get() 之前调用。
      * @return
      *     - void
      */
@@ -134,13 +134,13 @@ public:
     }
 
     /**
-     * @brief Get thread-local cache instance for current thread.
+     * @brief 获取当前线程的线程本地缓存实例。
      * @param
      *     - none
      * @usage
-     *     - Hot allocation path should call this once then keep local reference.
+     *     - 热分配路径应调用一次，然后保留本地引用。
      * @return
-     *     - ThreadCache&  Current thread cache reference.
+     *     - ThreadCache&  当前线程缓存引用。
      */
     [[nodiscard]] static ThreadCache &self()
     {
@@ -158,11 +158,11 @@ public:
     }
 
     /**
-     * @brief Flush and destroy the current thread cache explicitly.
+     * @brief 显式冲刷并销毁当前线程缓存。
      * @param
      *     - none
      * @usage
-     *     - Call on known worker-thread shutdown boundaries.
+     *     - 在已知的工作线程关闭边界处调用。
      * @return
      *     - void
      */

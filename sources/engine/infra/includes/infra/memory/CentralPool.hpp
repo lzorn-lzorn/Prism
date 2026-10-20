@@ -139,39 +139,39 @@ public:
     CentralPool &operator=(const CentralPool &) = delete;
 
     /**
-     * @brief Fetch a Block Batch from one Size class into thread-local cache.
+     * @brief 从某个 Size class 取一批 Block 到线程本地缓存。
      * @param
-     *     - SizeClassIndex  uint16_t  Target Size-class index.
-     *     - OutBlocks       void**         Caller-provided output Block array.
-     *     - MaxBlocks       uint32_t  Maximum Blocks to fetch.
+     *     - SizeClassIndex  uint16_t  目标 Size-class 索引。
+     *     - OutBlocks       void**    调用方提供的输出 Block 数组。
+     *     - MaxBlocks       uint32_t  要获取的最大 Block 数量。
      * @usage
-     *     - Called on ThreadCache miss to amortize synchronization cost.
+     *     - 在 ThreadCache 未命中时调用，以摊薄同步开销。
      * @return
-     *     - uint32_t  Number of Blocks returned.
+     *     - uint32_t  返回的 Block 数量。
      */
     [[nodiscard]] uint32_t fetchBatch(uint16_t SizeClassIndex, void **OutBlocks, uint32_t MaxBlocks, MemSpan **OutSpanHint = nullptr);
 
     /**
-     * @brief Return a linked Block Batch back to one central Size class.
+     * @brief 将一条链式 Block 批归还给某个中央 Size class。
      * @param
-     *     - SizeClassIndex  uint16_t  Target Size-class index.
-     *     - Head            void*          Intrusive single-link Head pointer.
-     *     - Count           uint32_t  Number of Blocks in chain.
+     *     - SizeClassIndex  uint16_t  目标 Size-class 索引。
+     *     - Head            void*     侵入式单链表头指针。
+     *     - Count           uint32_t  链中 Block 的数量。
      * @usage
-     *     - Called by ThreadCache when local freelist is over target capacity.
+     *     - 当本地 freelist 超过目标容量时由 ThreadCache 调用。
      * @return
      *     - void
      */
     void returnBatch(uint16_t SizeClassIndex, void *Head, uint32_t Count, MemSpan *InitialHint = nullptr);
 
     /**
-     * @brief Read immutable Size-class metadata.
+     * @brief 读取不可变的 Size-class 元数据。
      * @param
-     *     - ClassIndex  uint16_t  Size-class index.
+     *     - ClassIndex  uint16_t  Size-class 索引。
      * @usage
-     *     - Used by ThreadCache and allocator layout stage.
+     *     - 由 ThreadCache 与分配器布局阶段使用。
      * @return
-     *     - SizeClass  Metadata for this class or zero-initialized fallback.
+     *     - SizeClass  该类的元数据，或零初始化的回退值。
      */
     [[nodiscard]] SizeClass getSizeClassInfo(const uint16_t ClassIndex) const noexcept
     {
