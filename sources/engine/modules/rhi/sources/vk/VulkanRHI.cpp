@@ -42,12 +42,12 @@ static bool checkInstanceExtensions(const std::vector<const char*>& Required)
     std::set<std::string> available_set;
     for (const auto& ext : available)
     {
-		available_set.insert(ext.extensionName);
-	}
+        available_set.insert(ext.extensionName);
+    }
     for (const char* ext : Required) 
-	{
+    {
         if (available_set.find(ext) == available_set.end()) 
-		{
+        {
             std::cerr << "Missing instance extension: " << ext << std::endl;
             return false;
         }
@@ -62,12 +62,12 @@ static bool checkDeviceExtensions(vk::PhysicalDevice RealGPU, const std::vector<
     std::set<std::string> available_set;
     for (const auto& ext : available)
     {
-		available_set.insert(ext.extensionName);
-	}
+        available_set.insert(ext.extensionName);
+    }
     for (const char* ext : Required) 
-	{
+    {
         if (available_set.find(ext) == available_set.end()) 
-		{
+        {
             std::cerr << "Missing device extension: " << ext << std::endl;
             return false;
         }
@@ -102,9 +102,9 @@ static uint64_t getDeviceLocalMemorySize(vk::PhysicalDevice RealGPU)
     auto mem_props = RealGPU.getMemoryProperties();
     uint64_t max_device_local_size = 0;
     for (uint32_t i = 0; i < mem_props.memoryHeapCount; ++i) 
-	{
+    {
         if (mem_props.memoryHeaps[i].flags & vk::MemoryHeapFlagBits::eDeviceLocal) 
-		{
+        {
             max_device_local_size = std::max(max_device_local_size, mem_props.memoryHeaps[i].size);
         }
     }
@@ -155,23 +155,23 @@ namespace rhi
 
 uint64_t clampCopySize(uint64_t Offset, uint64_t RequestedSize, uint64_t MaxSize)
 {
-	if (Offset >= MaxSize)
-	{
-		return 0;
-	}
+    if (Offset >= MaxSize)
+    {
+        return 0;
+    }
 
-	const uint64_t available_size = MaxSize - Offset;
-	if (RequestedSize == 0)
-	{
-		return available_size;
-	}
-	return std::min<uint64_t>(RequestedSize, available_size);
+    const uint64_t available_size = MaxSize - Offset;
+    if (RequestedSize == 0)
+    {
+        return available_size;
+    }
+    return std::min<uint64_t>(RequestedSize, available_size);
 }
 
 VulkanRHI::~VulkanRHI()
 {
     IsInitialized = false;
-	Context.reset();
+    Context.reset();
 }
 
 void VulkanRHI::initialize(const ui::GenericWindowPointer& Window)
@@ -186,7 +186,7 @@ void VulkanRHI::initialize(const ui::GenericWindowPointer& Window)
     }
 
     createVkInstance();
-	Context->Window = Window;
+    Context->Window = Window;
     createVkSurface(Window);
     pickPhysicalDevice();
     createLogicalDevice();
@@ -210,18 +210,18 @@ void VulkanRHI::createVkInstance()
     const char* validation_layer = "VK_LAYER_KHRONOS_validation";
     auto available_layers = vk::enumerateInstanceLayerProperties();
     for (const auto& layer : available_layers) 
-	{
+    {
         if (strcmp(layer.layerName, validation_layer) == 0) 
-		{
+        {
             layers.push_back(validation_layer);
             break;
         }
     }
 // TODO: 接入日志系统
     if (layers.empty())
-	{
-		std::cerr << "Warning: Validation layer requested but not available." << std::endl;
-	}
+    {
+        std::cerr << "Warning: Validation layer requested but not available." << std::endl;
+    }
 #endif
 
     auto required_instance_extensions = getRequiredInstanceExtensions();
@@ -236,7 +236,7 @@ void VulkanRHI::createVkInstance()
         required_instance_extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     }
     if (!checkInstanceExtensions(required_instance_extensions))
-	{
+    {
         throw std::runtime_error("Required instance extensions are not supported.");
     }
 
@@ -310,22 +310,22 @@ bool VulkanRHI::recoverSurface(const ui::GenericWindowPointer& Window)
 void VulkanRHI::pickPhysicalDevice()
 {
     if (!Context->Instance)
-	{
-		throw std::runtime_error("Vulkan instance not created before picking physical device.");
-	}
+    {
+        throw std::runtime_error("Vulkan instance not created before picking physical device.");
+    }
         
 
     auto physical_devices = Context->Instance->enumeratePhysicalDevices();
     if (physical_devices.empty())
     {
-		throw std::runtime_error("No Vulkan physical devices found.");
-	}
+        throw std::runtime_error("No Vulkan physical devices found.");
+    }
 
     vk::PhysicalDeviceFeatures required_features{};
 
     // TODO: 需要支持的设备扩展
     std::vector<const char*> requiredDeviceExtensions = 
-	{
+    {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,   // 交换链
     };
 
@@ -333,7 +333,7 @@ void VulkanRHI::pickPhysicalDevice()
     int best_score = -1;
 
     for (const auto& device : physical_devices) 
-	{
+    {
         if (device.getProperties().apiVersion < VK_API_VERSION_1_3)
         {
             std::println("Device {} does not support Vulkan 1.3, skipping.",
@@ -355,17 +355,17 @@ void VulkanRHI::pickPhysicalDevice()
 
         // ---- 检查核心特性 ----
         if (!checkDeviceFeatures(device, required_features)) 
-		{
-			std::println("Device {} does not support required features, skipping.", 
-				device.getProperties().deviceName);
+        {
+            std::println("Device {} does not support required features, skipping.", 
+                device.getProperties().deviceName);
             continue;
         }
 
         // ---- 检查设备扩展 ----
         if (!checkDeviceExtensions(device, requiredDeviceExtensions)) 
-		{
+        {
             std::println("Device {} does not support required extensions, skipping.", 
-				device.getProperties().deviceName);
+                device.getProperties().deviceName);
             continue;
         }
 
@@ -374,15 +374,15 @@ void VulkanRHI::pickPhysicalDevice()
         bool has_graphics = false;
         bool has_present = false;
         for (uint32_t family_index = 0; family_index < queue_families.size(); ++family_index)
-		{
+        {
             const auto& qf = queue_families[family_index];
             if (qf.queueFlags & vk::QueueFlagBits::eGraphics) has_graphics = true;
             if (device.getSurfaceSupportKHR(family_index, Context->Surface->Handle)) has_present = true;
         }
         if (!has_graphics || !has_present) 
-		{
+        {
             std::println("Device {} lacks graphics or presentation support, skipping.", 
-				device.getProperties().deviceName);
+                device.getProperties().deviceName);
             continue;
         }
 
@@ -395,47 +395,47 @@ void VulkanRHI::pickPhysicalDevice()
 
     if (!best_device)
     {
-		throw std::runtime_error("No suitable Vulkan physical device found.");
-	}
+        throw std::runtime_error("No suitable Vulkan physical device found.");
+    }
     Context->PhysicalDevice = best_device;
     std::println("Selected device: {} (score {})\n", 
-				Context->PhysicalDevice.getProperties().deviceName.data(), best_score);
+                Context->PhysicalDevice.getProperties().deviceName.data(), best_score);
 }
 
 void VulkanRHI::createLogicalDevice()
 {
     if (!Context->PhysicalDevice)
     {
-		throw std::runtime_error("Physical device not selected.");
-	}
+        throw std::runtime_error("Physical device not selected.");
+    }
 
     auto queue_families = Context->PhysicalDevice.getQueueFamilyProperties();
 
     // ---- 查找图形队列族 ----
     uint32_t graphics_queue_family = UINT32_MAX;
     for (uint32_t i = 0; i < queue_families.size(); ++i) 
-	{
+    {
         if (queue_families[i].queueFlags & vk::QueueFlagBits::eGraphics) 
-		{
+        {
             graphics_queue_family = i;
             break;
         }
     }
     if (graphics_queue_family == UINT32_MAX)
     {
-		throw std::runtime_error("No graphics queue family found.");
-	}
+        throw std::runtime_error("No graphics queue family found.");
+    }
     Context->GraphicsQueueFamilyIndex = graphics_queue_family;
 
     // ---- 查找呈现队列族 ----
     uint32_t present_queue_family = UINT32_MAX;
     for (uint32_t i = 0; i < queue_families.size(); ++i)
-	{
+    {
         if (Context->PhysicalDevice.getSurfaceSupportKHR(i, Context->Surface->Handle))
         {
             present_queue_family = i;
             break;
-		}
+        }
     }
     if (present_queue_family == UINT32_MAX)
     {
@@ -467,7 +467,7 @@ void VulkanRHI::createLogicalDevice()
         compute_queue_family,
         copy_queue_family };
     for (uint32_t family : unique_queue_families) 
-	{
+    {
         vk::DeviceQueueCreateInfo queue_creation_info(
             vk::DeviceQueueCreateFlags(),
             family,
@@ -492,8 +492,8 @@ void VulkanRHI::createLogicalDevice()
         hasExtension(available_extensions, VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
     const bool ray_query_extension_available =
         hasExtension(available_extensions, VK_KHR_RAY_QUERY_EXTENSION_NAME);
-	const bool hdr_metadata_extension_available =
-		hasExtension(available_extensions, VK_EXT_HDR_METADATA_EXTENSION_NAME);
+    const bool hdr_metadata_extension_available =
+        hasExtension(available_extensions, VK_EXT_HDR_METADATA_EXTENSION_NAME);
 
     vk::PhysicalDeviceVulkan13Features supported_vulkan13 {};
     vk::PhysicalDeviceVulkan12Features supported_vulkan12 {};
@@ -532,12 +532,12 @@ void VulkanRHI::createLogicalDevice()
     supported_dynamic_state3.pNext = vertex_input_dynamic_state_extension_available
         ? static_cast<void*>(&supported_vertex_input)
         : supported_ray_tracing_head;
-	supported_vertex_input.pNext = supported_ray_tracing_head;
+    supported_vertex_input.pNext = supported_ray_tracing_head;
     vk::PhysicalDeviceFeatures2 supported_features {};
     supported_features.pNext = &supported_vulkan13;
     Context->PhysicalDevice.getFeatures2(&supported_features);
     if (!supported_vulkan13.dynamicRendering || !supported_vulkan13.synchronization2 ||
-		!supported_vulkan12.timelineSemaphore)
+        !supported_vulkan12.timelineSemaphore)
     {
         throw std::runtime_error(
             "Selected Vulkan device lacks dynamic rendering, synchronization2, or timeline semaphores.");
@@ -548,7 +548,7 @@ void VulkanRHI::createLogicalDevice()
     enabled_vulkan13.synchronization2 = VK_TRUE;
     vk::PhysicalDeviceVulkan12Features enabled_vulkan12 {};
     enabled_vulkan12.descriptorIndexing = supported_vulkan12.descriptorIndexing;
-	enabled_vulkan12.timelineSemaphore = supported_vulkan12.timelineSemaphore;
+    enabled_vulkan12.timelineSemaphore = supported_vulkan12.timelineSemaphore;
     // Vulkan 1.3 promotes the Vulkan 1.2 bufferDeviceAddress capability; the
     // VK_KHR_buffer_device_address extension has equivalent allocation/query rules.
     enabled_vulkan12.bufferDeviceAddress = supported_vulkan12.bufferDeviceAddress;
@@ -664,7 +664,7 @@ void VulkanRHI::createLogicalDevice()
     enabled_dynamic_state3.pNext = enabled_vertex_input.vertexInputDynamicState
         ? static_cast<void*>(&enabled_vertex_input)
         : enabled_ray_tracing_head;
-	enabled_vertex_input.pNext = enabled_ray_tracing_head;
+    enabled_vertex_input.pNext = enabled_ray_tracing_head;
 
     // Pipeline 后端只在对应能力实际启用后对外报告支持. 这里按硬件支持启用
     // 常用固定功能；扩展动态状态, Mesh 和 Ray Tracing 仍由后续扩展链单独管理. 
@@ -679,7 +679,7 @@ void VulkanRHI::createLogicalDevice()
     enabled_features.samplerAnisotropy = supported_features.features.samplerAnisotropy;
     enabled_features.alphaToOne = supported_features.features.alphaToOne;
     enabled_features.independentBlend = supported_features.features.independentBlend;
-	enabled_features.pipelineStatisticsQuery = supported_features.features.pipelineStatisticsQuery;
+    enabled_features.pipelineStatisticsQuery = supported_features.features.pipelineStatisticsQuery;
 
     // ---- 启用扩展(与之前检查对应) ----
     std::vector<const char*> enabledExtensions;
@@ -706,13 +706,13 @@ void VulkanRHI::createLogicalDevice()
         vk::DeviceCreateFlags(),
         static_cast<uint32_t>(queue_createInfos.size()),
         queue_createInfos.data(),
-		0,
-		nullptr,
+        0,
+        nullptr,
         static_cast<uint32_t>(enabledExtensions.size()),
         enabledExtensions.empty() ? nullptr : enabledExtensions.data(),
         &enabled_features
     );
-	device_creation_info.pNext = &enabled_vulkan13;
+    device_creation_info.pNext = &enabled_vulkan13;
 
     Context->Device = Context->PhysicalDevice.createDeviceUnique(device_creation_info);
 
@@ -764,7 +764,7 @@ void VulkanRHI::createLogicalDevice()
     features.OcclusionQueries = true;
     features.PipelineStatisticsQueries = enabled_features.pipelineStatisticsQuery == VK_TRUE;
     features.QueryResultCopy = true;
-	features.BufferDeviceAddress = enabled_vulkan12.bufferDeviceAddress == VK_TRUE;
+    features.BufferDeviceAddress = enabled_vulkan12.bufferDeviceAddress == VK_TRUE;
     features.AccelerationStructure = enable_acceleration_structure;
     features.RayTracingPipeline = enable_ray_tracing_pipeline;
     features.RayQuery = enable_ray_query;
@@ -776,9 +776,9 @@ void VulkanRHI::createLogicalDevice()
 std::shared_ptr<RDevice> VulkanRHI::createDevice()
 {
     if (!Context->Device)
-	{
-		throw std::runtime_error("Logical device not created.");
-	}
+    {
+        throw std::runtime_error("Logical device not created.");
+    }
     return std::make_shared<VulkanDevice>(Context);
 }
 } // namespace rhi

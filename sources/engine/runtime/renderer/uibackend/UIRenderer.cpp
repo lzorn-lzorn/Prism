@@ -592,7 +592,7 @@ struct UIRenderer::Impl
     }
 };
 
-UIRenderer::UIRenderer(IGenericWindow &Window, GpuBackend Backend, bool Debug) : ImplPtr(std::make_unique<Impl>())
+UIRenderer::UIRenderer(IGenericWindow &Window, EGpuBackend Backend, bool Debug) : ImplPtr(std::make_unique<Impl>())
 {
     const auto *NativeWindow = dynamic_cast<const SdlWindow *>(&Window);
     if (!NativeWindow)
@@ -614,11 +614,11 @@ UIRenderer::UIRenderer(IGenericWindow &Window, GpuBackend Backend, bool Debug) :
 #endif
     switch (Backend)
     {
-    case GpuBackend::Vulkan:
+    case EGpuBackend::Vulkan:
         Driver = "vulkan";
         Formats = SDL_GPU_SHADERFORMAT_SPIRV;
         break;
-    case GpuBackend::Direct3D12:
+    case EGpuBackend::Direct3D12:
 #ifdef EDITOR_UI_HAS_DXIL
         Driver = "direct3d12";
         Formats = SDL_GPU_SHADERFORMAT_DXIL;
@@ -626,7 +626,7 @@ UIRenderer::UIRenderer(IGenericWindow &Window, GpuBackend Backend, bool Debug) :
 #else
         Error::raise(EErrorCode::Runtime, "Direct3D12 UI rendering requires EDITOR_UI_BUILD_DXIL=ON and dxc");
 #endif
-    case GpuBackend::Metal:
+    case EGpuBackend::Metal:
 #ifdef EDITOR_UI_HAS_MSL
         Driver = "metal";
         Formats = SDL_GPU_SHADERFORMAT_MSL;
@@ -634,7 +634,7 @@ UIRenderer::UIRenderer(IGenericWindow &Window, GpuBackend Backend, bool Debug) :
 #else
         Error::raise(EErrorCode::Runtime, "Metal UI rendering requires EDITOR_UI_BUILD_MSL=ON and spirv-cross");
 #endif
-    case GpuBackend::Auto:
+    case EGpuBackend::Auto:
         break;
     default:
         Error::raise(EErrorCode::InvalidArgument, "Unknown GPU backend");

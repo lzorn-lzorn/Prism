@@ -12,10 +12,10 @@ void registerApplicationOptions(CommandLineParser& Parser, ApplicationOptions& O
     Parser.registerOption<std::string>("--font", "字体文件路径", [&Options](const std::string& Value)
         { Options.FontPath = Value; });
 
-    const std::map<std::string, GpuBackend> Backends{{"auto", GpuBackend::Auto},
-        {"vulkan", GpuBackend::Vulkan}, {"metal", GpuBackend::Metal},
-        {"direct3d12", GpuBackend::Direct3D12}};
-    Parser.registerOption<GpuBackend>("--backend", "GPU 后端", [&Options](GpuBackend Value)
+    const std::map<std::string, EGpuBackend> Backends{{"auto", EGpuBackend::Auto},
+        {"vulkan", EGpuBackend::Vulkan}, {"metal", EGpuBackend::Metal},
+        {"direct3d12", EGpuBackend::Direct3D12}};
+    Parser.registerOption<EGpuBackend>("--backend", "GPU 后端", [&Options](EGpuBackend Value)
         { Options.Backend = Value; }, CLI::CheckedTransformer(Backends), CLI::IsMember(Backends));
 
     const std::map<std::string, TextEncoding> Encodings{{"utf8", TextEncoding::UTF8},

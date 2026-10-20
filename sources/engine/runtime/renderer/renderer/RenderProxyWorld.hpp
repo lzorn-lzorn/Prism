@@ -46,84 +46,84 @@ namespace runtime::renderer
  */
 struct StaticMesh
 {
-	std::shared_ptr<rhi::RBuffer> VertexBuffer;
-	std::shared_ptr<rhi::RBuffer> IndexBuffer;
-	::renderer::VertexFactoryHandle VertexFactory;
-	rhi::EIndexFormat IndexFormat { rhi::EIndexFormat::UInt32 };
-	uint32_t IndexCount { 0 };
+    std::shared_ptr<rhi::RBuffer> VertexBuffer;
+    std::shared_ptr<rhi::RBuffer> IndexBuffer;
+    ::renderer::VertexFactoryHandle VertexFactory;
+    rhi::EIndexFormat IndexFormat { rhi::EIndexFormat::UInt32 };
+    uint32_t IndexCount { 0 };
 
-	/** 包围球中心(世界空间), 供剔除使用. */
-	infra::Vec3f BoundsCenter { 0.0f, 0.0f, 0.0f };
-	/** 包围球半径. */
-	float BoundsRadius { 0.0f };
+    /** 包围球中心(世界空间), 供剔除使用. */
+    infra::Vec3f BoundsCenter { 0.0f, 0.0f, 0.0f };
+    /** 包围球半径. */
+    float BoundsRadius { 0.0f };
 };
 
 /** @brief RenderProxy 的主分类(按职责而非系统来源). */
 enum class ERenderProxyKind : uint8_t
 {
-	OpaqueMesh,
-	TransparentMesh,
-	RigidBodyMesh,
-	TerrainPatch,
-	Light,
-	FluidSurface,
-	GasVolume,
+    OpaqueMesh,
+    TransparentMesh,
+    RigidBodyMesh,
+    TerrainPatch,
+    Light,
+    FluidSurface,
+    GasVolume,
 };
 
 /** @brief 各类 RenderProxy 共享头信息. */
 struct RenderProxyHeader
 {
-	uint64_t EntityId { 0 };
-	ERenderProxyKind Kind { ERenderProxyKind::OpaqueMesh };
-	uint32_t MaterialId { 0 };
-	infra::Matrix4x4 LocalToWorld {};
-	infra::Vec3f BoundsCenterWS { 0.0f, 0.0f, 0.0f };
-	float BoundsRadius { 0.0f };
-	uint32_t StableOrder { 0 };
+    uint64_t EntityId { 0 };
+    ERenderProxyKind Kind { ERenderProxyKind::OpaqueMesh };
+    uint32_t MaterialId { 0 };
+    infra::Matrix4x4 LocalToWorld {};
+    infra::Vec3f BoundsCenterWS { 0.0f, 0.0f, 0.0f };
+    float BoundsRadius { 0.0f };
+    uint32_t StableOrder { 0 };
 };
 
 /** @brief 几何代理: 网格/透明网格/刚体网格的渲染表示. */
 struct MeshRenderProxy
 {
-	RenderProxyHeader Header;
-	std::shared_ptr<StaticMesh> Mesh;
-	bool CastShadow { true };
-	infra::Matrix4x4 PreviousLocalToWorld {};
-	infra::Vec3f LinearVelocityWS { 0.0f, 0.0f, 0.0f };
-	infra::Vec3f AngularVelocityWS { 0.0f, 0.0f, 0.0f };
-	bool Sleeping { false };
+    RenderProxyHeader Header;
+    std::shared_ptr<StaticMesh> Mesh;
+    bool CastShadow { true };
+    infra::Matrix4x4 PreviousLocalToWorld {};
+    infra::Vec3f LinearVelocityWS { 0.0f, 0.0f, 0.0f };
+    infra::Vec3f AngularVelocityWS { 0.0f, 0.0f, 0.0f };
+    bool Sleeping { false };
 };
 
 /** @brief 地形代理: patch 级 LOD 与材质输入. */
 struct TerrainRenderProxy
 {
-	RenderProxyHeader Header;
-	TerrainPatchData Patch;
+    RenderProxyHeader Header;
+    TerrainPatchData Patch;
 };
 
 /** @brief 光源代理. */
 struct LightRenderProxy
 {
-	RenderProxyHeader Header;
-	LightData Light;
+    RenderProxyHeader Header;
+    LightData Light;
 };
 
 /** @brief 流体/水体代理. */
 struct FluidRenderProxy
 {
-	RenderProxyHeader Header;
-	FluidSurfaceData Fluid;
+    RenderProxyHeader Header;
+    FluidSurfaceData Fluid;
 };
 
 /** @brief 气体/体积介质代理. */
 struct GasRenderProxy
 {
-	RenderProxyHeader Header;
-	GasVolumeData Gas;
+    RenderProxyHeader Header;
+    GasVolumeData Gas;
 };
 
 using RenderProxyVariant = std::variant<MeshRenderProxy, TerrainRenderProxy,
-	LightRenderProxy, FluidRenderProxy, GasRenderProxy>;
+    LightRenderProxy, FluidRenderProxy, GasRenderProxy>;
 
 /**
  * @brief 渲染代理: 一个 3D 可渲染对象在渲染器侧的数据(对应 UE 的 FPrimitiveSceneProxy).
@@ -138,8 +138,8 @@ using RenderProxy = MeshRenderProxy;
 /** @brief 一个可见代理: 代理索引 + 排序键. 是 RenderProxyWorld -> 子渲染器的交换结构. */
 struct VisibleProxy
 {
-	uint32_t ProxyIndex { 0 };
-	DrawPacket::SortKey Key { 0 };
+    uint32_t ProxyIndex { 0 };
+    DrawPacket::SortKey Key { 0 };
 };
 
 /**
@@ -148,71 +148,71 @@ struct VisibleProxy
 class RenderProxyWorld
 {
 public:
-	RenderProxyWorld() = default;
+    RenderProxyWorld() = default;
 
-	RenderProxyWorld(const RenderProxyWorld&) = delete;
-	RenderProxyWorld& operator=(const RenderProxyWorld&) = delete;
+    RenderProxyWorld(const RenderProxyWorld&) = delete;
+    RenderProxyWorld& operator=(const RenderProxyWorld&) = delete;
 
-	/** @brief 注册任意类型代理, 返回稳定索引. */
-	uint32_t addProxy(RenderProxyVariant InProxy);
+    /** @brief 注册任意类型代理, 返回稳定索引. */
+    uint32_t addProxy(RenderProxyVariant InProxy);
 
-	/** @brief 注册网格代理(历史兼容入口). */
-	uint32_t addProxy(RenderProxy InProxy);
+    /** @brief 注册网格代理(历史兼容入口). */
+    uint32_t addProxy(RenderProxy InProxy);
 
-	/** @brief 移除代理(交换到末尾弹出, 旧索引失效). 置 Geometry|Visibility 变化标志. */
-	void removeProxy(uint32_t Index);
+    /** @brief 移除代理(交换到末尾弹出, 旧索引失效). 置 Geometry|Visibility 变化标志. */
+    void removeProxy(uint32_t Index);
 
-	/** @brief 更新代理变换. 置 Transform 变化标志. */
-	void updateTransform(uint32_t Index, const infra::Matrix4x4& LocalToWorld);
+    /** @brief 更新代理变换. 置 Transform 变化标志. */
+    void updateTransform(uint32_t Index, const infra::Matrix4x4& LocalToWorld);
 
-	/** @brief 更新代理材质引用. 置 Material 变化标志. */
-	void updateMaterial(uint32_t Index, uint32_t MaterialId);
+    /** @brief 更新代理材质引用. 置 Material 变化标志. */
+    void updateMaterial(uint32_t Index, uint32_t MaterialId);
 
-	/** @brief 累积渲染意图(变化标志). */
-	void markChanged(EChangeFlags Flags) noexcept;
+    /** @brief 累积渲染意图(变化标志). */
+    void markChanged(EChangeFlags Flags) noexcept;
 
-	/**
-	 * @brief 读取并清零本帧变化标志(渲染意图).
-	 * @return 自上一次次调用以来累积的变化.
-	 */
-	[[nodiscard]] EChangeFlags consumeChangeFlags() noexcept;
+    /**
+     * @brief 读取并清零本帧变化标志(渲染意图).
+     * @return 自上一次次调用以来累积的变化.
+     */
+    [[nodiscard]] EChangeFlags consumeChangeFlags() noexcept;
 
-	/**
-	 * @brief 收集可见代理并按 SortKey 排序.
-	 *
-	 * v1 不做视锥/遮挡剔除(仅排序), 剔除见后续 P4 路线. 返回列表按 Key 升序稳定排序.
-	 * @param Out 输出可见代理列表(会先清空).
-	 */
-	void collectVisible(std::vector<VisibleProxy>& Out) const;
+    /**
+     * @brief 收集可见代理并按 SortKey 排序.
+     *
+     * v1 不做视锥/遮挡剔除(仅排序), 剔除见后续 P4 路线. 返回列表按 Key 升序稳定排序.
+     * @param Out 输出可见代理列表(会先清空).
+     */
+    void collectVisible(std::vector<VisibleProxy>& Out) const;
 
-	/**
-	 * @brief 按代理分类构建帧交换包, 供 RenderServer / SceneRenderer 消费.
-	 *
-	 * v1 先构建分类数据列表(光源/流体/气体/地形/刚体), DrawPacket 的实际管线解析由
-	 * MaterialSystem 后续填充.
-	 */
-	void buildSubmission(RenderFrameSubmission& Out, EChangeFlags WorldChanges,
-		EChangeFlags UIChanges = EChangeFlags_t::None) const;
+    /**
+     * @brief 按代理分类构建帧交换包, 供 RenderServer / SceneRenderer 消费.
+     *
+     * v1 先构建分类数据列表(光源/流体/气体/地形/刚体), DrawPacket 的实际管线解析由
+     * MaterialSystem 后续填充.
+     */
+    void buildSubmission(RenderFrameSubmission& Out, EChangeFlags WorldChanges,
+        EChangeFlags UIChanges = EChangeFlags_t::None) const;
 
-	/** @brief 清空所有代理并复位变化标志. */
-	void clear() noexcept;
+    /** @brief 清空所有代理并复位变化标志. */
+    void clear() noexcept;
 
-	[[nodiscard]] size_t getProxyCount() const noexcept { return Proxies.size(); }
-	[[nodiscard]] const RenderProxyVariant* getProxy(uint32_t Index) const noexcept;
-	[[nodiscard]] RenderProxyVariant* getProxy(uint32_t Index) noexcept;
+    [[nodiscard]] size_t getProxyCount() const noexcept { return Proxies.size(); }
+    [[nodiscard]] const RenderProxyVariant* getProxy(uint32_t Index) const noexcept;
+    [[nodiscard]] RenderProxyVariant* getProxy(uint32_t Index) noexcept;
 
-	/**
-	 * @brief 构造排序键.
-	 *
-	 * 编码(高位到低位): Transparent 标志 | MaterialId | StableOrder.
-	 * 不透明与透明被天然分到两个连续区间, 便于子渲染器分段消费.
-	 */
-	[[nodiscard]] static DrawPacket::SortKey makeSortKey(bool Transparent, uint32_t MaterialId,
-		uint32_t StableOrder) noexcept;
+    /**
+     * @brief 构造排序键.
+     *
+     * 编码(高位到低位): Transparent 标志 | MaterialId | StableOrder.
+     * 不透明与透明被天然分到两个连续区间, 便于子渲染器分段消费.
+     */
+    [[nodiscard]] static DrawPacket::SortKey makeSortKey(bool Transparent, uint32_t MaterialId,
+        uint32_t StableOrder) noexcept;
 
 private:
-	std::vector<RenderProxyVariant> Proxies;
-	EChangeFlags ChangeFlags { EChangeFlags_t::All };
+    std::vector<RenderProxyVariant> Proxies;
+    EChangeFlags ChangeFlags { EChangeFlags_t::All };
 };
 
 /**

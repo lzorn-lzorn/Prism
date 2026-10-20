@@ -48,13 +48,13 @@ protected:
         return Value;
     }
     constexpr Ty& Assign(Ty&& InValue)
-	{
-		if constexpr (std::is_move_assignable_v<Ty>)
-			Value = std::move(InValue);
-		else
-			Value = InValue;   // 回退到拷贝赋值
-		return Value;
-	}
+    {
+        if constexpr (std::is_move_assignable_v<Ty>)
+            Value = std::move(InValue);
+        else
+            Value = InValue;   // 回退到拷贝赋值
+        return Value;
+    }
 
 private:
     Ty Value;
@@ -172,17 +172,17 @@ public:
     }
 
     void swap(Observer_List& Other) noexcept
-	{
-		// 不能使用 std::swap(Head, Other.Head) —— std::atomic 不可移动
-		Node_t* my_head = Head.load(std::memory_order_relaxed);
-		Node_t* my_tail = Tail.load(std::memory_order_relaxed);
+    {
+        // 不能使用 std::swap(Head, Other.Head) —— std::atomic 不可移动
+        Node_t* my_head = Head.load(std::memory_order_relaxed);
+        Node_t* my_tail = Tail.load(std::memory_order_relaxed);
 
-		Head.store(Other.Head.load(std::memory_order_relaxed), std::memory_order_relaxed);
-		Tail.store(Other.Tail.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        Head.store(Other.Head.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        Tail.store(Other.Tail.load(std::memory_order_relaxed), std::memory_order_relaxed);
 
-		Other.Head.store(my_head, std::memory_order_relaxed);
-		Other.Tail.store(my_tail, std::memory_order_relaxed);
-	}
+        Other.Head.store(my_head, std::memory_order_relaxed);
+        Other.Tail.store(my_tail, std::memory_order_relaxed);
+    }
 
 private:
     void appendNode(Node_t* Node) noexcept
@@ -231,49 +231,49 @@ public:
     using storage_type      = details::Value_Storage<Ty>;
 
     // ===================== 构造函数 =====================
-	constexpr Observer() requires std::default_initializable<Ty> : storage_type() {}
+    constexpr Observer() requires std::default_initializable<Ty> : storage_type() {}
 
-	// 拷贝构造
-	constexpr Observer(const Observer& Other)
-		requires smf_ctrl::enable_copy_ctor
-		: storage_type(Other), Observers() {}
+    // 拷贝构造
+    constexpr Observer(const Observer& Other)
+        requires smf_ctrl::enable_copy_ctor
+        : storage_type(Other), Observers() {}
 
-	Observer(const Observer&) requires (!smf_ctrl::enable_copy_ctor) = delete;
+    Observer(const Observer&) requires (!smf_ctrl::enable_copy_ctor) = delete;
 
-	// 移动构造
-	constexpr Observer(Observer&& Other) noexcept
-		requires smf_ctrl::enable_move_ctor
-		: storage_type(std::move(Other)), Observers() {}
+    // 移动构造
+    constexpr Observer(Observer&& Other) noexcept
+        requires smf_ctrl::enable_move_ctor
+        : storage_type(std::move(Other)), Observers() {}
 
-	Observer(Observer&&) requires (!smf_ctrl::enable_move_ctor) = delete;
+    Observer(Observer&&) requires (!smf_ctrl::enable_move_ctor) = delete;
 
-	// 拷贝赋值
-	constexpr Observer& operator=(const Observer& Other)
-		requires (smf_ctrl::enable_copy_ctor && smf_ctrl::enable_copy_assign)
-	{
-		if (this != &Other) {
-			this->Assign(Other.Value());
-			notify();
-		}
-		return *this;
-	}
+    // 拷贝赋值
+    constexpr Observer& operator=(const Observer& Other)
+        requires (smf_ctrl::enable_copy_ctor && smf_ctrl::enable_copy_assign)
+    {
+        if (this != &Other) {
+            this->Assign(Other.Value());
+            notify();
+        }
+        return *this;
+    }
 
-	Observer& operator=(const Observer&) 
-		requires (!(smf_ctrl::enable_copy_ctor && smf_ctrl::enable_copy_assign)) = delete;
+    Observer& operator=(const Observer&) 
+        requires (!(smf_ctrl::enable_copy_ctor && smf_ctrl::enable_copy_assign)) = delete;
 
-	// 移动赋值
-	constexpr Observer& operator=(Observer&& Other) noexcept
-		requires (smf_ctrl::enable_move_ctor && smf_ctrl::enable_move_assign)
-	{
-		if (this != &Other) {
-			this->Assign(std::move(Other.Value()));
-			notify();
-		}
-		return *this;
-	}
+    // 移动赋值
+    constexpr Observer& operator=(Observer&& Other) noexcept
+        requires (smf_ctrl::enable_move_ctor && smf_ctrl::enable_move_assign)
+    {
+        if (this != &Other) {
+            this->Assign(std::move(Other.Value()));
+            notify();
+        }
+        return *this;
+    }
 
-	Observer& operator=(Observer&&) 
-		requires (!(smf_ctrl::enable_move_ctor && smf_ctrl::enable_move_assign)) = delete;
+    Observer& operator=(Observer&&) 
+        requires (!(smf_ctrl::enable_move_ctor && smf_ctrl::enable_move_assign)) = delete;
 
     // 直接用 Ty 构造
     Observer(const Ty& InValue)
@@ -329,7 +329,7 @@ public:
     }
 
   	template <typename Fn, typename... Args>
-		requires std::invocable<Fn, Ty&, Args...>
+        requires std::invocable<Fn, Ty&, Args...>
     Observer& modify(Fn&& F, Args&&... InArgs)
         noexcept(std::is_nothrow_invocable_v<Fn, Ty&, Args...>)
     {

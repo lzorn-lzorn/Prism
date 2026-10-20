@@ -32,27 +32,27 @@ namespace std
  */
 
 #define CompatibilityLayer_STLContainer(STL_Container_Type, STL_Container_Value)\
-	using value_type = typename STL_Container_Type::value_type; \
-	using size_type = typename STL_Container_Type::size_type; \
-	using difference_type = typename STL_Container_Type::difference_type; \
-	using reference = typename STL_Container_Type::reference; \
-	using const_reference = typename STL_Container_Type::const_reference; \
-	using pointer = typename STL_Container_Type::pointer; \
-	using const_pointer = typename STL_Container_Type::const_pointer; \
-	using iterator =  STL_Container_Type::iterator;        \
-	using const_iterator = typename STL_Container_Type::const_iterator; \
-	using reverse_iterator = typename STL_Container_Type::reverse_iterator; \
-	using const_reverse_iterator = typename STL_Container_Type::const_reverse_iterator; \
-	\
-	iterator begin() noexcept { return STL_Container_Value.begin(); } \
-	iterator end() noexcept { return STL_Container_Value.end(); } \
-	const_iterator begin() const noexcept { return STL_Container_Value.begin(); } \
-	const_iterator end() const noexcept { return STL_Container_Value.end(); } \
-	const_iterator cbegin() const noexcept { return STL_Container_Value.cbegin(); } \
-	const_iterator cend() const noexcept { return STL_Container_Value.cend(); } \
-	reverse_iterator rbegin() noexcept { return STL_Container_Value.rbegin(); } \
-	reverse_iterator rend() noexcept { return STL_Container_Value.rend(); } \
-	const_reverse_iterator rbegin() const noexcept { return STL_Container_Value.rbegin(); } \
-	const_reverse_iterator rend() const noexcept { return STL_Container_Value.rend(); } \
-	const_reverse_iterator crbegin() const noexcept { return STL_Container_Value.crbegin(); } \
-	const_reverse_iterator crend() const noexcept { return STL_Container_Value.crend(); } \
+    using value_type = typename STL_Container_Type::value_type; \
+    using size_type = typename STL_Container_Type::size_type; \
+    using difference_type = typename STL_Container_Type::difference_type; \
+    using reference = typename STL_Container_Type::reference; \
+    using const_reference = typename STL_Container_Type::const_reference; \
+    using pointer = typename STL_Container_Type::pointer; \
+    using const_pointer = typename STL_Container_Type::const_pointer; \
+    using iterator =  STL_Container_Type::iterator;        \
+    using const_iterator = typename STL_Container_Type::const_iterator; \
+    using reverse_iterator = typename STL_Container_Type::reverse_iterator; \
+    using const_reverse_iterator = typename STL_Container_Type::const_reverse_iterator; \
+    \
+    iterator begin() noexcept { return STL_Container_Value.begin(); } \
+    iterator end() noexcept { return STL_Container_Value.end(); } \
+    const_iterator begin() const noexcept { return STL_Container_Value.begin(); } \
+    const_iterator end() const noexcept { return STL_Container_Value.end(); } \
+    const_iterator cbegin() const noexcept { return STL_Container_Value.cbegin(); } \
+    const_iterator cend() const noexcept { return STL_Container_Value.cend(); } \
+    reverse_iterator rbegin() noexcept { return STL_Container_Value.rbegin(); } \
+    reverse_iterator rend() noexcept { return STL_Container_Value.rend(); } \
+    const_reverse_iterator rbegin() const noexcept { return STL_Container_Value.rbegin(); } \
+    const_reverse_iterator rend() const noexcept { return STL_Container_Value.rend(); } \
+    const_reverse_iterator crbegin() const noexcept { return STL_Container_Value.crbegin(); } \
+    const_reverse_iterator crend() const noexcept { return STL_Container_Value.crend(); } \

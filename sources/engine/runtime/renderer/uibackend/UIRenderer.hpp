@@ -6,7 +6,7 @@
 
 namespace ui
 {
-enum class GpuBackend
+enum class EGpuBackend
 {
     Auto,
     Vulkan,
@@ -17,7 +17,7 @@ enum class GpuBackend
 class UIRenderer final : public IUIRenderer
 {
   public:
-    explicit UIRenderer(IGenericWindow &Window, GpuBackend Backend = GpuBackend::Auto, bool Debug = false);
+    explicit UIRenderer(IGenericWindow &Window, EGpuBackend Backend = EGpuBackend::Auto, bool Debug = false);
     ~UIRenderer() override;
     UIRenderer(const UIRenderer &) = delete;
     UIRenderer &operator=(const UIRenderer &) = delete;

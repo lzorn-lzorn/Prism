@@ -41,30 +41,30 @@ namespace runtime::renderer
 class RenderPassScheduler
 {
 public:
-	RenderPassScheduler() = default;
+    RenderPassScheduler() = default;
 
-	RenderPassScheduler(const RenderPassScheduler&) = delete;
-	RenderPassScheduler& operator=(const RenderPassScheduler&) = delete;
+    RenderPassScheduler(const RenderPassScheduler&) = delete;
+    RenderPassScheduler& operator=(const RenderPassScheduler&) = delete;
 
-	/** @brief 注册一个子渲染器(按添加顺序执行). */
-	void addPass(std::unique_ptr<IRenderPass> Pass);
+    /** @brief 注册一个子渲染器(按添加顺序执行). */
+    void addPass(std::unique_ptr<IRenderPass> Pass);
 
-	/** @brief 清空所有子渲染器. */
-	void clear();
+    /** @brief 清空所有子渲染器. */
+    void clear();
 
-	/**
-	 * @brief 依次驱动所有子渲染器向 Builder 声明 Pass(不含 compile/execute).
-	 *
-	 * @param Builder 本帧共享的 RDG 构建器(UI 与 3D 合并于此).
-	 * @param BaseContext 只读上下文; 内部会复制并填充共享 FrameResources 后传给各子渲染器.
-	 */
-	void build(RDGBuilder& Builder, const RenderContext& BaseContext);
+    /**
+     * @brief 依次驱动所有子渲染器向 Builder 声明 Pass(不含 compile/execute).
+     *
+     * @param Builder 本帧共享的 RDG 构建器(UI 与 3D 合并于此).
+     * @param BaseContext 只读上下文; 内部会复制并填充共享 FrameResources 后传给各子渲染器.
+     */
+    void build(RDGBuilder& Builder, const RenderContext& BaseContext);
 
-	/** @brief 子渲染器数量. */
-	[[nodiscard]] size_t getPassCount() const noexcept { return Passes.size(); }
+    /** @brief 子渲染器数量. */
+    [[nodiscard]] size_t getPassCount() const noexcept { return Passes.size(); }
 
 private:
-	std::vector<std::unique_ptr<IRenderPass>> Passes;
+    std::vector<std::unique_ptr<IRenderPass>> Passes;
 };
 
 /** @brief 向后兼容别名: 新代码请优先使用 RenderPassScheduler. */
@@ -78,48 +78,48 @@ using SceneRenderer = RenderPassScheduler;
 class ShadowRenderPass final : public IRenderPass
 {
 public:
-	[[nodiscard]] const char* getName() const noexcept override { return "Shadow"; }
-	void addPasses(RDGBuilder& Builder, const RenderContext& Context) override;
+    [[nodiscard]] const char* getName() const noexcept override { return "Shadow"; }
+    void addPasses(RDGBuilder& Builder, const RenderContext& Context) override;
 };
 
 /** @brief 主深度预通道(提前写深度做 Early-Z, 供后续 HiZ 与 Opaque 复用). */
 class DepthPrePass final : public IRenderPass
 {
 public:
-	[[nodiscard]] const char* getName() const noexcept override { return "DepthPrePass"; }
-	void addPasses(RDGBuilder& Builder, const RenderContext& Context) override;
+    [[nodiscard]] const char* getName() const noexcept override { return "DepthPrePass"; }
+    void addPasses(RDGBuilder& Builder, const RenderContext& Context) override;
 };
 
 /** @brief 不透明渲染(GBuffer 或 Forward+ 主着色). */
 class OpaqueRenderPass final : public IRenderPass
 {
 public:
-	[[nodiscard]] const char* getName() const noexcept override { return "Opaque"; }
-	void addPasses(RDGBuilder& Builder, const RenderContext& Context) override;
+    [[nodiscard]] const char* getName() const noexcept override { return "Opaque"; }
+    void addPasses(RDGBuilder& Builder, const RenderContext& Context) override;
 };
 
 /** @brief 半透明渲染(从后向前, 读深度不写深度). */
 class TransparentRenderPass final : public IRenderPass
 {
 public:
-	[[nodiscard]] const char* getName() const noexcept override { return "Transparent"; }
-	void addPasses(RDGBuilder& Builder, const RenderContext& Context) override;
+    [[nodiscard]] const char* getName() const noexcept override { return "Transparent"; }
+    void addPasses(RDGBuilder& Builder, const RenderContext& Context) override;
 };
 
 /** @brief 后处理(Bloom / ToneMapping / TAA 等). */
 class PostProcessRenderPass final : public IRenderPass
 {
 public:
-	[[nodiscard]] const char* getName() const noexcept override { return "PostProcess"; }
-	void addPasses(RDGBuilder& Builder, const RenderContext& Context) override;
+    [[nodiscard]] const char* getName() const noexcept override { return "PostProcess"; }
+    void addPasses(RDGBuilder& Builder, const RenderContext& Context) override;
 };
 
 /** @brief 2D/UI 合成(消费 UIRenderer 的合批结果, 与 3D 合并到同一 RDG). */
 class UIRenderPass final : public IRenderPass
 {
 public:
-	[[nodiscard]] const char* getName() const noexcept override { return "UI"; }
-	void addPasses(RDGBuilder& Builder, const RenderContext& Context) override;
+    [[nodiscard]] const char* getName() const noexcept override { return "UI"; }
+    void addPasses(RDGBuilder& Builder, const RenderContext& Context) override;
 };
 
 } // namespace runtime::renderer

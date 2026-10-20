@@ -8,7 +8,7 @@ function(seed_configure_ui_shaders Target)
         return()
     endif()
 
-    find_program(DXC NAMES dxc REQUIRED)
+    find_program(DXC NAMES dxc HINTS "$ENV{VULKAN_SDK}/Bin" REQUIRED)
     option(EDITOR_UI_BUILD_MSL "Generate Metal shaders (required for macOS)" ${APPLE})
     option(EDITOR_UI_BUILD_DXIL "Generate Direct3D12 shaders (required for D3D12)" ${WIN32})
     if(EDITOR_UI_BUILD_MSL)

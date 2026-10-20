@@ -24,44 +24,44 @@ using ResourceId = uint64_t;
  */
 [[nodiscard]] constexpr ResourceId makeResourceId(std::string_view Name) noexcept
 {
-	ResourceId hash = 14695981039346656037ull;
-	for (const char value : Name)
-	{
-		hash ^= static_cast<uint8_t>(value);
-		hash *= 1099511628211ull;
-	}
-	return hash;
+    ResourceId hash = 14695981039346656037ull;
+    for (const char value : Name)
+    {
+        hash ^= static_cast<uint8_t>(value);
+        hash *= 1099511628211ull;
+    }
+    return hash;
 }
 
 /** @brief One shader-visible descriptor discovered through reflection. */
 struct ShaderResourceBinding
 {
-	ResourceId Id { 0 };
-	std::string Name;
-	uint32_t Group { 0 };
-	uint32_t Binding { 0 };
-	uint32_t ArrayCount { 1 };
-	uint32_t BlockSize { 0 };
-	rhi::EDescriptorType Type { rhi::EDescriptorType::UniformBuffer };
-	rhi::EShaderStage Visibility {};
-	bool RuntimeArray { false };
+    ResourceId Id { 0 };
+    std::string Name;
+    uint32_t Group { 0 };
+    uint32_t Binding { 0 };
+    uint32_t ArrayCount { 1 };
+    uint32_t BlockSize { 0 };
+    rhi::EDescriptorType Type { rhi::EDescriptorType::UniformBuffer };
+    rhi::EShaderStage Visibility {};
+    bool RuntimeArray { false };
 };
 
 /** @brief Reflection result for one SPIR-V entry point. */
 struct ShaderInterface
 {
-	rhi::EShaderStage_t Stage { rhi::EShaderStage_t::Vertex };
-	std::string EntryPoint;
-	std::vector<ShaderResourceBinding> Resources;
-	std::vector<rhi::PushConstantRange> PushConstants;
+    rhi::EShaderStage_t Stage { rhi::EShaderStage_t::Vertex };
+    std::string EntryPoint;
+    std::vector<ShaderResourceBinding> Resources;
+    std::vector<rhi::PushConstantRange> PushConstants;
 };
 
 /** @brief Controls conversion from reflected runtime arrays to finite RHI layouts. */
 struct PipelineInterfaceBuildOptions
 {
-	uint32_t RuntimeArrayMaxCount { 1024 };
-	bool RuntimeArraysArePartiallyBound { true };
-	bool RuntimeArraysUseUpdateAfterBind { false };
+    uint32_t RuntimeArrayMaxCount { 1024 };
+    bool RuntimeArraysArePartiallyBound { true };
+    bool RuntimeArraysUseUpdateAfterBind { false };
 };
 
 /**
@@ -72,42 +72,42 @@ struct PipelineInterfaceBuildOptions
  */
 struct PipelineInterface
 {
-	std::vector<rhi::BindGroupLayoutDescriptor> BindGroups;
-	std::vector<ShaderResourceBinding> Resources;
-	std::vector<rhi::PushConstantRange> PushConstants;
+    std::vector<rhi::BindGroupLayoutDescriptor> BindGroups;
+    std::vector<ShaderResourceBinding> Resources;
+    std::vector<rhi::PushConstantRange> PushConstants;
 };
 
 /** @brief SPIR-V reflection front-end owned by Renderer rather than the low-level RHI. */
 class SpirvShaderReflector final
 {
 public:
-	/**
-	 * @brief Reflects descriptors and push constants used by one entry point.
-	 * @param ByteCode Complete SPIR-V module bytes.
-	 * @param Stage RHI stage expected for EntryPoint.
-	 * @param EntryPoint Entry-point name to inspect.
-	 * @return Normalized renderer-side shader ABI.
-	 * @throws std::invalid_argument if SPIR-V or entry-point metadata is invalid.
-	 */
-	[[nodiscard]] static ShaderInterface reflect(
-		std::span<const std::byte> ByteCode,
-		rhi::EShaderStage_t Stage,
-		std::string_view EntryPoint = "main");
+    /**
+     * @brief Reflects descriptors and push constants used by one entry point.
+     * @param ByteCode Complete SPIR-V module bytes.
+     * @param Stage RHI stage expected for EntryPoint.
+     * @param EntryPoint Entry-point name to inspect.
+     * @return Normalized renderer-side shader ABI.
+     * @throws std::invalid_argument if SPIR-V or entry-point metadata is invalid.
+     */
+    [[nodiscard]] static ShaderInterface reflect(
+        std::span<const std::byte> ByteCode,
+        rhi::EShaderStage_t Stage,
+        std::string_view EntryPoint = "main");
 };
 
 /** @brief Validates and merges several shader-stage interfaces into one pipeline ABI. */
 class PipelineInterfaceBuilder final
 {
 public:
-	/**
-	 * @brief Merges descriptor visibility and push-constant visibility across stages.
-	 * @param Interfaces Stage interfaces belonging to one pipeline.
-	 * @param Options Policy for unbounded descriptor arrays.
-	 * @return Canonical interface sorted by group, binding and push-constant offset.
-	 */
-	[[nodiscard]] static PipelineInterface merge(
-		std::span<const ShaderInterface> Interfaces,
-		const PipelineInterfaceBuildOptions& Options = {});
+    /**
+     * @brief Merges descriptor visibility and push-constant visibility across stages.
+     * @param Interfaces Stage interfaces belonging to one pipeline.
+     * @param Options Policy for unbounded descriptor arrays.
+     * @return Canonical interface sorted by group, binding and push-constant offset.
+     */
+    [[nodiscard]] static PipelineInterface merge(
+        std::span<const ShaderInterface> Interfaces,
+        const PipelineInterfaceBuildOptions& Options = {});
 };
 
 /**
@@ -119,37 +119,37 @@ public:
 class ResourceBindingTable final
 {
 public:
-	/** @brief Adds or replaces one resource array element by shader-visible name. */
-	void set(std::string_view Name, rhi::BindGroupResource Resource, uint32_t ArrayElement = 0);
+    /** @brief Adds or replaces one resource array element by shader-visible name. */
+    void set(std::string_view Name, rhi::BindGroupResource Resource, uint32_t ArrayElement = 0);
 
-	/** @brief Adds or replaces one resource array element by a precomputed stable ID. */
-	void set(ResourceId Id, std::string_view Name, rhi::BindGroupResource Resource,
-		uint32_t ArrayElement = 0);
+    /** @brief Adds or replaces one resource array element by a precomputed stable ID. */
+    void set(ResourceId Id, std::string_view Name, rhi::BindGroupResource Resource,
+        uint32_t ArrayElement = 0);
 
-	/** @return Resource at the requested array element, or nullptr when not present. */
-	[[nodiscard]] const rhi::BindGroupResource* find(
-		ResourceId Id,
-		std::string_view ExpectedName,
-		uint32_t ArrayElement = 0) const;
+    /** @return Resource at the requested array element, or nullptr when not present. */
+    [[nodiscard]] const rhi::BindGroupResource* find(
+        ResourceId Id,
+        std::string_view ExpectedName,
+        uint32_t ArrayElement = 0) const;
 
-	/** @return Highest populated element plus one, or zero when the resource is absent. */
-	[[nodiscard]] uint32_t getElementCount(ResourceId Id, std::string_view ExpectedName) const;
+    /** @return Highest populated element plus one, or zero when the resource is absent. */
+    [[nodiscard]] uint32_t getElementCount(ResourceId Id, std::string_view ExpectedName) const;
 
 private:
-	struct Slot
-	{
-		std::string Name;
-		std::unordered_map<uint32_t, rhi::BindGroupResource> Elements;
-	};
-	std::unordered_map<ResourceId, Slot> Slots;
+    struct Slot
+    {
+        std::string Name;
+        std::unordered_map<uint32_t, rhi::BindGroupResource> Elements;
+    };
+    std::unordered_map<ResourceId, Slot> Slots;
 };
 
 /** @brief Result of resolving a PipelineInterface against a resource table. */
 struct ResolvedPipelineBindings
 {
-	std::shared_ptr<rhi::RPipelineLayout> PipelineLayout;
-	std::vector<std::shared_ptr<rhi::RBindGroupLayout>> BindGroupLayouts;
-	std::vector<std::shared_ptr<rhi::RBindGroup>> BindGroups;
+    std::shared_ptr<rhi::RPipelineLayout> PipelineLayout;
+    std::vector<std::shared_ptr<rhi::RBindGroupLayout>> BindGroupLayouts;
+    std::vector<std::shared_ptr<rhi::RBindGroup>> BindGroups;
 };
 
 /**
@@ -162,25 +162,25 @@ struct ResolvedPipelineBindings
 class ShaderBindingResolver final
 {
 public:
-	explicit ShaderBindingResolver(rhi::RDevice& Device) noexcept : Device(&Device) {}
+    explicit ShaderBindingResolver(rhi::RDevice& Device) noexcept : Device(&Device) {}
 
-	/**
-	 * @brief Resolves all reflected resources and creates bindable RHI objects.
-	 * @param Interface Merged pipeline ABI.
-	 * @param Resources Semantic resource table.
-	 * @return Pipeline layout, group layouts and concrete groups in set order.
-	 */
-	[[nodiscard]] ResolvedPipelineBindings resolve(
-		const PipelineInterface& Interface,
-		const ResourceBindingTable& Resources);
+    /**
+     * @brief Resolves all reflected resources and creates bindable RHI objects.
+     * @param Interface Merged pipeline ABI.
+     * @param Resources Semantic resource table.
+     * @return Pipeline layout, group layouts and concrete groups in set order.
+     */
+    [[nodiscard]] ResolvedPipelineBindings resolve(
+        const PipelineInterface& Interface,
+        const ResourceBindingTable& Resources);
 
 private:
-	[[nodiscard]] std::shared_ptr<rhi::RPipelineLayout> getOrCreatePipelineLayout(
-		const PipelineInterface& Interface);
+    [[nodiscard]] std::shared_ptr<rhi::RPipelineLayout> getOrCreatePipelineLayout(
+        const PipelineInterface& Interface);
 
-	rhi::RDevice* Device { nullptr };
-	std::mutex CacheMutex;
-	std::unordered_map<std::string, std::weak_ptr<rhi::RPipelineLayout>> LayoutCache;
+    rhi::RDevice* Device { nullptr };
+    std::mutex CacheMutex;
+    std::unordered_map<std::string, std::weak_ptr<rhi::RPipelineLayout>> LayoutCache;
 };
 
 } // namespace runtime::renderer

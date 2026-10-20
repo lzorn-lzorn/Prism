@@ -60,17 +60,17 @@ template<typename Ty, size_t Capacity = 1024>
 class MPMCQueue
 {
     static_assert(
-		std::is_nothrow_move_constructible_v<Ty> ||
+        std::is_nothrow_move_constructible_v<Ty> ||
         std::is_nothrow_move_assignable_v<Ty>,
-		"MPMCQueue: Ty must be nothrow move constructible or nothrow move assignable"
-	);
+        "MPMCQueue: Ty must be nothrow move constructible or nothrow move assignable"
+    );
 public:
-	using value_type = Ty;
-	using reference = value_type&;
-	using const_reference = const value_type&;
-	using difference_type = std::ptrdiff_t;
-	using size_type = std::size_t;
-	
+    using value_type = Ty;
+    using reference = value_type&;
+    using const_reference = const value_type&;
+    using difference_type = std::ptrdiff_t;
+    using size_type = std::size_t;
+    
 private:
     // 环形缓冲区中的每个存储单元
     struct Cell_T
@@ -188,7 +188,7 @@ public:
             else
             {
                 // diff > 0 -> 被其他消费者抢占, 重新读取位置
-				CPU_RELAX;
+                CPU_RELAX;
                 pos = DequeuePos.load(std::memory_order_relaxed);
             }
         }
@@ -201,20 +201,20 @@ public:
     }
 
 
-	template <typename OutputIt>
-		requires std::output_iterator<OutputIt, Ty>
-	size_t tryPopBulk(OutputIt out, size_t max_count)
-	{
-		size_t popped = 0;
-		while (popped < max_count)
-		{
-			auto item = tryPop();
-			if (!item) break;
-			*out++ = std::move(*item);
-			++popped;
-		}
-		return popped;
-	}
+    template <typename OutputIt>
+        requires std::output_iterator<OutputIt, Ty>
+    size_t tryPopBulk(OutputIt out, size_t max_count)
+    {
+        size_t popped = 0;
+        while (popped < max_count)
+        {
+            auto item = tryPop();
+            if (!item) break;
+            *out++ = std::move(*item);
+            ++popped;
+        }
+        return popped;
+    }
     /** 
      * @brief isEmpty — 检查队列是否为空 (近似值)
      * @note 返回值可能在读取后立即过时, 仅用于调试/监控
@@ -225,23 +225,23 @@ public:
             == DequeuePos.load(std::memory_order_relaxed);
     }
 
-	[[nodiscard]] std::vector<Ty> getSnapshot() const
-	{
-		std::vector<Ty> result;
-		size_t deq = DequeuePos.load(std::memory_order_acquire);
-		size_t enq = EnqueuePos.load(std::memory_order_acquire);
-		size_t count = enq >= deq ? enq - deq : 0;
-		result.reserve(count);
-		for (size_t i = 0; i < count; ++i)
-		{
-			size_t idx = (deq + i) & Mask;
-			// 注意：数据读取必须发生在序列号检查之后，这里简单取快照，
-			// 可能读到正在写入的数据，但这是“近似”快照，可接受. 
-			// 如果要求严格一致性，需加额外逻辑. 
-			result.push_back(Buffer[idx].Data);
-		}
-		return result;
-	}
+    [[nodiscard]] std::vector<Ty> getSnapshot() const
+    {
+        std::vector<Ty> result;
+        size_t deq = DequeuePos.load(std::memory_order_acquire);
+        size_t enq = EnqueuePos.load(std::memory_order_acquire);
+        size_t count = enq >= deq ? enq - deq : 0;
+        result.reserve(count);
+        for (size_t i = 0; i < count; ++i)
+        {
+            size_t idx = (deq + i) & Mask;
+            // 注意：数据读取必须发生在序列号检查之后，这里简单取快照，
+            // 可能读到正在写入的数据，但这是“近似”快照，可接受. 
+            // 如果要求严格一致性，需加额外逻辑. 
+            result.push_back(Buffer[idx].Data);
+        }
+        return result;
+    }
 
     /** 
      * @brief getSize — 获取队列近似元素数量
@@ -254,14 +254,14 @@ public:
         return enq >= deq ? enq - deq : 0;
     }
 
-	/** 
-	 * @brief isFull — 检查队列是否已满 (近似值)
-	 * @note 返回值可能在读取后立即过时, 仅用于调试/监控
-	 */
-	[[nodiscard]] bool isFull() const noexcept {
-		return (EnqueuePos.load(std::memory_order_relaxed) -
-				DequeuePos.load(std::memory_order_relaxed)) == Capacity;
-	}
+    /** 
+     * @brief isFull — 检查队列是否已满 (近似值)
+     * @note 返回值可能在读取后立即过时, 仅用于调试/监控
+     */
+    [[nodiscard]] bool isFull() const noexcept {
+        return (EnqueuePos.load(std::memory_order_relaxed) -
+                DequeuePos.load(std::memory_order_relaxed)) == Capacity;
+    }
 
     /** 
      * @brief capacity — 获取队列容量 (编译期常量)

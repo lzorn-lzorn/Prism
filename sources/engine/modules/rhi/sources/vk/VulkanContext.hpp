@@ -11,14 +11,14 @@ namespace rhi
 
 struct VulkanSurfaceState final
 {
-	vk::Instance Instance;
-	vk::SurfaceKHR Handle { VK_NULL_HANDLE };
-	uint64_t Generation { 0 };
+    vk::Instance Instance;
+    vk::SurfaceKHR Handle { VK_NULL_HANDLE };
+    uint64_t Generation { 0 };
 
-	~VulkanSurfaceState()
-	{
-		if (Instance && Handle) Instance.destroySurfaceKHR(Handle);
-	}
+    ~VulkanSurfaceState()
+    {
+        if (Instance && Handle) Instance.destroySurfaceKHR(Handle);
+    }
 };
 
 /**
@@ -29,49 +29,49 @@ struct VulkanSurfaceState final
  */
 struct VulkanContext final
 {
-	~VulkanContext()
-	{
-		Device.reset();
-		Surface.reset();
-		Instance.reset();
-	}
+    ~VulkanContext()
+    {
+        Device.reset();
+        Surface.reset();
+        Instance.reset();
+    }
 
-	[[nodiscard]] bool isDeviceLost() const noexcept
-	{
-		return DeviceStatus.load(std::memory_order_relaxed) != EDeviceStatus::Ready;
-	}
+    [[nodiscard]] bool isDeviceLost() const noexcept
+    {
+        return DeviceStatus.load(std::memory_order_relaxed) != EDeviceStatus::Ready;
+    }
 
-	void markDeviceLost() noexcept
-	{
-		DeviceStatus.store(EDeviceStatus::Lost, std::memory_order_relaxed);
-	}
+    void markDeviceLost() noexcept
+    {
+        DeviceStatus.store(EDeviceStatus::Lost, std::memory_order_relaxed);
+    }
 
-	[[nodiscard]] uint32_t familyIndex(ECommandQueueType Type) const noexcept
-	{
-		switch (Type)
-		{
-		case ECommandQueueType::Compute: return ComputeQueueFamilyIndex;
-		case ECommandQueueType::Copy: return CopyQueueFamilyIndex;
-		case ECommandQueueType::Graphics:
-		default: return GraphicsQueueFamilyIndex;
-		}
-	}
+    [[nodiscard]] uint32_t familyIndex(ECommandQueueType Type) const noexcept
+    {
+        switch (Type)
+        {
+        case ECommandQueueType::Compute: return ComputeQueueFamilyIndex;
+        case ECommandQueueType::Copy: return CopyQueueFamilyIndex;
+        case ECommandQueueType::Graphics:
+        default: return GraphicsQueueFamilyIndex;
+        }
+    }
 
-	vk::UniqueInstance Instance;
-	vk::PhysicalDevice PhysicalDevice;
-	vk::UniqueDevice Device;
-	// The initialized backend currently exposes one SDL surface. Each swapchain retains
-	// its generation, so replacing this pointer never invalidates native destruction order.
-	std::shared_ptr<VulkanSurfaceState> Surface;
-	std::weak_ptr<ui::IGenericWindow> Window;
-	uint64_t NextSurfaceGeneration { 1 };
-	std::atomic<EDeviceStatus> DeviceStatus { EDeviceStatus::Ready };
-	// Populated from the feature bits actually passed to vkCreateDevice, never raw hardware support.
-	DeviceFeatures EnabledFeatures {};
-	uint32_t GraphicsQueueFamilyIndex { UINT32_MAX };
-	uint32_t ComputeQueueFamilyIndex { UINT32_MAX };
-	uint32_t CopyQueueFamilyIndex { UINT32_MAX };
-	uint32_t PresentQueueFamilyIndex { UINT32_MAX };
+    vk::UniqueInstance Instance;
+    vk::PhysicalDevice PhysicalDevice;
+    vk::UniqueDevice Device;
+    // The initialized backend currently exposes one SDL surface. Each swapchain retains
+    // its generation, so replacing this pointer never invalidates native destruction order.
+    std::shared_ptr<VulkanSurfaceState> Surface;
+    std::weak_ptr<ui::IGenericWindow> Window;
+    uint64_t NextSurfaceGeneration { 1 };
+    std::atomic<EDeviceStatus> DeviceStatus { EDeviceStatus::Ready };
+    // Populated from the feature bits actually passed to vkCreateDevice, never raw hardware support.
+    DeviceFeatures EnabledFeatures {};
+    uint32_t GraphicsQueueFamilyIndex { UINT32_MAX };
+    uint32_t ComputeQueueFamilyIndex { UINT32_MAX };
+    uint32_t CopyQueueFamilyIndex { UINT32_MAX };
+    uint32_t PresentQueueFamilyIndex { UINT32_MAX };
 };
 
 using VulkanContextPtr = std::shared_ptr<VulkanContext>;

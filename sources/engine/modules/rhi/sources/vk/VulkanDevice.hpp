@@ -19,7 +19,7 @@ struct QueueFamilyIndices {
     bool isComplete() {
         return GraphicsFamily.has_value() && PresentFamily.has_value();
     }
-	
+    
     static QueueFamilyIndices findQueueFamilies(vk::PhysicalDevice InDevice, vk::SurfaceKHR Surface) {
         QueueFamilyIndices indices;
 
@@ -57,9 +57,9 @@ class VulkanDevice final : public RDevice
 {
 public:
     explicit VulkanDevice(VulkanContextPtr Context);
-	
+    
     ~VulkanDevice() override;
-	
+    
     uint32_t findMemoryType(uint32_t TypeBits, vk::MemoryPropertyFlags Properties);
     vk::PhysicalDevice& getVkPhysicalDevice() { return Context->PhysicalDevice; }
     vk::Device& getVkDevice() { return Context->Device.get(); }
@@ -122,8 +122,8 @@ public:
     std::shared_ptr<RSemaphore> createTimelineSemaphore(uint64_t InitialValue = 0) override;
     std::shared_ptr<RQueryPool> createQueryPool(const QueryPoolDescriptor& Desc) override;
     [[nodiscard]] FormatCapabilities getFormatCapabilities(EFormat Format) const override;
-	[[nodiscard]] std::optional<SwapchainCapabilities> getSwapchainCapabilities() const override;
-	std::shared_ptr<RTexture> createTexture(const RTexture::Descriptor_t& Desc) override;
+    [[nodiscard]] std::optional<SwapchainCapabilities> getSwapchainCapabilities() const override;
+    std::shared_ptr<RTexture> createTexture(const RTexture::Descriptor_t& Desc) override;
     std::shared_ptr<DeviceMemory> allocateMemory(
         MemoryRequirements Requirements,
         EMemoryPropertyFlags Property) override;
@@ -136,16 +136,16 @@ public:
         uint64_t CompletionValue) override;
     void collectDeferredReleases() override;
 
-	[[nodiscard]] std::shared_ptr<DeviceMemory> allocateBufferMemory(
-		const MemoryAllocationDescriptor& Desc,
+    [[nodiscard]] std::shared_ptr<DeviceMemory> allocateBufferMemory(
+        const MemoryAllocationDescriptor& Desc,
         bool RequireDeviceAddress,
         vk::Buffer Buffer);
     [[nodiscard]] std::shared_ptr<DeviceMemory> allocateImageMemory(
         const MemoryAllocationDescriptor& Desc,
         vk::Image Image);
 
-	void waitIdle() override;
-	void* getNativeHandle() const override;
+    void waitIdle() override;
+    void* getNativeHandle() const override;
     [[nodiscard]] const DeviceLimits& getLimits() const noexcept override { return Limits; }
     [[nodiscard]] const DeviceFeatures& getFeatures() const noexcept override { return Features; }
     [[nodiscard]] EDeviceStatus getStatus() const noexcept override
@@ -158,7 +158,7 @@ public:
     }
     [[nodiscard]] vk::Queue getGraphicsQueue() const noexcept { return GraphicsQueue; }
 private:
-	void requireReady() const;
+    void requireReady() const;
     struct DeferredReleaseEntry
     {
         uint64_t Sequence { 0 };
@@ -168,12 +168,12 @@ private:
     };
     void drainDeferredReleases() noexcept;
 
-	VulkanContextPtr Context;
+    VulkanContextPtr Context;
     vk::Queue GraphicsQueue;
     DeviceLimits Limits;
     DeviceFeatures Features;
     std::shared_ptr<VulkanDescriptorAllocator> DescriptorAllocator;
-	std::array<std::shared_ptr<RQueue>, 3> Queues;
+    std::array<std::shared_ptr<RQueue>, 3> Queues;
     std::unique_ptr<VulkanMemoryAllocator> MemoryAllocator;
     std::mutex DeferredReleaseMutex;
     std::vector<DeferredReleaseEntry> DeferredReleases;

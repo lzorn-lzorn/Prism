@@ -11,17 +11,17 @@ namespace infra
 
 enum class ESystemType : uint8_t
 {
-	Global = 0,
-	Game = 1,
-	Renderer = 2,
-	Physics = 3,
-	Audio = 4,
-	Video = 5,
-	Network = 6,
-	AI = 7,
-	Script = 8,
-	Animation = 9,
-	Editor = 10
+    Global = 0,
+    Game = 1,
+    Renderer = 2,
+    Physics = 3,
+    Audio = 4,
+    Video = 5,
+    Network = 6,
+    AI = 7,
+    Script = 8,
+    Animation = 9,
+    Editor = 10
 };
 
 using HandleIdType = uint64_t;

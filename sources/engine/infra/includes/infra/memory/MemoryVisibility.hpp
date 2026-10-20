@@ -33,7 +33,7 @@
 #if CORE_MEM_ENABLE_INTERNAL_BENCH_TIMING
 #   define CORE_MEM_BENCH_SCOPE(PointValue) ::infra::mem::MemoryBenchScope CoreMemBenchScope_##__LINE__(PointValue)
 #   define CORE_MEM_BENCH_SCOPE_SC(PointValue, SizeClassValue) \
-	::infra::mem::MemoryBenchScope CoreMemBenchScope_##__LINE__(PointValue, static_cast<std::uint16_t>(SizeClassValue))
+    ::infra::mem::MemoryBenchScope CoreMemBenchScope_##__LINE__(PointValue, static_cast<std::uint16_t>(SizeClassValue))
 #else
 #   define CORE_MEM_BENCH_SCOPE(PointValue) ((void)0)
 #   define CORE_MEM_BENCH_SCOPE_SC(PointValue, SizeClassValue) ((void)0)

@@ -13,9 +13,9 @@ namespace ui
 struct ApplicationOptions
 {
 #ifdef __APPLE__
-    GpuBackend Backend{GpuBackend::Metal};
+    EGpuBackend Backend{EGpuBackend::Metal};
 #else
-    GpuBackend Backend{GpuBackend::Vulkan};
+    EGpuBackend Backend{EGpuBackend::Vulkan};
 #endif
     std::string FontPath;
     bool DiscoverSystemFonts{true};

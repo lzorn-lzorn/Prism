@@ -17,58 +17,58 @@ template <typename Ty>
 class AtomicShared
 {
 public:
-	AtomicShared() noexcept = default;
-	AtomicShared(std::shared_ptr<Ty> InPtr) noexcept
-		: Ptr(std::move(InPtr))
-	{
-	}
+    AtomicShared() noexcept = default;
+    AtomicShared(std::shared_ptr<Ty> InPtr) noexcept
+        : Ptr(std::move(InPtr))
+    {
+    }
 
-	AtomicShared(const AtomicShared&) = delete;
-	AtomicShared& operator=(const AtomicShared&) = delete;
-	AtomicShared(AtomicShared&&) = delete;
-	AtomicShared& operator=(AtomicShared&&) = delete;
+    AtomicShared(const AtomicShared&) = delete;
+    AtomicShared& operator=(const AtomicShared&) = delete;
+    AtomicShared(AtomicShared&&) = delete;
+    AtomicShared& operator=(AtomicShared&&) = delete;
 
-	[[nodiscard]] std::shared_ptr<Ty> load(std::memory_order Order = std::memory_order_seq_cst) const noexcept
-	{
-		return std::atomic_load_explicit(&Ptr, Order);
-	}
+    [[nodiscard]] std::shared_ptr<Ty> load(std::memory_order Order = std::memory_order_seq_cst) const noexcept
+    {
+        return std::atomic_load_explicit(&Ptr, Order);
+    }
 
-	void store(std::shared_ptr<Ty> InPtr, std::memory_order Order = std::memory_order_seq_cst) noexcept
-	{
-		std::atomic_store_explicit(&Ptr, std::move(InPtr), Order);
-	}
+    void store(std::shared_ptr<Ty> InPtr, std::memory_order Order = std::memory_order_seq_cst) noexcept
+    {
+        std::atomic_store_explicit(&Ptr, std::move(InPtr), Order);
+    }
 
-	std::shared_ptr<Ty> exchange(std::shared_ptr<Ty> InPtr, std::memory_order Order = std::memory_order_seq_cst) noexcept
-	{
-		return std::atomic_exchange_explicit(&Ptr, std::move(InPtr), Order);
-	}
+    std::shared_ptr<Ty> exchange(std::shared_ptr<Ty> InPtr, std::memory_order Order = std::memory_order_seq_cst) noexcept
+    {
+        return std::atomic_exchange_explicit(&Ptr, std::move(InPtr), Order);
+    }
 
-	[[nodiscard]] bool compare_exchange_strong(
-		std::shared_ptr<Ty>& Expected,
-		std::shared_ptr<Ty> Desired,
-		std::memory_order SuccessOrder = std::memory_order_seq_cst,
-		std::memory_order FailureOrder = std::memory_order_seq_cst) noexcept
-	{
-		return std::atomic_compare_exchange_strong_explicit(
-			&Ptr,
-			&Expected,
-			std::move(Desired),
-			SuccessOrder,
-			FailureOrder);
-	}
+    [[nodiscard]] bool compare_exchange_strong(
+        std::shared_ptr<Ty>& Expected,
+        std::shared_ptr<Ty> Desired,
+        std::memory_order SuccessOrder = std::memory_order_seq_cst,
+        std::memory_order FailureOrder = std::memory_order_seq_cst) noexcept
+    {
+        return std::atomic_compare_exchange_strong_explicit(
+            &Ptr,
+            &Expected,
+            std::move(Desired),
+            SuccessOrder,
+            FailureOrder);
+    }
 
-	operator std::shared_ptr<Ty>() const noexcept
-	{
-		return load();
-	}
+    operator std::shared_ptr<Ty>() const noexcept
+    {
+        return load();
+    }
 
-	AtomicShared& operator=(std::shared_ptr<Ty> InNewPtr) noexcept
-	{
-		store(std::move(InNewPtr));
-		return *this;
-	}
+    AtomicShared& operator=(std::shared_ptr<Ty> InNewPtr) noexcept
+    {
+        store(std::move(InNewPtr));
+        return *this;
+    }
 private:
-	std::shared_ptr<Ty> Ptr;
+    std::shared_ptr<Ty> Ptr;
 };
 #endif
 

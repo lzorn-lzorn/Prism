@@ -94,12 +94,12 @@ template <typename RetType, bool IsNoexcept, typename... Args>
 using InvokerPointer = RetType(*)(void*, Args&&...) noexcept(IsNoexcept);
 
 template <
-	typename RetType, 
-	bool IsNoexcept, 
-	bool IsCopyable, 
-	std::size_t InlineSize,
-	typename AllocationPolicy,
-	typename... Args
+    typename RetType, 
+    bool IsNoexcept, 
+    bool IsCopyable, 
+    std::size_t InlineSize,
+    typename AllocationPolicy,
+    typename... Args
 >
 class DelegateStorage
 {
@@ -116,7 +116,7 @@ private:
         destroyer_type Destroy = nullptr;
         mover_type Move = nullptr;
         copier_type Copy = nullptr;
-		const void* TypeTag = nullptr;
+        const void* TypeTag = nullptr;
     };
 
     template <typename Callable>
@@ -306,56 +306,56 @@ public:
     }
 
 private:
-	// 这个函数声明纯粹是为了兼容 clangd 静态分析器, 这里没有模板的前向申明, 当前版本的
-	// clangd 无法分析出来 emplaceCallable 在之后被定义
+    // 这个函数声明纯粹是为了兼容 clangd 静态分析器, 这里没有模板的前向申明, 当前版本的
+    // clangd 无法分析出来 emplaceCallable 在之后被定义
     template <typename Callable>
     void emplaceCallable(Callable&& InCallable)
     {
         using callable_type = std::decay_t<Callable>;
 
-		if constexpr (fitsInline<callable_type>())
-		{
-			void* destination = inlineData();
+        if constexpr (fitsInline<callable_type>())
+        {
+            void* destination = inlineData();
 
-			std::construct_at(
-				static_cast<callable_type*>(destination),
-				std::forward<Callable>(InCallable)
-			);
+            std::construct_at(
+                static_cast<callable_type*>(destination),
+                std::forward<Callable>(InCallable)
+            );
 
-			Object = destination;
-			Ops = inlineOperations<callable_type>();
-		}
-		else
-		{
-			void* memory = AllocationPolicy::allocate(
-				sizeof(callable_type),
-				alignof(callable_type)
-			);
+            Object = destination;
+            Ops = inlineOperations<callable_type>();
+        }
+        else
+        {
+            void* memory = AllocationPolicy::allocate(
+                sizeof(callable_type),
+                alignof(callable_type)
+            );
 
-			auto* heap_object =
-				static_cast<callable_type*>(memory);
+            auto* heap_object =
+                static_cast<callable_type*>(memory);
 
-			try
-			{
-				std::construct_at(
-					heap_object,
-					std::forward<Callable>(InCallable)
-				);
-			}
-			catch (...)
-			{
-				AllocationPolicy::deallocate(
-					memory,
-					sizeof(callable_type),
-					alignof(callable_type)
-				);
+            try
+            {
+                std::construct_at(
+                    heap_object,
+                    std::forward<Callable>(InCallable)
+                );
+            }
+            catch (...)
+            {
+                AllocationPolicy::deallocate(
+                    memory,
+                    sizeof(callable_type),
+                    alignof(callable_type)
+                );
 
-				throw;
-			}
+                throw;
+            }
 
-			Object = heap_object;
-			Ops = heapOperations<callable_type>();
-		}
+            Object = heap_object;
+            Ops = heapOperations<callable_type>();
+        }
         Invoker = Ops->Invoke;
     }
 public:
@@ -367,16 +367,16 @@ public:
         )
     void bind(Callable&& InCallable)
     {
-	    using callable_type = std::decay_t<Callable>;
+        using callable_type = std::decay_t<Callable>;
 
-	    if constexpr (std::is_pointer_v<callable_type> || std::is_member_pointer_v<callable_type>)
-	    {
-	        if (InCallable == nullptr)
-	        {
-	            reset();
-	            return;
-	        }
-	    }
+        if constexpr (std::is_pointer_v<callable_type> || std::is_member_pointer_v<callable_type>)
+        {
+            if (InCallable == nullptr)
+            {
+                reset();
+                return;
+            }
+        }
 
         DelegateStorage Replacement;
         Replacement.emplaceCallable(std::forward<Callable>(InCallable));
@@ -409,20 +409,20 @@ private:
     };
 
 public:
-	/*
-	 * @example
-	```cpp
-		using method_type = void(Receiver::*)(int);
-		method_type method = static_cast<method_type>(&Receiver::handle);
-		infra::Delegate<void(int)> callback;
-		callback.bindRaw(&receiver, method);
-	```
-	 */
+    /*
+     * @example
+    ```cpp
+        using method_type = void(Receiver::*)(int);
+        method_type method = static_cast<method_type>(&Receiver::handle);
+        infra::Delegate<void(int)> callback;
+        callback.bindRaw(&receiver, method);
+    ```
+     */
  	template <typename ObjectType, typename MethodType>
         requires (
             std::is_member_function_pointer_v<MethodType>
             && (IsNoexcept ? std::is_nothrow_invocable_r_v<RetType, MethodType, ObjectType*, Args...> 
-				:std::is_invocable_r_v<RetType, MethodType, ObjectType*, Args...>
+                :std::is_invocable_r_v<RetType, MethodType, ObjectType*, Args...>
             )
         )
     void bindRaw(ObjectType* Instance, MethodType Method)
@@ -431,7 +431,7 @@ public:
         {
             throw std::invalid_argument(
                 "DelegateStorage::bindRaw requires a non-null instance"
-			);
+            );
         }
 
         if (Method == nullptr)
@@ -441,7 +441,7 @@ public:
         }
 
         bind(RuntimeMemberBinding<ObjectType*, MethodType>
-			{
+            {
                 .Object = Instance,
                 .Method = Method
             }
@@ -487,7 +487,7 @@ public:
         }
 
         bind(
-			[Instance = std::move(Instance)](Args... InArgs) noexcept(IsNoexcept) -> RetType
+            [Instance = std::move(Instance)](Args... InArgs) noexcept(IsNoexcept) -> RetType
             {
                 return std::invoke(Method, Instance.get(), std::forward<Args>(InArgs)...);
             }
@@ -526,7 +526,7 @@ public:
                 Instance = std::move(Instance),
                 Fallback = fallback_type(std::forward<ExpiredCallable>(OnExpired))
             ] 
-			(Args... InArgs) mutable noexcept(IsNoexcept) -> RetType
+            (Args... InArgs) mutable noexcept(IsNoexcept) -> RetType
             {
                 if (auto Shared = Instance.lock())
                 {
@@ -538,40 +538,40 @@ public:
         );
     }
 public:
-	template <typename CallableType>
-	[[nodiscard]]
-	bool holdsTarget() const noexcept
-	{
-		using target_type = std::remove_cv_t<CallableType>;
+    template <typename CallableType>
+    [[nodiscard]]
+    bool holdsTarget() const noexcept
+    {
+        using target_type = std::remove_cv_t<CallableType>;
         return Ops != nullptr && Ops->TypeTag == getTypeTag<target_type>();
-	}
+    }
 
-	template <typename CallableType>
-	[[nodiscard]]
-	CallableType* getTarget() noexcept
-	{
-		using target_type = std::remove_cv_t<CallableType>;
+    template <typename CallableType>
+    [[nodiscard]]
+    CallableType* getTarget() noexcept
+    {
+        using target_type = std::remove_cv_t<CallableType>;
 
-		if (!holdsTarget<target_type>())
-		{
-			return nullptr;
-		}
-		return static_cast<target_type*>(Object);
-	}
+        if (!holdsTarget<target_type>())
+        {
+            return nullptr;
+        }
+        return static_cast<target_type*>(Object);
+    }
 
-	template <typename CallableType>
-	[[nodiscard]]
-	const CallableType* getTarget() const noexcept
-	{
-		using target_type = std::remove_cv_t<CallableType>;
+    template <typename CallableType>
+    [[nodiscard]]
+    const CallableType* getTarget() const noexcept
+    {
+        using target_type = std::remove_cv_t<CallableType>;
 
-		if (!holdsTarget<target_type>())
-		{
-			return nullptr;
-		}
+        if (!holdsTarget<target_type>())
+        {
+            return nullptr;
+        }
 
-		return static_cast<const target_type*>(Object);
-	}
+        return static_cast<const target_type*>(Object);
+    }
 private:
     template <typename CallableType>
     static consteval bool fitsInline()
@@ -591,13 +591,13 @@ private:
         }
     }
 
-	template <typename Type>
-	[[nodiscard]]
-	static const void* getTypeTag() noexcept
-	{
-		static constexpr unsigned char tag = 0;
-		return std::addressof(tag);
-	}
+    template <typename Type>
+    [[nodiscard]]
+    static const void* getTypeTag() noexcept
+    {
+        static constexpr unsigned char tag = 0;
+        return std::addressof(tag);
+    }
 
     template <typename CallableType>
     static RetType invokeObject(void* Object, Args&&... InArgs) noexcept(IsNoexcept)
@@ -612,7 +612,7 @@ private:
     static const Operations* inlineOperations() noexcept
     {
         static const Operations table
-		{
+        {
             .Invoke = &invokeObject<CallableType>,
             .Destroy = +[](void* Object) noexcept
                 {
@@ -631,7 +631,7 @@ private:
                 },
 
             .Copy = copyInlineOperation<CallableType>(),
-			.TypeTag = getTypeTag<CallableType>()
+            .TypeTag = getTypeTag<CallableType>()
         };
 
         return std::addressof(table);
@@ -641,34 +641,34 @@ private:
     static const Operations* heapOperations() noexcept
     {
         static const Operations table{
-			.Invoke = &invokeObject<CallableType>,
-			.Destroy = +[](void* Object) noexcept
-				{
-					auto* callable = static_cast<CallableType*>(Object);
+            .Invoke = &invokeObject<CallableType>,
+            .Destroy = +[](void* Object) noexcept
+                {
+                    auto* callable = static_cast<CallableType*>(Object);
 
-					std::destroy_at(callable);
-					AllocationPolicy::deallocate(
-						callable,
-						sizeof(CallableType),
-						alignof(CallableType)
-					);
-				},
-			.Move = +[](void*, void* Source) noexcept -> void*
-				{
-					return Source;
-				},
-			.Copy = copyHeapOperation<CallableType>(),
-			.TypeTag = getTypeTag<CallableType>()
-		};
+                    std::destroy_at(callable);
+                    AllocationPolicy::deallocate(
+                        callable,
+                        sizeof(CallableType),
+                        alignof(CallableType)
+                    );
+                },
+            .Move = +[](void*, void* Source) noexcept -> void*
+                {
+                    return Source;
+                },
+            .Copy = copyHeapOperation<CallableType>(),
+            .TypeTag = getTypeTag<CallableType>()
+        };
 
-		return std::addressof(table);
-	}
+        return std::addressof(table);
+    }
 
     template <auto CallableType>
     static const Operations* staticOperations() noexcept
     {
         static const Operations table
-		{
+        {
             .Invoke = +[](void*, Args&&... InArgs)
                     noexcept(IsNoexcept) -> RetType
                 {
@@ -696,7 +696,7 @@ private:
     static const Operations* rawOperations() noexcept
     {
         static const Operations table
-		{
+        {
             .Invoke = +[](void* Object, Args&&... InArgs)
                     noexcept(IsNoexcept) -> RetType
                 {
@@ -863,14 +863,14 @@ template <typename RetType, typename... Args, bool IsCopyable, std::size_t Inlin
 struct DelegateSelector<RetType(Args...), IsCopyable, InlineSize, AllocationPolicy>
 {
     using storage_type 
-		= DelegateStorage<RetType, false, IsCopyable, InlineSize, AllocationPolicy, Args...>;
+        = DelegateStorage<RetType, false, IsCopyable, InlineSize, AllocationPolicy, Args...>;
 };
 
 template <typename RetType, typename... Args, bool IsCopyable, std::size_t InlineSize, typename AllocationPolicy>
 struct DelegateSelector<RetType(Args...) noexcept, IsCopyable, InlineSize, AllocationPolicy>
 {
     using storage_type 
-		= DelegateStorage<RetType, true, IsCopyable, InlineSize, AllocationPolicy, Args...>;
+        = DelegateStorage<RetType, true, IsCopyable, InlineSize, AllocationPolicy, Args...>;
 };
 
 template <typename RetType, bool IsNoexcept, typename... Args>
@@ -934,7 +934,7 @@ public:
     }
 
 private:
-	// 不提前申明 clangd 无法分析 Object 和 Invoker 的存在
+    // 不提前申明 clangd 无法分析 Object 和 Invoker 的存在
     void* ObjectRawPtr = nullptr;
     invoker_type Invoker = nullptr;
 
@@ -1052,7 +1052,7 @@ public:
         return execute(std::forward<Args>(InArgs)...);
     }
 
-	/**
+    /**
      * 仅为 void Delegate 提供无异常空检查调用. 
      *
      * 返回 true 表示已经调用，false 表示当前为空. 
@@ -1108,15 +1108,15 @@ struct DelegateRefSelector<RetType(Args...) noexcept>
 
 
 template <typename RetType, 
-	bool IsNoexcept, 
-	std::size_t InlineSize, 
-	typename AllocationPolicy, 
-	typename... Args>
+    bool IsNoexcept, 
+    std::size_t InlineSize, 
+    typename AllocationPolicy, 
+    typename... Args>
 class MulticastDelegateStorage
 {
 private:
     using storage_type 
-		= DelegateStorage<RetType, IsNoexcept, false, InlineSize, AllocationPolicy, Args...>;
+        = DelegateStorage<RetType, IsNoexcept, false, InlineSize, AllocationPolicy, Args...>;
     static constexpr bool supports_fanout_arguments_v =
         (
             (
@@ -1126,19 +1126,19 @@ private:
             && ...
         );
     static constexpr bool SupportsFanoutArguments = supports_fanout_arguments_v;
-	static constexpr std::uint32_t InvalidSlot = std::numeric_limits<std::uint32_t>::max();
+    static constexpr std::uint32_t InvalidSlot = std::numeric_limits<std::uint32_t>::max();
 
-	/*
-	 *	Free -> Active -> Retired -> Free
+    /*
+     *	Free -> Active -> Retired -> Free
      *                 -> Exhausted
-	*/
-	enum class SlotState : std::uint8_t
-	{
-		Free,
-		Active,
-		Retired,
-		Exhausted
-	};
+    */
+    enum class SlotState : std::uint8_t
+    {
+        Free,
+        Active,
+        Retired,
+        Exhausted
+    };
     struct Slot
     {
         storage_type Callback;
@@ -1154,8 +1154,8 @@ private:
     };
 
 public:
-	// Multicast 常见风险是对象析构时忘记解除订阅, Multicast 已经禁止移动, 所以内部地址稳定
-	// ScopedConnection 的生命周期不能超过 Multicast 本身
+    // Multicast 常见风险是对象析构时忘记解除订阅, Multicast 已经禁止移动, 所以内部地址稳定
+    // ScopedConnection 的生命周期不能超过 Multicast 本身
     class ScopedConnection
     {
     public:
@@ -1169,7 +1169,7 @@ public:
         ScopedConnection& operator=(const ScopedConnection&) = delete;
         ScopedConnection(ScopedConnection&& Other) noexcept
             : Owner(std::exchange(Other.Owner, nullptr))
-			, Handle(std::exchange(Other.Handle, DelegateHandle{}))
+            , Handle(std::exchange(Other.Handle, DelegateHandle{}))
         {
         }
         ScopedConnection& operator=(ScopedConnection&& Other) noexcept
@@ -1238,36 +1238,36 @@ public:
     MulticastDelegateStorage& operator=(MulticastDelegateStorage&&) = delete;
     ~MulticastDelegateStorage() = default;
 
-	/*
-	 * @example
-	```cpp
-		class Widget
-		{
-		public:
-			Widget(infra::MulticastDelegate<void()>& event)
-				: Connection(event.connect([this]{ refresh(); }))
-			{ }
+    /*
+     * @example
+    ```cpp
+        class Widget
+        {
+        public:
+            Widget(infra::MulticastDelegate<void()>& event)
+                : Connection(event.connect([this]{ refresh(); }))
+            { }
 
-		private:
-			void refresh()
-			{ }
+        private:
+            void refresh()
+            { }
 
-			infra::MulticastDelegate<void()>::ScopedConnection Connection;
-		};
-	```
-	 */
-	template <typename Callable>
-		requires std::constructible_from<storage_type, Callable>
-	[[nodiscard]]
-	ScopedConnection connect(Callable&& InCallable)
-	{
-		return ScopedConnection{
-			*this,
-			addCallable(
-				std::forward<Callable>(InCallable)
-			)
-		};
-	}
+            infra::MulticastDelegate<void()>::ScopedConnection Connection;
+        };
+    ```
+     */
+    template <typename Callable>
+        requires std::constructible_from<storage_type, Callable>
+    [[nodiscard]]
+    ScopedConnection connect(Callable&& InCallable)
+    {
+        return ScopedConnection{
+            *this,
+            addCallable(
+                std::forward<Callable>(InCallable)
+            )
+        };
+    }
     DelegateHandle add(storage_type InCallback)
     {
         if (!InCallback)
@@ -1551,7 +1551,7 @@ public:
             if constexpr (std::convertible_to<std::invoke_result_t<Visitor&, RetType>, bool>)
             {
                 if (!static_cast<bool>(std::invoke(ResultVisitor,
-						Slots[entry.Index].Callback.execute(InArgs...))))
+                        Slots[entry.Index].Callback.execute(InArgs...))))
                 {
                     break;
                 }
@@ -1588,7 +1588,7 @@ public:
     }
 private:
     static void invokeFanoutCallback(storage_type& Callback, Args&... InArgs) 
-		noexcept(IsNoexcept)
+        noexcept(IsNoexcept)
         requires std::is_void_v<RetType>
     {
         // 对值类型 Args：
@@ -1787,14 +1787,14 @@ template <typename RetType, typename... Args, std::size_t InlineSize, typename A
 struct MulticastDelegateSelector<RetType(Args...), InlineSize, AllocationPolicy>
 {
     using storage_type = 
-		MulticastDelegateStorage<RetType, false, InlineSize, AllocationPolicy, Args...>;
+        MulticastDelegateStorage<RetType, false, InlineSize, AllocationPolicy, Args...>;
 };
 
 template <typename RetType, typename... Args, std::size_t InlineSize, typename AllocationPolicy>
 struct MulticastDelegateSelector<RetType(Args...) noexcept, InlineSize, AllocationPolicy>
 {
     using storage_type = 
-		MulticastDelegateStorage< RetType, true, InlineSize, AllocationPolicy, Args...>;
+        MulticastDelegateStorage< RetType, true, InlineSize, AllocationPolicy, Args...>;
 };
 
 } // namespace details
@@ -1807,11 +1807,11 @@ struct MulticastDelegateSelector<RetType(Args...) noexcept, InlineSize, Allocati
  * - callable 必须可复制. 
  */
 template <typename Signature, 
-	std::size_t InlineSize = DefaultDelegateInlineSize, 
-	typename AllocationPolicy = DefaultDelegateAllocatePolicy
+    std::size_t InlineSize = DefaultDelegateInlineSize, 
+    typename AllocationPolicy = DefaultDelegateAllocatePolicy
 >
 using Delegate 
-	= typename details::DelegateSelector<Signature, true, InlineSize, AllocationPolicy>::storage_type;
+    = typename details::DelegateSelector<Signature, true, InlineSize, AllocationPolicy>::storage_type;
 
 /**
  * 仅移动, 拥有 callable 的委托. 
@@ -1820,10 +1820,10 @@ using Delegate
  * - 推荐用于任务系统以及 multicast 内部存储. 
  */
 template <typename Signature, 
-	std::size_t InlineSize = DefaultDelegateInlineSize, 
-	typename AllocationPolicy = DefaultDelegateAllocatePolicy>
+    std::size_t InlineSize = DefaultDelegateInlineSize, 
+    typename AllocationPolicy = DefaultDelegateAllocatePolicy>
 using UniqueDelegate 
-	= typename details::DelegateSelector<Signature, false, InlineSize, AllocationPolicy>::storage_type;
+    = typename details::DelegateSelector<Signature, false, InlineSize, AllocationPolicy>::storage_type;
 
 /**
  * 非拥有委托. 
@@ -1845,8 +1845,8 @@ using DelegateRef = typename details::DelegateRefSelector<Signature>::storage_ty
  * - 非线程安全；订阅, 退订和广播应在同一所有者线程执行. 
  */
 template <typename Signature, 
-	std::size_t InlineSize = DefaultDelegateInlineSize, 
-	typename AllocationPolicy = DefaultDelegateAllocatePolicy>
+    std::size_t InlineSize = DefaultDelegateInlineSize, 
+    typename AllocationPolicy = DefaultDelegateAllocatePolicy>
 using MulticastDelegate =
     typename details::MulticastDelegateSelector<Signature, InlineSize, AllocationPolicy>::storage_type;
 

@@ -41,10 +41,10 @@ namespace runtime::renderer
  */
 struct RenderView
 {
-	infra::Matrix4x4 View {};
-	infra::Matrix4x4 Projection {};
-	infra::Matrix4x4 ViewProjection {};
-	infra::Vec3f CameraPosition { 0.0f, 0.0f, 0.0f };
+    infra::Matrix4x4 View {};
+    infra::Matrix4x4 Projection {};
+    infra::Matrix4x4 ViewProjection {};
+    infra::Vec3f CameraPosition { 0.0f, 0.0f, 0.0f };
 };
 
 /**
@@ -55,9 +55,9 @@ struct RenderView
  */
 struct RenderFrameResources
 {
-	/** 场景主深度(DepthPrePass 写, Opaque 读). */
-	RDGResourceId SceneDepth { InvalidRDGResourceId };
-	// 未来扩展: GBuffer[0..N]、HDR SceneColor、HiZ、ShadowAtlas...
+    /** 场景主深度(DepthPrePass 写, Opaque 读). */
+    RDGResourceId SceneDepth { InvalidRDGResourceId };
+    // 未来扩展: GBuffer[0..N]、HDR SceneColor、HiZ、ShadowAtlas...
 };
 
 /**
@@ -68,19 +68,19 @@ struct RenderFrameResources
  */
 struct RenderContext
 {
-	const RenderProxyWorld& ProxyWorld;
-	const RenderView& View;
-	/**
-	 * @brief World 预处理后的帧交换包(可为空, 由调用方控制是否启用统一提交流).
-	 */
-	const RenderFrameSubmission* Submission { nullptr };
-	/** 最终输出目标(由 RendererServer::renderFrameGraph 导入的交换链图). */
-	RDGResourceId Backbuffer { InvalidRDGResourceId };
-	/** 共享 transient 句柄(可变, 子渲染器按需填充/读取). */
-	RenderFrameResources& FrameResources;
-	uint32_t FrameIndex { 0 };
-	uint32_t Width { 0 };
-	uint32_t Height { 0 };
+    const RenderProxyWorld& ProxyWorld;
+    const RenderView& View;
+    /**
+     * @brief World 预处理后的帧交换包(可为空, 由调用方控制是否启用统一提交流).
+     */
+    const RenderFrameSubmission* Submission { nullptr };
+    /** 最终输出目标(由 RendererServer::renderFrameGraph 导入的交换链图). */
+    RDGResourceId Backbuffer { InvalidRDGResourceId };
+    /** 共享 transient 句柄(可变, 子渲染器按需填充/读取). */
+    RenderFrameResources& FrameResources;
+    uint32_t FrameIndex { 0 };
+    uint32_t Width { 0 };
+    uint32_t Height { 0 };
 };
 
 /**
@@ -92,17 +92,17 @@ struct RenderContext
 class IRenderPass
 {
 public:
-	virtual ~IRenderPass() = default;
+    virtual ~IRenderPass() = default;
 
-	/** @brief 稳定名称, 用于调试与日志. */
-	[[nodiscard]] virtual const char* getName() const noexcept = 0;
+    /** @brief 稳定名称, 用于调试与日志. */
+    [[nodiscard]] virtual const char* getName() const noexcept = 0;
 
-	/**
-	 * @brief 向 Builder 声明本渲染器负责的 Pass(不执行 compile/execute).
-	 * @param Builder 本帧共享的 RDG 构建器(UI 与 3D 合并于此).
-	 * @param Context 只读上下文(World/View/UI/尺寸).
-	 */
-	virtual void addPasses(RDGBuilder& Builder, const RenderContext& Context) = 0;
+    /**
+     * @brief 向 Builder 声明本渲染器负责的 Pass(不执行 compile/execute).
+     * @param Builder 本帧共享的 RDG 构建器(UI 与 3D 合并于此).
+     * @param Context 只读上下文(World/View/UI/尺寸).
+     */
+    virtual void addPasses(RDGBuilder& Builder, const RenderContext& Context) = 0;
 };
 
 } // namespace runtime::renderer
