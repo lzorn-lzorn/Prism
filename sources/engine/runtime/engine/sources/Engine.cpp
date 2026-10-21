@@ -79,7 +79,12 @@ void Engine::initialize()
     // 加载整个引擎的配置
 
     // 加载 Game 或者启动 Editor 模式 
-
+    // 引擎自身子系统就绪后, 才轮到"游戏生命周期"起步.
+    if (GameInstance)
+    {
+        GameInstance->preinitialize();
+        GameInstance->initialize();
+    }
 }
 void Engine::postinitialize() {}
 void Engine::run()
@@ -88,7 +93,12 @@ void Engine::run()
     {
         if (IsFirstFrame)
         {
+            // 引擎自己的第一帧, 随后才是游戏的第一帧.
             postinitialize();
+            if (GameInstance)
+            {
+                GameInstance->postinitialize();
+            }
             IsFirstFrame = false;
         }
 
@@ -111,11 +121,36 @@ void Engine::run()
         }
     }
 }
-void Engine::tick(float DeltaTime) {}
+void Engine::tick(float DeltaTime)
+{
+    // 引擎主循环内, 驱动被托管游戏的一帧.
+    if (GameInstance)
+    {
+        GameInstance->tick(DeltaTime);
+    }
+}
 void Engine::render() {}
 void Engine::quit() { ShouldQuit = true; }
 void Engine::destroy() 
 {
+    // 先销毁游戏(托管实体), 再拆引擎自身子系统 —— 与 initialize 的顺序相反.
+    if (GameInstance)
+    {
+        GameInstance->destroy();
+    }
+    GameInstance.reset();
+
+    // TODO: 停止日志、释放渲染线程等引擎自身资源.
+}
+
+void Engine::attachGame(std::unique_ptr<IGame> Game)
+{
+    GameInstance = std::move(Game);
+}
+
+bool Engine::hasGame() const noexcept
+{
+    return GameInstance != nullptr;
 }
 
 }

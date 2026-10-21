@@ -11,6 +11,7 @@
 #include "Style.hpp"
 #include "ModuleLoader.hpp"
 #include "RTGlobal.hpp"
+#include "game/Game.hpp"
 #include <SDL3/SDL_main.h>
 #include <algorithm>
 #include <cstddef>
@@ -127,6 +128,8 @@ int main(int Argc, char** Argv)
         // 启动引擎子系统: 模块加载器 + 日志 + 引擎(先于 Editor 启动).
         ModuleLoader::self();
         GSeedEngine.preinitialize();
+        // 托管一个演示游戏: 引擎会在自己的 initialize/run/destroy 中驱动其生命周期.
+        GSeedEngine.attachGame(game::createDemoGame());
         GSeedEngine.initialize();
 
         ui::ApplicationOptions Options;

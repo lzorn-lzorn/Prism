@@ -1,4 +1,4 @@
-﻿add_subdirectory(generic)
+add_subdirectory(generic)
 add_subdirectory(editor)
 
 set(TARGET_NAME Launcher)
@@ -30,5 +30,6 @@ target_link_libraries(${TARGET_NAME} PRIVATE
     Generic::Generic
     Infra::Infra
     Runtime::Runtime
+    Game::Game
     SDL3::SDL3
 )

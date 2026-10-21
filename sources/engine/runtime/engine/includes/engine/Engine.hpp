@@ -6,6 +6,7 @@
 #include <memory>
 
 #include <RTCommon.hpp>
+#include "IGame.hpp"
 
 namespace runtime
 {
@@ -50,6 +51,10 @@ public:
     void quit();
     bool shouldQuit() const { return ShouldQuit; }
     void destroy();
+
+    // 托管一个游戏实体: 引擎负责驱动其生命周期, 但不依赖具体游戏类型.
+    void attachGame(std::unique_ptr<IGame> Game);
+    [[nodiscard]] bool hasGame() const noexcept;
 private:
     Engine() = default;
     void tick(float DeltaTime);
@@ -57,6 +62,7 @@ private:
 private:
     std::atomic<bool> ShouldQuit { false };
     bool IsFirstFrame { true };
+    std::unique_ptr<IGame> GameInstance;
 
     
 };
