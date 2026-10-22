@@ -1008,7 +1008,6 @@ std::shared_ptr<RPipeline> createVulkanGraphicsPipeline(
     buildVertexInputState(Desc, Device, State);
     buildFixedFunctionState(Desc, State);
     buildDynamicState(Desc, State);
-    buildRenderingState(Desc, State);
 
     vk::GraphicsPipelineCreateInfo CreateInfo;
     CreateInfo.setFlags(getPipelineFlags(Desc.Compile.Flags))
@@ -1022,8 +1021,17 @@ std::shared_ptr<RPipeline> createVulkanGraphicsPipeline(
         .setPDepthStencilState(&State.DepthStencil)
         .setPColorBlendState(&State.ColorBlend)
         .setPDynamicState(&State.DynamicState)
-        .setLayout(Layout.getVkPipelineLayout())
-        .setPNext(&State.Rendering);
+        .setLayout(Layout.getVkPipelineLayout());
+    if (Device.getFeatures().DynamicRendering)
+    {
+        buildRenderingState(Desc, State);
+        CreateInfo.setPNext(&State.Rendering);
+    }
+    else
+    {
+        // 1.0 基线: 管线绑定到与 RenderingSignature 兼容的 renderpass.
+        CreateInfo.setRenderPass(Device.getOrCreateCompatibleRenderPass(Desc.Rendering));
+    }
 
     auto* Cache = getCache(Desc.Compile.Cache, Device);
     std::unique_lock<std::mutex> CacheLock;

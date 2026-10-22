@@ -1,6 +1,7 @@
 #pragma once
 
 #include <RHI.hpp>
+#include "VulkanFeatures.hpp"
 #include <atomic>
 #include <cstdint>
 #include <memory>
@@ -68,6 +69,8 @@ struct VulkanContext final
     std::atomic<EDeviceStatus> DeviceStatus { EDeviceStatus::Ready };
     // Populated from the feature bits actually passed to vkCreateDevice, never raw hardware support.
     DeviceFeatures EnabledFeatures {};
+    // 版本 + 扩展 + 特性的集中协商结果, 生命周期与本上下文一致.
+    VulkanFeatureSet FeatureSet {};
     uint32_t GraphicsQueueFamilyIndex { UINT32_MAX };
     uint32_t ComputeQueueFamilyIndex { UINT32_MAX };
     uint32_t CopyQueueFamilyIndex { UINT32_MAX };

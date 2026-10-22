@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <array>
 #include <cstddef>
@@ -3023,6 +3023,18 @@ public:
         uint64_t CompletionValue)
     {
         (void)Resource; (void)CompletionSemaphore; (void)CompletionValue; return false;
+    }
+    /** 
+     * @brief Defers the final shared ownership release until a fence signals. 
+     * @param Resource Type-erased RHI object ownership. 
+     * @param CompletionFence Fence from this device that proves all resource use is complete. 
+     * @return True when queued; false when unsupported/invalid, in which case caller retains ownership. 
+     */
+    [[nodiscard]] virtual bool deferRelease(
+        std::shared_ptr<void> Resource,
+        const std::shared_ptr<RFence>& CompletionFence)
+    {
+        (void)Resource; (void)CompletionFence; return false;
     }
     /** 
      * @brief Polls and destroys deferred objects whose completion points have passed; never waits. 

@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <optional>
 #include <unordered_set>
 #include <stdexcept>
 #include <string>
@@ -97,6 +98,90 @@ VulkanResourceState convertMemoryState(EResourceState State)
         return { vk::PipelineStageFlagBits2::eAllGraphics | vk::PipelineStageFlagBits2::eComputeShader,
             vk::AccessFlagBits2::eUniformRead, vk::ImageLayout::eGeneral };
     return convertResourceState(State);
+}
+
+/**
+ * @brief 1.0 屏障状态(回滚路径).
+ *
+ * synchronization2 不可用时, 屏障必须回退到 vkCmdPipelineBarrier 的 1.0 阶段/访问位.
+ * 这里提供与 convertResourceState / convertMemoryState 平行的 1.0 映射.
+ */
+struct VulkanLegacyResourceState
+{
+    vk::PipelineStageFlags Stages;
+    vk::AccessFlags Access;
+    vk::ImageLayout Layout;
+};
+
+VulkanLegacyResourceState convertLegacyResourceState(EResourceState State)
+{
+    using Stage = vk::PipelineStageFlagBits;
+    using Access = vk::AccessFlagBits;
+
+    switch (State)
+    {
+    case EResourceState::Undefined:
+        return { Stage::eTopOfPipe, vk::AccessFlags(), vk::ImageLayout::eUndefined };
+    case EResourceState::Common:
+        return {
+            Stage::eAllCommands,
+            Access::eMemoryRead | Access::eMemoryWrite,
+            vk::ImageLayout::eGeneral };
+    case EResourceState::UnorderedAccess:
+    case EResourceState::StorageBuffer:
+        return {
+            Stage::eAllCommands,
+            Access::eShaderRead | Access::eShaderWrite,
+            vk::ImageLayout::eGeneral };
+    case EResourceState::DepthWrite:
+        return {
+            Stage::eEarlyFragmentTests | Stage::eLateFragmentTests,
+            Access::eDepthStencilAttachmentRead | Access::eDepthStencilAttachmentWrite,
+            vk::ImageLayout::eDepthStencilAttachmentOptimal };
+    case EResourceState::DepthRead:
+        return {
+            Stage::eEarlyFragmentTests | Stage::eLateFragmentTests | Stage::eFragmentShader,
+            Access::eDepthStencilAttachmentRead | Access::eShaderRead,
+            vk::ImageLayout::eDepthStencilReadOnlyOptimal };
+    case EResourceState::CopySrc:
+        return { Stage::eTransfer, Access::eTransferRead, vk::ImageLayout::eTransferSrcOptimal };
+    case EResourceState::CopyDst:
+        return { Stage::eTransfer, Access::eTransferWrite, vk::ImageLayout::eTransferDstOptimal };
+    case EResourceState::Present:
+        return { Stage::eAllCommands, Access::eMemoryRead, vk::ImageLayout::ePresentSrcKHR };
+    case EResourceState::RenderTarget:
+        return {
+            Stage::eColorAttachmentOutput,
+            Access::eColorAttachmentRead | Access::eColorAttachmentWrite,
+            vk::ImageLayout::eColorAttachmentOptimal };
+    case EResourceState::PixelShaderResource:
+        return { Stage::eFragmentShader, Access::eShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal };
+    case EResourceState::NonPixelShaderResource:
+        return {
+            Stage::eVertexShader | Stage::eComputeShader,
+            Access::eShaderRead,
+            vk::ImageLayout::eShaderReadOnlyOptimal };
+    case EResourceState::VertexBuffer:
+    case EResourceState::IndexBuffer:
+    case EResourceState::UniformBuffer:
+    case EResourceState::ConstantBuffer:
+        throw std::invalid_argument("A buffer-only resource state cannot be used for an image barrier.");
+    }
+    throw std::invalid_argument("Unsupported resource state.");
+}
+
+VulkanLegacyResourceState convertLegacyMemoryState(EResourceState State)
+{
+    if (State == EResourceState::VertexBuffer || State == EResourceState::IndexBuffer)
+        return { vk::PipelineStageFlagBits::eVertexInput,
+            State == EResourceState::VertexBuffer
+                ? vk::AccessFlagBits::eVertexAttributeRead
+                : vk::AccessFlagBits::eIndexRead,
+            vk::ImageLayout::eGeneral };
+    if (State == EResourceState::UniformBuffer || State == EResourceState::ConstantBuffer)
+        return { vk::PipelineStageFlagBits::eAllGraphics | vk::PipelineStageFlagBits::eComputeShader,
+            vk::AccessFlagBits::eUniformRead, vk::ImageLayout::eGeneral };
+    return convertLegacyResourceState(State);
 }
 
 vk::AttachmentLoadOp convertLoadOp(ELoadOp Op)
@@ -364,21 +449,31 @@ void VulkanCommandList::begin()
             if (Descriptor.RenderingInheritance)
             {
                 const auto& Source = *Descriptor.RenderingInheritance;
-                for (uint32_t Index = 0; Index < Source.ColorAttachmentCount; ++Index)
-                    ColorFormats[Index] = toVk(Source.ColorFormats[Index]);
-                // VkCommandBufferInheritanceRenderingInfo is required by dynamic rendering secondaries.
-                RenderingInheritance
-                    .setViewMask(Source.ViewMask)
-                    .setColorAttachmentCount(Source.ColorAttachmentCount)
-                    .setPColorAttachmentFormats(ColorFormats.data())
-                    .setDepthAttachmentFormat(toVk(Source.DepthFormat))
-                    .setStencilAttachmentFormat(toVk(Source.StencilFormat))
-                    .setRasterizationSamples(toVk(Source.SampleCount));
-                InheritanceInfo.pNext = &RenderingInheritance;
+                ActiveRenderingSignature = inheritanceSignature(Source);
+                if (Device->getFeatures().DynamicRendering)
+                {
+                    for (uint32_t Index = 0; Index < Source.ColorAttachmentCount; ++Index)
+                        ColorFormats[Index] = toVk(Source.ColorFormats[Index]);
+                    // VkCommandBufferInheritanceRenderingInfo is required by dynamic rendering secondaries.
+                    RenderingInheritance
+                        .setViewMask(Source.ViewMask)
+                        .setColorAttachmentCount(Source.ColorAttachmentCount)
+                        .setPColorAttachmentFormats(ColorFormats.data())
+                        .setDepthAttachmentFormat(toVk(Source.DepthFormat))
+                        .setStencilAttachmentFormat(toVk(Source.StencilFormat))
+                        .setRasterizationSamples(toVk(Source.SampleCount));
+                    InheritanceInfo.pNext = &RenderingInheritance;
+                }
+                else
+                {
+                    // 1.0 基线: 二级命令缓冲继承兼容 renderpass.
+                    InheritanceInfo.renderPass =
+                        Device->getOrCreateCompatibleRenderPass(ActiveRenderingSignature);
+                    InheritanceInfo.subpass = 0;
+                }
                 Usage |= vk::CommandBufferUsageFlagBits::eRenderPassContinue;
                 InheritedRendering = true;
                 InsideRendering = true;
-                ActiveRenderingSignature = inheritanceSignature(Source);
             }
         }
         CommandBuffer->begin(vk::CommandBufferBeginInfo(Usage, InheritancePointer));
@@ -460,6 +555,13 @@ void VulkanCommandList::barriers(
     requireOutsideRendering("barriers");
     if (GlobalBarriers.empty() && BufferBarriers.empty() && ImageBarriers.empty())
         return;
+
+    // synchronization2 不可用时回滚到 1.0 的 vkCmdPipelineBarrier.
+    if (!Device->getFeatures().Synchronization2)
+    {
+        barriersLegacy(GlobalBarriers, BufferBarriers, ImageBarriers);
+        return;
+    }
 
     std::vector<vk::MemoryBarrier2> VkGlobalBarriers;
     VkGlobalBarriers.reserve(GlobalBarriers.size());
@@ -543,6 +645,100 @@ void VulkanCommandList::barriers(
     CommandBuffer->pipelineBarrier2(Dependency);
 }
 
+void VulkanCommandList::barriersLegacy(
+    std::span<const GlobalBarrier> GlobalBarriers,
+    std::span<const BufferBarrier> BufferBarriers,
+    std::span<const ImageBarrier> ImageBarriers)
+{
+    std::vector<vk::MemoryBarrier> VkGlobalBarriers;
+    std::vector<vk::BufferMemoryBarrier> VkBufferBarriers;
+    std::vector<vk::ImageMemoryBarrier> VkImageBarriers;
+    VkGlobalBarriers.reserve(GlobalBarriers.size());
+    VkBufferBarriers.reserve(BufferBarriers.size());
+    VkImageBarriers.reserve(ImageBarriers.size());
+
+    // 1.0 的 vkCmdPipelineBarrier 只接受一对全局阶段掩码, 故取所有屏障阶段的并集.
+    vk::PipelineStageFlags SourceStages;
+    vk::PipelineStageFlags DestinationStages;
+    const auto accumulateStages = [&](const VulkanLegacyResourceState& Before,
+                                      const VulkanLegacyResourceState& After)
+    {
+        SourceStages |= Before.Stages;
+        DestinationStages |= After.Stages;
+    };
+
+    for (const auto& Barrier : GlobalBarriers)
+    {
+        const auto Before = convertLegacyMemoryState(Barrier.Before);
+        const auto After = convertLegacyMemoryState(Barrier.After);
+        VkGlobalBarriers.emplace_back(Before.Access, After.Access);
+        accumulateStages(Before, After);
+    }
+
+    for (const auto& Barrier : BufferBarriers)
+    {
+        const auto& Buffer = getVulkanBuffer(Barrier.Buffer);
+        const auto& Desc = Barrier.Buffer->getDescriptor();
+        const uint64_t Size = clampCopySize(Barrier.Offset, Barrier.Size, Desc.Size);
+        const auto Before = convertLegacyMemoryState(Barrier.Before);
+        const auto After = convertLegacyMemoryState(Barrier.After);
+        if (Barrier.SourceQueue.has_value() != Barrier.DestinationQueue.has_value())
+            throw std::invalid_argument("Queue ownership transfer requires both source and destination queues.");
+        const uint32_t SourceFamily = Barrier.SourceQueue
+            ? Device->getQueueFamilyIndex(*Barrier.SourceQueue) : VK_QUEUE_FAMILY_IGNORED;
+        const uint32_t DestinationFamily = Barrier.DestinationQueue
+            ? Device->getQueueFamilyIndex(*Barrier.DestinationQueue) : VK_QUEUE_FAMILY_IGNORED;
+        VkBufferBarriers.emplace_back(
+            Before.Access, After.Access,
+            SourceFamily, DestinationFamily, Buffer.getVkBuffer(), Barrier.Offset, Size);
+        RetainedResources.emplace_back(Barrier.Buffer);
+        accumulateStages(Before, After);
+    }
+
+    for (const auto& Barrier : ImageBarriers)
+    {
+        const auto& Image = getVulkanImage(Barrier.Image);
+        const auto& Desc = Barrier.Image->getDescriptor();
+        if (Barrier.Range.MipLevelCount == 0 || Barrier.Range.ArrayLayerCount == 0 ||
+            Barrier.Range.BaseMipLevel >= Desc.MipLevels ||
+            Barrier.Range.MipLevelCount > Desc.MipLevels - Barrier.Range.BaseMipLevel ||
+            Barrier.Range.BaseArrayLayer >= Desc.ArrayLayers ||
+            Barrier.Range.ArrayLayerCount > Desc.ArrayLayers - Barrier.Range.BaseArrayLayer)
+        {
+            throw std::out_of_range("Image barrier subresource range exceeds the image.");
+        }
+
+        const EImageAspect Aspect = Barrier.Range.Aspect == EImageAspect::Auto
+            ? inferAspect(Desc.Format)
+            : Barrier.Range.Aspect;
+        const auto Before = convertLegacyResourceState(Barrier.Before);
+        const auto After = convertLegacyResourceState(Barrier.After);
+        if (Barrier.SourceQueue.has_value() != Barrier.DestinationQueue.has_value())
+            throw std::invalid_argument("Queue ownership transfer requires both source and destination queues.");
+        const uint32_t SourceFamily = Barrier.SourceQueue
+            ? Device->getQueueFamilyIndex(*Barrier.SourceQueue) : VK_QUEUE_FAMILY_IGNORED;
+        const uint32_t DestinationFamily = Barrier.DestinationQueue
+            ? Device->getQueueFamilyIndex(*Barrier.DestinationQueue) : VK_QUEUE_FAMILY_IGNORED;
+        VkImageBarriers.emplace_back(
+            Before.Access, After.Access,
+            Before.Layout, After.Layout,
+            SourceFamily, DestinationFamily,
+            Image.getVkImage(),
+            vk::ImageSubresourceRange(
+                toVk(Aspect),
+                Barrier.Range.BaseMipLevel,
+                Barrier.Range.MipLevelCount,
+                Barrier.Range.BaseArrayLayer,
+                Barrier.Range.ArrayLayerCount));
+        RetainedResources.emplace_back(Barrier.Image);
+        accumulateStages(Before, After);
+    }
+
+    CommandBuffer->pipelineBarrier(
+        SourceStages, DestinationStages, vk::DependencyFlags(),
+        VkGlobalBarriers, VkBufferBarriers, VkImageBarriers);
+}
+
 void VulkanCommandList::beginRendering(const RenderingInfo& Info)
 {
     requireRecording("beginRendering");
@@ -552,6 +748,13 @@ void VulkanCommandList::beginRendering(const RenderingInfo& Info)
     if (Descriptor.Level != ECommandListLevel::Primary)
         throw std::logic_error("A secondary command list cannot begin a rendering scope.");
     validateRenderingInfo(Info);
+
+    // 1.0 基线: 无动态渲染时回退到 VkRenderPass / VkFramebuffer.
+    if (!Device->getFeatures().DynamicRendering)
+    {
+        beginRenderingLegacy(Info);
+        return;
+    }
 
     std::array<vk::RenderingAttachmentInfo, MaxColorAttachments> ColorAttachments;
     ActiveRenderingSignature = {};
@@ -675,7 +878,176 @@ void VulkanCommandList::endRendering()
     requireInsideRendering("endRendering");
     if (Descriptor.Level != ECommandListLevel::Primary || InheritedRendering)
         throw std::logic_error("Only a primary command list can end a rendering scope.");
+    if (!Device->getFeatures().DynamicRendering)
+    {
+        endRenderingLegacy();
+        return;
+    }
     CommandBuffer->endRendering();
+    InsideRendering = false;
+    RenderingUsesSecondaryCommandBuffers = false;
+    ActiveRenderingSignature = {};
+}
+
+void VulkanCommandList::beginRenderingLegacy(const RenderingInfo& Info)
+{
+    if (Info.ViewMask != 0)
+        throw std::logic_error("Multiview rendering requires dynamic rendering.");
+
+    // 与动态渲染路径一致地填充活动渲染签名, 供管线兼容性校验使用.
+    ActiveRenderingSignature = {};
+    ActiveRenderingSignature.ColorAttachmentCount = static_cast<uint32_t>(Info.ColorAttachments.size());
+    ActiveRenderingSignature.ViewMask = Info.ViewMask;
+    bool SampleCountSet = false;
+    for (size_t Index = 0; Index < Info.ColorAttachments.size(); ++Index)
+    {
+        ActiveRenderingSignature.ColorFormats[Index] =
+            Info.ColorAttachments[Index].View->getDescriptor().Format;
+        if (!SampleCountSet)
+        {
+            ActiveRenderingSignature.SampleCount =
+                Info.ColorAttachments[Index].View->getImage()->getDescriptor().SampleCount;
+            SampleCountSet = true;
+        }
+    }
+    if (Info.DepthStencil)
+    {
+        const EFormat Format = Info.DepthStencil->View->getDescriptor().Format;
+        if (!SampleCountSet)
+            ActiveRenderingSignature.SampleCount =
+                Info.DepthStencil->View->getImage()->getDescriptor().SampleCount;
+        if (hasDepthAspect(Format))
+            ActiveRenderingSignature.DepthFormat = Format;
+        if (hasStencilAspect(Format))
+            ActiveRenderingSignature.StencilFormat = Format;
+    }
+
+    std::vector<vk::AttachmentDescription> AttachmentDescriptions;
+    std::vector<vk::AttachmentReference> ColorReferences;
+    std::vector<vk::AttachmentReference> ResolveReferences;
+    std::vector<vk::ClearValue> ClearValues;
+    std::vector<vk::ImageView> FramebufferViews;
+
+    // 颜色附件(含可选 resolve 附件).
+    for (const auto& Source : Info.ColorAttachments)
+    {
+        const auto& View = getVulkanView(Source.View);
+        const auto& ViewDesc = Source.View->getDescriptor();
+        const auto SampleCount = Source.View->getImage()->getDescriptor().SampleCount;
+        const vk::Format Format = toVk(ViewDesc.Format);
+
+        const uint32_t ColorIndex = static_cast<uint32_t>(AttachmentDescriptions.size());
+        AttachmentDescriptions.emplace_back(
+            vk::AttachmentDescriptionFlags(),
+            Format, toVk(SampleCount),
+            convertLoadOp(Source.LoadOp), convertStoreOp(Source.StoreOp),
+            vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare,
+            vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::eColorAttachmentOptimal);
+        ColorReferences.emplace_back(ColorIndex, vk::ImageLayout::eColorAttachmentOptimal);
+        ClearValues.emplace_back(convertClearColor(Source.ClearValue));
+        FramebufferViews.emplace_back(View.getVkImageView());
+
+        if (Source.ResolveView)
+        {
+            const auto& ResolveView = getVulkanView(Source.ResolveView);
+            const uint32_t ResolveIndex = static_cast<uint32_t>(AttachmentDescriptions.size());
+            AttachmentDescriptions.emplace_back(
+                vk::AttachmentDescriptionFlags(),
+                Format, vk::SampleCountFlagBits::e1,
+                vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eStore,
+                vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare,
+                vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::eColorAttachmentOptimal);
+            ResolveReferences.emplace_back(ResolveIndex, vk::ImageLayout::eColorAttachmentOptimal);
+            ClearValues.emplace_back(vk::ClearColorValue());
+            FramebufferViews.emplace_back(ResolveView.getVkImageView());
+        }
+        else
+        {
+            ResolveReferences.emplace_back(VK_ATTACHMENT_UNUSED, vk::ImageLayout::eUndefined);
+        }
+    }
+
+    // 深度/模板附件.
+    std::optional<vk::AttachmentReference> DepthReference;
+    if (Info.DepthStencil)
+    {
+        const auto& Attachment = *Info.DepthStencil;
+        const auto& View = getVulkanView(Attachment.View);
+        const EFormat Format = Attachment.View->getDescriptor().Format;
+        const auto SampleCount = Attachment.View->getImage()->getDescriptor().SampleCount;
+        const uint32_t DepthIndex = static_cast<uint32_t>(AttachmentDescriptions.size());
+        AttachmentDescriptions.emplace_back(
+            vk::AttachmentDescriptionFlags(),
+            toVk(Format), toVk(SampleCount),
+            convertLoadOp(Attachment.Depth.LoadOp), convertStoreOp(Attachment.Depth.StoreOp),
+            convertLoadOp(Attachment.Stencil.LoadOp), convertStoreOp(Attachment.Stencil.StoreOp),
+            vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageLayout::eDepthStencilAttachmentOptimal);
+        DepthReference.emplace(DepthIndex, vk::ImageLayout::eDepthStencilAttachmentOptimal);
+        ClearValues.emplace_back(vk::ClearValue(vk::ClearDepthStencilValue(
+            Attachment.ClearValue.Depth, Attachment.ClearValue.Stencil)));
+        FramebufferViews.emplace_back(View.getVkImageView());
+    }
+
+    vk::SubpassDescription Subpass;
+    Subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
+    Subpass.colorAttachmentCount = static_cast<uint32_t>(ColorReferences.size());
+    Subpass.pColorAttachments = ColorReferences.empty() ? nullptr : ColorReferences.data();
+    Subpass.pResolveAttachments = ResolveReferences.empty() ? nullptr : ResolveReferences.data();
+    Subpass.pDepthStencilAttachment = DepthReference ? &*DepthReference : nullptr;
+
+    vk::RenderPassCreateInfo RenderPassInfo(
+        vk::RenderPassCreateFlags(),
+        static_cast<uint32_t>(AttachmentDescriptions.size()),
+        AttachmentDescriptions.empty() ? nullptr : AttachmentDescriptions.data(),
+        1, &Subpass);
+
+    // 以附件描述逐字段做 FNV-1a 混合, 得到稳定的 renderpass 缓存 key.
+    uint64_t Key = 14695981039346656037ull;
+    const auto mix = [&Key](uint64_t Value)
+    {
+        Key ^= Value + 0x9e3779b97f4a7c15ull + (Key << 6) + (Key >> 2);
+    };
+    for (const auto& Attachment : AttachmentDescriptions)
+    {
+        mix(static_cast<uint64_t>(static_cast<uint32_t>(Attachment.flags)));
+        mix(static_cast<uint64_t>(Attachment.format));
+        mix(static_cast<uint64_t>(Attachment.samples));
+        mix(static_cast<uint64_t>(Attachment.loadOp));
+        mix(static_cast<uint64_t>(Attachment.storeOp));
+        mix(static_cast<uint64_t>(Attachment.stencilLoadOp));
+        mix(static_cast<uint64_t>(Attachment.stencilStoreOp));
+        mix(static_cast<uint64_t>(Attachment.initialLayout));
+        mix(static_cast<uint64_t>(Attachment.finalLayout));
+    }
+
+    const vk::RenderPass RenderPass = Device->getOrCreateRenderPass(Key, RenderPassInfo);
+    vk::FramebufferCreateInfo FramebufferInfo(
+        vk::FramebufferCreateFlags(), RenderPass,
+        static_cast<uint32_t>(FramebufferViews.size()),
+        FramebufferViews.empty() ? nullptr : FramebufferViews.data(),
+        Info.Area.Width, Info.Area.Height, Info.LayerCount);
+    ActiveFramebuffer = Device->getVkDevice().createFramebufferUnique(FramebufferInfo);
+
+    vk::RenderPassBeginInfo BeginInfo(
+        RenderPass, ActiveFramebuffer.get(),
+        vk::Rect2D(vk::Offset2D(Info.Area.X, Info.Area.Y),
+                   vk::Extent2D(Info.Area.Width, Info.Area.Height)),
+        static_cast<uint32_t>(ClearValues.size()),
+        ClearValues.empty() ? nullptr : ClearValues.data());
+    const vk::SubpassContents Contents = Info.SecondaryCommandBuffers
+        ? vk::SubpassContents::eSecondaryCommandBuffers
+        : vk::SubpassContents::eInline;
+    CommandBuffer->beginRenderPass(BeginInfo, Contents);
+
+    InsideRendering = true;
+    RenderingUsesSecondaryCommandBuffers = Info.SecondaryCommandBuffers;
+    retainRenderingResources(Info);
+}
+
+void VulkanCommandList::endRenderingLegacy()
+{
+    CommandBuffer->endRenderPass();
+    ActiveFramebuffer.reset();
     InsideRendering = false;
     RenderingUsesSecondaryCommandBuffers = false;
     ActiveRenderingSignature = {};
@@ -1468,7 +1840,10 @@ void VulkanCommandList::writeTimestamp(const std::shared_ptr<RQueryPool>& Pool, 
         Query >= VkPool.getDescriptor().Count ||
         QueueFamilies[Device->getQueueFamilyIndex(Descriptor.QueueType)].timestampValidBits == 0)
         throw std::invalid_argument("writeTimestamp requires a valid timestamp query.");
-    CommandBuffer->writeTimestamp2(vk::PipelineStageFlagBits2::eAllCommands, VkPool.getVkQueryPool(), Query);
+    if (Device->getFeatures().Synchronization2)
+        CommandBuffer->writeTimestamp2(vk::PipelineStageFlagBits2::eAllCommands, VkPool.getVkQueryPool(), Query);
+    else
+        CommandBuffer->writeTimestamp(vk::PipelineStageFlagBits::eAllCommands, VkPool.getVkQueryPool(), Query);
     RetainedResources.emplace_back(Pool);
 }
 

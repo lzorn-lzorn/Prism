@@ -43,8 +43,7 @@ public:
     void barriers(
         std::span<const GlobalBarrier> GlobalBarriers,
         std::span<const BufferBarrier> BufferBarriers,
-        std::span<const ImageBarrier> ImageBarriers) override;
-    void beginRendering(const RenderingInfo& Info) override;
+        std::span<const ImageBarrier> ImageBarriers) override;    void beginRendering(const RenderingInfo& Info) override;
     void endRendering() override;
 
     void setViewports(std::span<const Viewport> Viewports) override;
@@ -134,6 +133,12 @@ private:
     void validateGraphicsPipeline() const;
     void validateDynamicStates(const RPipeline& Pipeline) const;
     void retainRenderingResources(const RenderingInfo& Info);
+    void barriersLegacy(
+        std::span<const GlobalBarrier> GlobalBarriers,
+        std::span<const BufferBarrier> BufferBarriers,
+        std::span<const ImageBarrier> ImageBarriers);
+    void beginRenderingLegacy(const RenderingInfo& Info);
+    void endRenderingLegacy();
 
     VulkanDevice* Device { nullptr };
     CommandListDescriptor Descriptor;
@@ -151,6 +156,7 @@ private:
     uint32_t ActiveQuery { 0 };
     std::vector<std::shared_ptr<void>> RetainedResources;
     std::vector<std::shared_ptr<VulkanCommandList>> ExecutedSecondaries;
+    vk::UniqueFramebuffer ActiveFramebuffer;
     vk::UniqueCommandPool CommandPool;
     vk::UniqueCommandBuffer CommandBuffer;
 };

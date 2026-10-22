@@ -1,4 +1,4 @@
-﻿#include <renderer/RendererServer.hpp>
+#include <renderer/RendererServer.hpp>
 
 #include <renderer/ShaderBinding.hpp>
 #include <RHIServer.hpp>
@@ -17,6 +17,7 @@ struct RendererServer::Implementation
         std::shared_ptr<rhi::RCommandList> Commands;
         std::shared_ptr<rhi::RSemaphore> ImageAvailable;
         std::shared_ptr<rhi::RQueryPool> TimestampQueries;
+        std::shared_ptr<rhi::RFence> FrameFence;
         uint64_t CompletionValue { 0 };
         bool TimestampPending { false };
     };
@@ -27,6 +28,7 @@ struct RendererServer::Implementation
     std::shared_ptr<rhi::RQueue> GraphicsQueue;
     std::shared_ptr<rhi::RSwapchain> Swapchain;
     std::shared_ptr<rhi::RSemaphore> FrameTimeline;
+    bool UseTimelineSemaphore { false };
     std::array<FrameContext, FramesInFlight> Frames;
     std::vector<std::shared_ptr<rhi::RSemaphore>> RenderFinishedSemaphores;
     std::vector<bool> ImageInitialized;
@@ -72,11 +74,16 @@ struct RendererServer::Implementation
         Width = static_cast<uint32_t>(std::max(0, Window->getSize().Width));
         Height = static_cast<uint32_t>(std::max(0, Window->getSize().Height));
         GraphicsQueue = Device->getQueue(rhi::ECommandQueueType::Graphics);
-        FrameTimeline = Device->createTimelineSemaphore();
+        // 1.0 基线: 时间线信号量不可用时用 per-frame fence 做帧 pacing 与延迟释放.
+        UseTimelineSemaphore = Device->getFeatures().TimelineSemaphore;
+        if (UseTimelineSemaphore)
+            FrameTimeline = Device->createTimelineSemaphore();
         for (auto& frame : Frames)
         {
             frame.Commands = Device->createCommandList();
             frame.ImageAvailable = Device->createSemaphore();
+            if (!UseTimelineSemaphore)
+                frame.FrameFence = Device->createFence();
             if (Device->getFeatures().TimestampQueries)
                 frame.TimestampQueries = Device->createQueryPool({
                     .Type = rhi::EQueryType::Timestamp,
@@ -154,12 +161,23 @@ RendererServer::EFrameStatus RendererServer::Implementation::renderFrameImpl(con
     auto& frame = Frames[FrameIndex];
     if (frame.CompletionValue != 0)
     {
-        if (!FrameTimeline->wait(frame.CompletionValue))
+        if (UseTimelineSemaphore)
+        {
+            if (!FrameTimeline->wait(frame.CompletionValue))
+                return Device->getStatus() == rhi::EDeviceStatus::Ready
+                    ? RendererServer::EFrameStatus::Skipped
+                    : RendererServer::EFrameStatus::DeviceLost;
+        }
+        else if (!frame.FrameFence->wait())
+        {
             return Device->getStatus() == rhi::EDeviceStatus::Ready
                 ? RendererServer::EFrameStatus::Skipped
                 : RendererServer::EFrameStatus::DeviceLost;
+        }
         GraphicsQueue->poll();
         Device->collectDeferredReleases();
+        if (!UseTimelineSemaphore)
+            frame.FrameFence->reset();
         collectTimestamp(frame);
         frame.Commands->reset();
     }
@@ -199,18 +217,31 @@ RendererServer::EFrameStatus RendererServer::Implementation::renderFrameImpl(con
     const uint64_t completion_value = NextTimelineValue++;
     const auto& render_finished = RenderFinishedSemaphores[acquired.ImageIndex];
     const std::array waits { rhi::SemaphoreSubmitInfo { frame.ImageAvailable, 0 } };
-    const std::array signals {
-        rhi::SemaphoreSubmitInfo { render_finished, 0 },
-        rhi::SemaphoreSubmitInfo { FrameTimeline, completion_value }
-    };
     const std::array commands { frame.Commands };
     try
     {
-        GraphicsQueue->submit({
-            .CommandLists = commands,
-            .WaitSemaphores = waits,
-            .SignalSemaphores = signals
-        });
+        if (UseTimelineSemaphore)
+        {
+            const std::array signals {
+                rhi::SemaphoreSubmitInfo { render_finished, 0 },
+                rhi::SemaphoreSubmitInfo { FrameTimeline, completion_value }
+            };
+            GraphicsQueue->submit({
+                .CommandLists = commands,
+                .WaitSemaphores = waits,
+                .SignalSemaphores = signals
+            });
+        }
+        else
+        {
+            const std::array signals { rhi::SemaphoreSubmitInfo { render_finished, 0 } };
+            GraphicsQueue->submit({
+                .CommandLists = commands,
+                .WaitSemaphores = waits,
+                .SignalSemaphores = signals,
+                .Fence = frame.FrameFence
+            });
+        }
     }
     catch (...)
     {
@@ -329,12 +360,22 @@ std::optional<double> RendererServer::getLastGPUFrameTimeNanoseconds() const noe
 
 bool RendererServer::deferRelease(std::shared_ptr<void> Resource)
 {
-    if (!Impl || !Impl->Device || !Impl->FrameTimeline || !Resource)
+    if (!Impl || !Impl->Device || !Resource)
         return false;
-    // The timeline value snapshots all submissions made before this call. The device queue
-    // retains entries until that value completes; collection never waits.
-    return Impl->Device->deferRelease(
-        std::move(Resource), Impl->FrameTimeline, Impl->NextTimelineValue - 1);
+    if (Impl->UseTimelineSemaphore)
+    {
+        if (!Impl->FrameTimeline)
+            return false;
+        // The timeline value snapshots all submissions made before this call. The device queue
+        // retains entries until that value completes; collection never waits.
+        return Impl->Device->deferRelease(
+            std::move(Resource), Impl->FrameTimeline, Impl->NextTimelineValue - 1);
+    }
+    // 1.0 基线: 以当前帧 fence 作为完成点.
+    const auto& frame = Impl->Frames[Impl->FrameIndex];
+    if (!frame.FrameFence)
+        return false;
+    return Impl->Device->deferRelease(std::move(Resource), frame.FrameFence);
 }
 
 void RendererServer::runBindGroupSmokeTest()
@@ -505,8 +546,17 @@ void RendererServer::runBindGroupSmokeTest()
         delete static_cast<int*>(value);
         retired = true;
     });
-    if (!device->deferRelease(retirement_probe, Impl->FrameTimeline, 0))
-        throw std::runtime_error("Vulkan deferred release unexpectedly rejected a valid timeline point.");
+    if (Impl->UseTimelineSemaphore)
+    {
+        if (!device->deferRelease(retirement_probe, Impl->FrameTimeline, 0))
+            throw std::runtime_error("Vulkan deferred release unexpectedly rejected a valid timeline point.");
+    }
+    else
+    {
+        auto signaled_fence = device->createFence(true);
+        if (!device->deferRelease(retirement_probe, signaled_fence))
+            throw std::runtime_error("Vulkan deferred release unexpectedly rejected a valid fence.");
+    }
     retirement_probe.reset();
     device->collectDeferredReleases();
     if (!retired)

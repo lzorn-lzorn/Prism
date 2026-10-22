@@ -23,22 +23,23 @@ struct TypeA {
 - E- : 枚举
 
 ### 函数形参, 局部变量, 成员变量
-函数形参, 局部变量, 成员变量表示值语义使用下划线命名.
-lambda表达式视为函数, 不适用于此; 全局变量不适用于此
+全局常量, 函数形参, 变量, 成员变量表示值语义使用大驼峰命名. 表示名词语义
 
-### 全局常量, 全局变量和枚举使用大驼峰
+
 ```Cpp
 constexpr int32_t MaxSupportedNumber = 100; 
 ```
 对于全局变量使用 G- 开头
 ```cpp
-enum class State {
+enum class EState {
     Start,
     End,
     Hold
 };
 ```
 并且应该使用 `enum class` 而不是 `enum`
+使用特定的字母开头用于表示该值的特殊作用:
+- G- : 全局对象
 
 ### 函数, 成员函数, lambda
 函数, 成员函数, lambda 使用小驼峰且动词, 介词, 动词短语开头, 表示动作.

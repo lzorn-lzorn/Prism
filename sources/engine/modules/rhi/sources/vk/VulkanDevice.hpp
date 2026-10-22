@@ -1,9 +1,10 @@
-﻿#pragma once
+#pragma once
 
 #include <memory>
 #include <mutex>
 #include <RHI.hpp>
 #include <optional>
+#include <unordered_map>
 #include <vector>
 #include <vulkan/vulkan.hpp>
 #include "VulkanContext.hpp"
@@ -134,7 +135,19 @@ public:
         std::shared_ptr<void> Resource,
         const std::shared_ptr<RSemaphore>& CompletionSemaphore,
         uint64_t CompletionValue) override;
+    [[nodiscard]] bool deferRelease(
+        std::shared_ptr<void> Resource,
+        const std::shared_ptr<RFence>& CompletionFence) override;
     void collectDeferredReleases() override;
+
+    /** @brief 1.0 基线渲染路径: 按 key 复用 VkRenderPass, 未命中则创建. */
+    [[nodiscard]] vk::RenderPass getOrCreateRenderPass(
+        uint64_t Key,
+        const vk::RenderPassCreateInfo& CreateInfo);
+
+    /** @brief 1.0 基线渲染路径: 按 RenderingSignature 复用管线兼容 renderpass. */
+    [[nodiscard]] vk::RenderPass getOrCreateCompatibleRenderPass(
+        const RenderingSignature& Signature);
 
     [[nodiscard]] std::shared_ptr<DeviceMemory> allocateBufferMemory(
         const MemoryAllocationDescriptor& Desc,
@@ -164,6 +177,7 @@ private:
         uint64_t Sequence { 0 };
         uint64_t CompletionValue { 0 };
         std::shared_ptr<RSemaphore> CompletionSemaphore;
+        std::shared_ptr<RFence> CompletionFence;
         std::shared_ptr<void> Resource;
     };
     void drainDeferredReleases() noexcept;
@@ -178,6 +192,9 @@ private:
     std::mutex DeferredReleaseMutex;
     std::vector<DeferredReleaseEntry> DeferredReleases;
     uint64_t NextDeferredReleaseSequence { 0 };
+    // 1.0 基线渲染路径的 renderpass 缓存; 声明在 Context 之后以便先于设备析构.
+    std::unordered_map<uint64_t, vk::UniqueRenderPass> RenderPassCache;
+    std::unordered_map<uint64_t, vk::UniqueRenderPass> CompatibleRenderPassCache;
 };
 
 } // namespace rhi

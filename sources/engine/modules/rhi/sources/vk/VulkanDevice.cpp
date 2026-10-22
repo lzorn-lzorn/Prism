@@ -562,9 +562,112 @@ bool VulkanDevice::deferRelease(
         .Sequence = NextDeferredReleaseSequence++,
         .CompletionValue = CompletionValue,
         .CompletionSemaphore = CompletionSemaphore,
+        .CompletionFence = nullptr,
         .Resource = std::move(Resource)
     });
     return true;
+}
+
+bool VulkanDevice::deferRelease(
+    std::shared_ptr<void> Resource,
+    const std::shared_ptr<RFence>& CompletionFence)
+{
+    if (Context->isDeviceLost()) return false;
+    if (!Resource || !CompletionFence || &CompletionFence->getDevice() != this)
+        return false;
+
+    std::scoped_lock Lock(DeferredReleaseMutex);
+    DeferredReleases.push_back({
+        .Sequence = NextDeferredReleaseSequence++,
+        .CompletionValue = 0,
+        .CompletionSemaphore = nullptr,
+        .CompletionFence = CompletionFence,
+        .Resource = std::move(Resource)
+    });
+    return true;
+}
+
+vk::RenderPass VulkanDevice::getOrCreateRenderPass(
+    uint64_t Key,
+    const vk::RenderPassCreateInfo& CreateInfo)
+{
+    if (const auto It = RenderPassCache.find(Key); It != RenderPassCache.end())
+        return It->second.get();
+    auto RenderPass = Context->Device->createRenderPassUnique(CreateInfo);
+    vk::RenderPass Result = RenderPass.get();
+    RenderPassCache.emplace(Key, std::move(RenderPass));
+    return Result;
+}
+
+vk::RenderPass VulkanDevice::getOrCreateCompatibleRenderPass(
+    const RenderingSignature& Signature)
+{
+    uint64_t Key = 14695981039346656037ull;
+    const auto mix = [&Key](uint64_t Value)
+    {
+        Key ^= Value + 0x9e3779b97f4a7c15ull + (Key << 6) + (Key >> 2);
+    };
+    mix(Signature.ColorAttachmentCount);
+    for (uint32_t Index = 0; Index < Signature.ColorAttachmentCount; ++Index)
+        mix(static_cast<uint64_t>(Signature.ColorFormats[Index]));
+    mix(static_cast<uint64_t>(Signature.DepthFormat));
+    mix(static_cast<uint64_t>(Signature.StencilFormat));
+    mix(static_cast<uint64_t>(Signature.SampleCount));
+    mix(Signature.ViewMask);
+
+    if (const auto It = CompatibleRenderPassCache.find(Key); It != CompatibleRenderPassCache.end())
+        return It->second.get();
+
+    std::vector<vk::AttachmentDescription> Attachments;
+    std::vector<vk::AttachmentReference> ColorReferences;
+    const vk::SampleCountFlagBits Samples = toVk(Signature.SampleCount);
+    for (uint32_t Index = 0; Index < Signature.ColorAttachmentCount; ++Index)
+    {
+        Attachments.emplace_back(
+            vk::AttachmentDescriptionFlags(), toVk(Signature.ColorFormats[Index]), Samples,
+            vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore,
+            vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare,
+            vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::eColorAttachmentOptimal);
+        ColorReferences.emplace_back(Index, vk::ImageLayout::eColorAttachmentOptimal);
+    }
+
+    vk::AttachmentReference DepthReference(VK_ATTACHMENT_UNUSED, vk::ImageLayout::eUndefined);
+    if (Signature.DepthFormat != EFormat::Undefined)
+    {
+        const uint32_t DepthIndex = static_cast<uint32_t>(Attachments.size());
+        Attachments.emplace_back(
+            vk::AttachmentDescriptionFlags(), toVk(Signature.DepthFormat), Samples,
+            vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore,
+            vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare,
+            vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageLayout::eDepthStencilAttachmentOptimal);
+        DepthReference = vk::AttachmentReference(DepthIndex, vk::ImageLayout::eDepthStencilAttachmentOptimal);
+    }
+
+    vk::SubpassDescription Subpass;
+    Subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
+    Subpass.colorAttachmentCount = static_cast<uint32_t>(ColorReferences.size());
+    Subpass.pColorAttachments = ColorReferences.empty() ? nullptr : ColorReferences.data();
+    Subpass.pDepthStencilAttachment =
+        Signature.DepthFormat != EFormat::Undefined ? &DepthReference : nullptr;
+
+    vk::RenderPassCreateInfo CreateInfo(
+        vk::RenderPassCreateFlags(),
+        static_cast<uint32_t>(Attachments.size()),
+        Attachments.empty() ? nullptr : Attachments.data(),
+        1, &Subpass);
+
+    vk::RenderPassMultiviewCreateInfo MultiviewInfo;
+    if (Signature.ViewMask != 0)
+    {
+        MultiviewInfo.subpassCount = 1;
+        MultiviewInfo.pViewMasks = &Signature.ViewMask;
+        CreateInfo.pNext = &MultiviewInfo;
+    }
+
+    auto RenderPass = Context->Device->createRenderPassUnique(CreateInfo);
+    vk::RenderPass Result = RenderPass.get();
+    CompatibleRenderPassCache.emplace(Key, std::move(RenderPass));
+    return Result;
 }
 
 void VulkanDevice::collectDeferredReleases()
@@ -575,7 +678,11 @@ void VulkanDevice::collectDeferredReleases()
         std::scoped_lock Lock(DeferredReleaseMutex);
         for (auto Entry = DeferredReleases.begin(); Entry != DeferredReleases.end();)
         {
-            if (Entry->CompletionSemaphore->getCompletedValue() >= Entry->CompletionValue)
+            const bool Completed = Entry->CompletionFence
+                ? Entry->CompletionFence->isSignaled()
+                : (Entry->CompletionSemaphore &&
+                   Entry->CompletionSemaphore->getCompletedValue() >= Entry->CompletionValue);
+            if (Completed)
             {
                 Ready.push_back(std::move(*Entry));
                 Entry = DeferredReleases.erase(Entry);
@@ -592,6 +699,7 @@ void VulkanDevice::collectDeferredReleases()
     {
         Entry.Resource.reset();
         Entry.CompletionSemaphore.reset();
+        Entry.CompletionFence.reset();
     }
 }
 
@@ -607,6 +715,7 @@ void VulkanDevice::drainDeferredReleases() noexcept
     {
         Entry.Resource.reset();
         Entry.CompletionSemaphore.reset();
+        Entry.CompletionFence.reset();
     }
 }
 

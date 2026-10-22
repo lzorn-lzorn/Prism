@@ -314,7 +314,9 @@ void VulkanQueue::submit(const QueueSubmitDescriptor& Desc)
     Submission.ExternalFence = Desc.Fence;
 
     std::vector<vk::CommandBufferSubmitInfo> CommandInfos;
+    std::vector<vk::CommandBuffer> CommandBuffers;
     CommandInfos.reserve(Submission.CommandLists.size());
+    CommandBuffers.reserve(Submission.CommandLists.size());
     for (const auto& Command : Submission.CommandLists)
     {
         auto* VkCommand = dynamic_cast<VulkanCommandList*>(Command.get());
@@ -325,27 +327,63 @@ void VulkanQueue::submit(const QueueSubmitDescriptor& Desc)
         if (Command->getLevel() != ECommandListLevel::Primary)
             throw std::logic_error("A secondary command list cannot be submitted directly.");
         CommandInfos.emplace_back(VkCommand->getVkCommandBuffer(), 0);
+        CommandBuffers.emplace_back(VkCommand->getVkCommandBuffer());
     }
 
-    auto MakeSemaphoreInfos = [&](const std::vector<SemaphoreSubmitInfo>& Infos)
+    // synchronization2 不可用时回滚到 1.0 的 vkQueueSubmit(二元/时间线信号量并存).
+    const bool UseSynchronization2 = Device->getFeatures().Synchronization2;
+    std::vector<vk::SemaphoreSubmitInfo> WaitInfos;
+    std::vector<vk::SemaphoreSubmitInfo> SignalInfos;
+    std::vector<vk::Semaphore> WaitSemaphores;
+    std::vector<vk::PipelineStageFlags> WaitStages;
+    std::vector<uint64_t> WaitValues;
+    std::vector<vk::Semaphore> SignalSemaphores;
+    std::vector<uint64_t> SignalValues;
+    WaitInfos.reserve(Submission.WaitSemaphores.size());
+    SignalInfos.reserve(Submission.SignalSemaphores.size());
+
+    for (const auto& Info : Submission.WaitSemaphores)
     {
-        std::vector<vk::SemaphoreSubmitInfo> Result;
-        Result.reserve(Infos.size());
-        for (const auto& Info : Infos)
+        auto& Semaphore = semaphoreOf(Info.Semaphore, *Device);
+        if (!Semaphore.isTimeline() && Info.Value != 0)
+            throw std::invalid_argument("Binary semaphore submit values must be zero.");
+        if (UseSynchronization2)
         {
-            auto& Semaphore = semaphoreOf(Info.Semaphore, *Device);
-            if (!Semaphore.isTimeline() && Info.Value != 0)
-                throw std::invalid_argument("Binary semaphore submit values must be zero.");
-            Result.emplace_back(
+            WaitInfos.emplace_back(
                 Semaphore.getVkSemaphore(),
                 Semaphore.isTimeline() ? Info.Value : 0,
                 vk::PipelineStageFlagBits2::eAllCommands,
                 0);
         }
-        return Result;
-    };
-    const auto WaitInfos = MakeSemaphoreInfos(Submission.WaitSemaphores);
-    const auto SignalInfos = MakeSemaphoreInfos(Submission.SignalSemaphores);
+        else
+        {
+            WaitSemaphores.emplace_back(Semaphore.getVkSemaphore());
+            // 时间线信号量忽略等待阶段; 二元信号量在颜色输出阶段等待交换链图像.
+            WaitStages.emplace_back(vk::PipelineStageFlagBits::eColorAttachmentOutput);
+            if (Semaphore.isTimeline())
+                WaitValues.emplace_back(Info.Value);
+        }
+    }
+    for (const auto& Info : Submission.SignalSemaphores)
+    {
+        auto& Semaphore = semaphoreOf(Info.Semaphore, *Device);
+        if (!Semaphore.isTimeline() && Info.Value != 0)
+            throw std::invalid_argument("Binary semaphore submit values must be zero.");
+        if (UseSynchronization2)
+        {
+            SignalInfos.emplace_back(
+                Semaphore.getVkSemaphore(),
+                Semaphore.isTimeline() ? Info.Value : 0,
+                vk::PipelineStageFlagBits2::eAllCommands,
+                0);
+        }
+        else
+        {
+            SignalSemaphores.emplace_back(Semaphore.getVkSemaphore());
+            if (Semaphore.isTimeline())
+                SignalValues.emplace_back(Info.Value);
+        }
+    }
 
     vk::Fence Fence;
     if (Submission.ExternalFence)
@@ -356,12 +394,37 @@ void VulkanQueue::submit(const QueueSubmitDescriptor& Desc)
         Fence = Submission.InternalFence.get();
     }
 
-    const vk::SubmitInfo2 SubmitInfo(
-        {},
-        static_cast<uint32_t>(WaitInfos.size()), WaitInfos.data(),
-        static_cast<uint32_t>(CommandInfos.size()), CommandInfos.data(),
-        static_cast<uint32_t>(SignalInfos.size()), SignalInfos.data());
-    try { Queue.submit2(SubmitInfo, Fence); }
+    try
+    {
+        if (UseSynchronization2)
+        {
+            const vk::SubmitInfo2 SubmitInfo(
+                {},
+                static_cast<uint32_t>(WaitInfos.size()), WaitInfos.data(),
+                static_cast<uint32_t>(CommandInfos.size()), CommandInfos.data(),
+                static_cast<uint32_t>(SignalInfos.size()), SignalInfos.data());
+            Queue.submit2(SubmitInfo, Fence);
+        }
+        else
+        {
+            const bool HasTimeline = !WaitValues.empty() || !SignalValues.empty();
+            vk::TimelineSemaphoreSubmitInfo TimelineInfo(
+                static_cast<uint32_t>(WaitValues.size()),
+                WaitValues.empty() ? nullptr : WaitValues.data(),
+                static_cast<uint32_t>(SignalValues.size()),
+                SignalValues.empty() ? nullptr : SignalValues.data());
+            const vk::SubmitInfo SubmitInfo(
+                static_cast<uint32_t>(WaitSemaphores.size()),
+                WaitSemaphores.empty() ? nullptr : WaitSemaphores.data(),
+                WaitStages.empty() ? nullptr : WaitStages.data(),
+                static_cast<uint32_t>(CommandBuffers.size()),
+                CommandBuffers.empty() ? nullptr : CommandBuffers.data(),
+                static_cast<uint32_t>(SignalSemaphores.size()),
+                SignalSemaphores.empty() ? nullptr : SignalSemaphores.data(),
+                HasTimeline ? static_cast<const void*>(&TimelineInfo) : nullptr);
+            Queue.submit(SubmitInfo, Fence);
+        }
+    }
     catch (const vk::SystemError& Error)
     {
         if (vulkan_wsi::resultFromSystemError(Error) == vk::Result::eErrorDeviceLost)
