@@ -258,6 +258,8 @@ std::vector<const char*> VulkanFeatureSet::buildEnabledExtensions() const
     {
         Extensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
         Extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+        // 光线追踪管线/查询依赖 SPIR-V 1.4 与加速结构, 必须一并启用.
+        Extensions.push_back(VK_KHR_SPIRV_1_4_EXTENSION_NAME);
         if (EnableRayTracingPipeline)
             Extensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
         if (EnableRayQuery)

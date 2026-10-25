@@ -96,9 +96,9 @@ void GenericApplication::initialize(ApplicationOptions InOptions)
         Error::raise(EErrorCode::Runtime, "Could not create application platform");
     }
     auto NewWindow = std::make_unique<Window>(*NewPlatform);
-    std::shared_ptr<UIRenderer> NewRenderer;
+    std::shared_ptr<RHIUIRenderer> NewRenderer;
 #ifndef EDITOR_TEST_NO_GPU
-    NewRenderer = std::make_shared<UIRenderer>(NewWindow->getNativeWindow(), InOptions.Backend);
+    NewRenderer = std::make_shared<RHIUIRenderer>();
     NewRenderer->setUIMode(InOptions.UIMode);
     FontService::self().initialize(NewRenderer);
 #endif
@@ -203,6 +203,11 @@ IUIRenderer& GenericApplication::getRenderer()
     return *Renderer;
 }
 
+void GenericApplication::setFrameHook(std::function<void()> Hook)
+{
+    FrameHook = std::move(Hook);
+}
+
 int32_t GenericApplication::run()
 {
     checkInitialized();
@@ -301,6 +306,10 @@ int32_t GenericApplication::run()
         if (!MainWindow->drawFrame(Renderer.get()))
         {
             Platform->delay(16);
+        }
+        if (FrameHook)
+        {
+            FrameHook();
         }
         ++Frames;
     }

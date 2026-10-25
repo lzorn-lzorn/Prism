@@ -35,6 +35,9 @@
 namespace runtime::renderer
 {
 
+/** @brief 释放 UI 绘制缓存(管线/布局/缓冲), 需在 RHI 设备销毁前调用. */
+void releaseUIDrawCache() noexcept;
+
 /**
  * @brief 场景渲染器(PassScheduler): 驱动一组子渲染器向同一 RDG 声明 Pass.
  */
@@ -58,7 +61,7 @@ public:
      * @param Builder 本帧共享的 RDG 构建器(UI 与 3D 合并于此).
      * @param BaseContext 只读上下文; 内部会复制并填充共享 FrameResources 后传给各子渲染器.
      */
-    void build(RDGBuilder& Builder, const RenderContext& BaseContext);
+    void build(rdg::RDGGraph& Graph, const RenderContext& BaseContext);
 
     /** @brief 子渲染器数量. */
     [[nodiscard]] size_t getPassCount() const noexcept { return Passes.size(); }
@@ -79,7 +82,7 @@ class ShadowRenderPass final : public IRenderPass
 {
 public:
     [[nodiscard]] const char* getName() const noexcept override { return "Shadow"; }
-    void addPasses(RDGBuilder& Builder, const RenderContext& Context) override;
+    void addPasses(rdg::RDGGraph& Graph, const RenderContext& Context) override;
 };
 
 /** @brief 主深度预通道(提前写深度做 Early-Z, 供后续 HiZ 与 Opaque 复用). */
@@ -87,7 +90,7 @@ class DepthPrePass final : public IRenderPass
 {
 public:
     [[nodiscard]] const char* getName() const noexcept override { return "DepthPrePass"; }
-    void addPasses(RDGBuilder& Builder, const RenderContext& Context) override;
+    void addPasses(rdg::RDGGraph& Graph, const RenderContext& Context) override;
 };
 
 /** @brief 不透明渲染(GBuffer 或 Forward+ 主着色). */
@@ -95,7 +98,7 @@ class OpaqueRenderPass final : public IRenderPass
 {
 public:
     [[nodiscard]] const char* getName() const noexcept override { return "Opaque"; }
-    void addPasses(RDGBuilder& Builder, const RenderContext& Context) override;
+    void addPasses(rdg::RDGGraph& Graph, const RenderContext& Context) override;
 };
 
 /** @brief 半透明渲染(从后向前, 读深度不写深度). */
@@ -103,7 +106,7 @@ class TransparentRenderPass final : public IRenderPass
 {
 public:
     [[nodiscard]] const char* getName() const noexcept override { return "Transparent"; }
-    void addPasses(RDGBuilder& Builder, const RenderContext& Context) override;
+    void addPasses(rdg::RDGGraph& Graph, const RenderContext& Context) override;
 };
 
 /** @brief 后处理(Bloom / ToneMapping / TAA 等). */
@@ -111,7 +114,7 @@ class PostProcessRenderPass final : public IRenderPass
 {
 public:
     [[nodiscard]] const char* getName() const noexcept override { return "PostProcess"; }
-    void addPasses(RDGBuilder& Builder, const RenderContext& Context) override;
+    void addPasses(rdg::RDGGraph& Graph, const RenderContext& Context) override;
 };
 
 /** @brief 2D/UI 合成(消费 UIRenderer 的合批结果, 与 3D 合并到同一 RDG). */
@@ -119,7 +122,7 @@ class UIRenderPass final : public IRenderPass
 {
 public:
     [[nodiscard]] const char* getName() const noexcept override { return "UI"; }
-    void addPasses(RDGBuilder& Builder, const RenderContext& Context) override;
+    void addPasses(rdg::RDGGraph& Graph, const RenderContext& Context) override;
 };
 
 } // namespace runtime::renderer

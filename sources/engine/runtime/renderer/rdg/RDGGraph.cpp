@@ -247,6 +247,15 @@ ResourceId RDGBuilder::importTexture(std::string_view Name, std::shared_ptr<rhi:
     return Graph->registerResource(std::move(Resource));
 }
 
+ResourceId RDGBuilder::importTexture(std::string_view Name, std::shared_ptr<rhi::RImage> Image,
+    std::shared_ptr<rhi::RImageView> View)
+{
+    const ResourceId Id = importTexture(Name, std::move(Image));
+    RDGResource* Resource = Graph->findResourceMut(Id);
+    Resource->ImportedView = std::move(View);
+    return Id;
+}
+
 ResourceId RDGBuilder::importBuffer(std::string_view Name, std::shared_ptr<rhi::RBuffer> Buffer)
 {
     if (!Buffer)
@@ -963,6 +972,7 @@ void RDGGraph::instantiateResources(IRDGResourcePool* Pool, RDGCompiledPlan& Pla
         {
             Binding.Buffer = Resource.ImportedBuffer;
             Binding.Image = Resource.ImportedImage;
+            Binding.View = Resource.ImportedView;
         }
     }
 
@@ -1027,6 +1037,13 @@ void RDGGraph::instantiateResources(IRDGResourcePool* Pool, RDGCompiledPlan& Pla
                 Binding.Buffer = Pool->createBuffer(*Resource.BufferDescription);
             else if (Resource.Kind == EResourceKind::Texture && Resource.TextureDescription)
                 Binding.Image = Pool->createImage(*Resource.TextureDescription);
+        }
+
+        // 纹理默认全范围视图: 供 Pass 的渲染作用域(render target/depth)使用.
+        if (Resource.Kind == EResourceKind::Texture && Resource.TextureDescription &&
+            Binding.Image)
+        {
+            Binding.View = Pool->createImageView(Binding.Image, *Resource.TextureDescription);
         }
     }
 

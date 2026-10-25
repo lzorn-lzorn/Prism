@@ -19,7 +19,12 @@ struct FlagsBase {
     constexpr Derived operator|(FlagsBase<EnumType, Derived> Other) const noexcept { return Derived(Value | Other.Value); }
     constexpr Derived operator^(FlagsBase<EnumType, Derived> Other) const noexcept { return Derived(Value ^ Other.Value); }
     constexpr Derived operator&(FlagsBase<EnumType, Derived> Other) const noexcept { return Derived(Value & Other.Value); }
-    constexpr Derived operator~() const noexcept { return Derived(~Value); }
+    constexpr Derived operator~() const noexcept
+    {
+        Derived Result;
+        Result.Value = static_cast<underlying>(~Value);
+        return Result;
+    }
 
     constexpr bool operator==(FlagsBase Other) const noexcept { return Value == Other.Value; }
     constexpr bool operator!=(FlagsBase Other) const noexcept { return Value != Other.Value; }

@@ -1,4 +1,4 @@
-﻿#include "VulkanDeviceMemory.hpp"
+#include "VulkanDeviceMemory.hpp"
 #include "VulkanDevice.hpp"
 #include "VulkanMemoryHeap.hpp"
 #include "VulkanRHI.hpp"
@@ -264,16 +264,17 @@ void VulkanMemoryAllocation::invalidate(DeviceSizeType Offset, DeviceSizeType Si
 
 void VulkanMemoryAllocation::release()
 {
-    std::shared_ptr<VulkanMemoryBlock> Block;
+    std::shared_ptr<VulkanMemoryBlock> BlockCopy;
     {
         std::scoped_lock Lock(MapMutex);
         if (!Block)
             return;
+        // 移出成员(成员置空), 本地副本在锁外仍保持显存块存活.
+        BlockCopy = std::move(Block);
         IsMapped = false;
-        Block = std::move(Block);
         OwnershipState = EState::InValid;
     }
-    Block->free(Info.Offset, ReservedSize);
+    BlockCopy->free(Info.Offset, ReservedSize);
 }
 
 vk::DeviceMemory VulkanMemoryAllocation::getVkDeviceMemory() const noexcept
@@ -644,7 +645,8 @@ void VulkanDeviceMemoryAllocator::freeMemory(std::shared_ptr<DeviceMemory> Memor
 
 void VulkanHeapSubAllocation::release()
 {
-    std::shared_ptr<VulkanTransientHeap> Heap = std::move(Heap);
+    // 直接使用成员 Heap; 之前的"局部变量遮蔽成员并自移动"是 UB(读取未初始化的
+    // 局部 shared_ptr), 会破坏子分配归还逻辑.
     if (Heap && Size != 0)
         Heap->release(Offset, Size);
     Size = 0;

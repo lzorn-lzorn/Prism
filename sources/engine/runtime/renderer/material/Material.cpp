@@ -1,38 +1,18 @@
 
 #include "Material.hpp"
 
+#include <infra/hash/Hash.hpp>
+
 #include <cstdint>
 #include <type_traits>
 
 namespace renderer
 {
 
+using infra::hashCombine;
+
 namespace
 {
-
-template <typename T>
-constexpr uint64_t toU64(T Value) noexcept
-{
-    if constexpr (std::is_enum_v<T>)
-    {
-        return static_cast<uint64_t>(std::underlying_type_t<T>(Value));
-    }
-    else
-    {
-        return static_cast<uint64_t>(Value);
-    }
-}
-
-constexpr void hashCombine(uint64_t& Seed, uint64_t Value) noexcept
-{
-    Seed ^= Value + 0x9e3779b97f4a7c15ull + (Seed << 6) + (Seed >> 2);
-}
-
-template <typename T>
-void hashCombine(uint64_t& Seed, T Value) noexcept
-{
-    hashCombine(Seed, toU64(Value));
-}
 
 [[nodiscard]] uint64_t hashRenderingSignature(const rhi::RenderingSignature& Signature) noexcept
 {
@@ -232,7 +212,7 @@ void MaterialInstanceBase::setAccelerationStructure(
 
 uint64_t MaterialInstanceBase::computeTextureSetHash() const noexcept
 {
-    uint64_t H = 14695981039346656037ull;
+    uint64_t H = infra::Fnv1aOffsetBasis64;
     auto* Tmpl = getTemplate();
     if (!Tmpl) return 0;
 

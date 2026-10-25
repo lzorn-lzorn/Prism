@@ -4,6 +4,8 @@
 #include "VulkanDevice.hpp"
 #include "VulkanPipeline.hpp"
 
+#include <infra/hash/Hash.hpp>
+
 #include <algorithm>
 #include <cstring>
 #include <mutex>
@@ -212,9 +214,9 @@ VkShaderStageFlagBits rayStage(EShaderStage_t Stage)
 
 uint64_t hashRayTracingPipeline(const RayTracingPipelineDescriptor& Desc)
 {
-    uint64_t Hash = 14695981039346656037ull;
-    auto Append = [&](const void* Data, size_t Size) {
-        for (size_t Index = 0; Index < Size; ++Index) { Hash ^= static_cast<const uint8_t*>(Data)[Index]; Hash *= 1099511628211ull; }
+    uint64_t Hash = infra::Fnv1aOffsetBasis64;
+    const auto Append = [&Hash](const void* Data, size_t Size) {
+        infra::hashBytes(Hash, std::span { static_cast<const std::byte*>(Data), Size });
     };
     const auto LayoutHash = Desc.Layout->getCompatibilityHash(); Append(&LayoutHash, sizeof(LayoutHash));
     Append(&Desc.MaxRecursionDepth, sizeof(Desc.MaxRecursionDepth));

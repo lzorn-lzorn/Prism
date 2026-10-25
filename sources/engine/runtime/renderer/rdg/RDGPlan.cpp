@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ============================================================================
  *  renderer/rdg/RDGPlan.cpp
  * ============================================================================
@@ -176,14 +176,18 @@ void RDGResourcePool::prepareResource(
 
 void RDGResourcePool::beginFrame(std::span<const RDGHeapLayout> Layouts)
 {
-    // 上一帧切出去的区间全部归还给堆, 本帧重新按计划切分.
-    for (const ReleasedRange& ReleasedRange : Released)
+    // 轮换到下一组堆; 复用 3 帧前(已被 fence 保证 GPU 完成)的那组, 避免跨帧 use-after-free.
+    SetIndex = (SetIndex + 1) % FramesInFlight;
+    HeapSet& Set = Sets[SetIndex];
+
+    // 归还该组上一轮(3 帧前)切出去的区间.
+    for (const ReleasedRange& ReleasedRange : Set.Released)
     {
         if (ReleasedRange.Heap && ReleasedRange.Heap->isValid())
             ReleasedRange.Heap->releaseSuballocation(ReleasedRange.Offset, ReleasedRange.Size);
     }
-    Released.clear();
-    CreatedHeaps.assign(Layouts.size(), false);
+    Set.Released.clear();
+    Set.CreatedHeaps.assign(Layouts.size(), false);
 
     if (!AliasingEnabled || Layouts.empty())
     {
@@ -191,8 +195,8 @@ void RDGResourcePool::beginFrame(std::span<const RDGHeapLayout> Layouts)
         return;
     }
 
-    if (Heaps.size() < Layouts.size())
-        Heaps.resize(Layouts.size());
+    if (Set.Heaps.size() < Layouts.size())
+        Set.Heaps.resize(Layouts.size());
 
     bool AllCreated = true;
     for (size_t Index = 0; Index < Layouts.size(); ++Index)
@@ -207,22 +211,22 @@ void RDGResourcePool::beginFrame(std::span<const RDGHeapLayout> Layouts)
             continue;
         }
 
-        if (Heaps[Index] && Heaps[Index]->isValid() && Heaps[Index]->getSize() >= Size)
+        if (Set.Heaps[Index] && Set.Heaps[Index]->isValid() && Set.Heaps[Index]->getSize() >= Size)
         {
-            CreatedHeaps[Index] = true;
+            Set.CreatedHeaps[Index] = true;
             continue;
         }
 
         rhi::MemoryHeapDescriptor Desc = makeHeapDescriptor(Layout);
         Desc.Size = Size;
-        Heaps[Index] = Device->createTransientHeap(Desc);
-        if (!Heaps[Index])
+        Set.Heaps[Index] = Device->createTransientHeap(Desc);
+        if (!Set.Heaps[Index])
         {
             // 后端不支持 placed resource: 关闭别名, 但功能保持可用.
             AllCreated = false;
             continue;
         }
-        CreatedHeaps[Index] = true;
+        Set.CreatedHeaps[Index] = true;
     }
 
     AliasingSupported = AllCreated;
@@ -235,17 +239,18 @@ std::optional<RDGHeapAllocation> RDGResourcePool::allocateMemory(
     uint32_t ResourceIndex)
 {
     (void)ResourceIndex;
-    if (!AliasingSupported || HeapIndex >= Heaps.size() || HeapIndex >= CreatedHeaps.size() ||
-        !CreatedHeaps[HeapIndex] || !Heaps[HeapIndex] || !Heaps[HeapIndex]->isValid())
+    HeapSet& Set = Sets[SetIndex];
+    if (!AliasingSupported || HeapIndex >= Set.Heaps.size() || HeapIndex >= Set.CreatedHeaps.size() ||
+        !Set.CreatedHeaps[HeapIndex] || !Set.Heaps[HeapIndex] || !Set.Heaps[HeapIndex]->isValid())
         return std::nullopt;
 
     // 计划里的偏移只是"规划用"的; 真正切显存必须按驱动给出的对齐在这里做.
-    const auto Offset = Heaps[HeapIndex]->suballocate(Size, std::max<uint64_t>(1, Alignment));
+    const auto Offset = Set.Heaps[HeapIndex]->suballocate(Size, std::max<uint64_t>(1, Alignment));
     if (!Offset)
         return std::nullopt;
 
-    Released.push_back(ReleasedRange { Heaps[HeapIndex], *Offset, Size });
-    return RDGHeapAllocation { Heaps[HeapIndex], *Offset, Size };
+    Set.Released.push_back(ReleasedRange { Set.Heaps[HeapIndex], *Offset, Size });
+    return RDGHeapAllocation { Set.Heaps[HeapIndex], *Offset, Size };
 }
 
 std::shared_ptr<rhi::RBuffer> RDGResourcePool::createPlacedBuffer(
@@ -324,10 +329,26 @@ std::shared_ptr<rhi::RImage> RDGResourcePool::createImage(const TextureDesc& Des
     return Device->createImage(Desc);
 }
 
+std::shared_ptr<rhi::RImageView> RDGResourcePool::createImageView(
+    const std::shared_ptr<rhi::RImage>& Image,
+    const TextureDesc& Description)
+{
+    rhi::RImageView::Descriptor_t Desc;
+    Desc.Image = Image;
+    // Format/Dimension/Aspect 留 Auto, 由格式与维度推导 Color/Depth 切面.
+    Desc.MipLevelCount = Description.MipLevels;
+    Desc.ArrayLayerCount = Description.ArrayLayers;
+    return Device->createImageView(Desc);
+}
+
 void RDGResourcePool::releaseHeaps()
 {
-    Heaps.clear();
-    Released.clear();
+    for (HeapSet& Set : Sets)
+    {
+        Set.Heaps.clear();
+        Set.CreatedHeaps.clear();
+        Set.Released.clear();
+    }
 }
 
 } // namespace renderer::rdg

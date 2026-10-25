@@ -94,6 +94,28 @@ struct UITextureUpdate
     std::span<const std::byte> Pixels;
 };
 
+/**
+ * @brief 一帧内需要送到 GPU 的纹理数据块(行已紧密排列, 步长 = UploadWidth * 4).
+ *
+ * 由 UI 后端在帧内累积脏区, 渲染侧的 UIRenderPass 在进入 render scope 之前消费:
+ *   - Full == true  : 首次上传, 整张纹理都要拷贝(此时 X=Y=0 且尺寸等于 Width/Height);
+ *   - Full == false : 只更新 [X, Y, UploadWidth, UploadHeight] 子矩形.
+ *
+ * @note 纹理格式固定为 RGBA8(直通 alpha), 与 FontService 图集/Image 像素布局一致.
+ */
+struct UISampledTextureUpload
+{
+    std::uint64_t Handle {};
+    std::uint32_t Width {};
+    std::uint32_t Height {};
+    std::uint32_t X {};
+    std::uint32_t Y {};
+    std::uint32_t UploadWidth {};
+    std::uint32_t UploadHeight {};
+    bool          Full {};
+    std::vector<std::byte> Pixels;
+};
+
 struct UIFrameInfo
 {
     UISize LogicalSize;

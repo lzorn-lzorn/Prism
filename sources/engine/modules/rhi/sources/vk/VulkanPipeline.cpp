@@ -3,6 +3,8 @@
 #include "VulkanDevice.hpp"
 #include "VulkanRHI.hpp"
 
+#include <infra/hash/Hash.hpp>
+
 #include <algorithm>
 #include <array>
 #include <cstring>
@@ -14,25 +16,8 @@ namespace rhi
 {
 namespace
 {
-constexpr uint64_t HashOffset = 14695981039346656037ull;
-constexpr uint64_t HashPrime = 1099511628211ull;
-
-void hashBytes(uint64_t& InOutHash, const void* Data, size_t Size)
-{
-    const auto* Bytes = static_cast<const std::byte*>(Data);
-    for (size_t Index = 0; Index < Size; ++Index)
-    {
-        InOutHash ^= static_cast<uint64_t>(std::to_integer<uint8_t>(Bytes[Index]));
-        InOutHash *= HashPrime;
-    }
-}
-
-template <typename ValueType>
-void hashValue(uint64_t& InOutHash, const ValueType& Value)
-{
-    static_assert(std::is_trivially_copyable_v<ValueType>);
-    hashBytes(InOutHash, &Value, sizeof(Value));
-}
+using infra::hashBytes;
+using infra::hashValue;
 
 template <typename ValueType>
 void appendKey(std::vector<std::byte>& InOutKey, const ValueType& Value)
@@ -44,11 +29,11 @@ void appendKey(std::vector<std::byte>& InOutKey, const ValueType& Value)
 
 uint64_t calculateShaderHash(const ShaderDescriptor& Desc)
 {
-    uint64_t Hash = HashOffset;
+    uint64_t Hash = infra::Fnv1aOffsetBasis64;
     hashValue(Hash, Desc.Stage);
-    hashBytes(Hash, Desc.EntryPoint.data(), Desc.EntryPoint.size());
+    hashBytes(Hash, std::as_bytes(std::span { Desc.EntryPoint.data(), Desc.EntryPoint.size() }));
     if (!Desc.ByteCode.empty())
-        hashBytes(Hash, Desc.ByteCode.data(), Desc.ByteCode.size());
+        hashBytes(Hash, std::span { Desc.ByteCode.data(), Desc.ByteCode.size() });
     return Hash;
 }
 
@@ -315,7 +300,7 @@ vk::PipelineCreateFlags getPipelineFlags(EPipelineCompileFlags Flags)
 
 uint64_t calculateGraphicsPipelineHash(const GraphicsPipelineDescriptor& Desc)
 {
-    uint64_t Hash = HashOffset;
+    uint64_t Hash = infra::Fnv1aOffsetBasis64;
     const uint64_t LayoutHash = Desc.Layout->getCompatibilityHash();
     hashValue(Hash, LayoutHash);
     for (const auto& [stage, expected_stage] : std::array {
@@ -331,13 +316,15 @@ uint64_t calculateGraphicsPipelineHash(const GraphicsPipelineDescriptor& Desc)
         hashValue(Hash, ShaderHash);
         hashValue(Hash, expected_stage);
         if (stage->Shader)
-            hashBytes(Hash, stage->Shader->getEntryPoint().data(), stage->Shader->getEntryPoint().size());
+            hashBytes(Hash, std::as_bytes(std::span {
+                stage->Shader->getEntryPoint().data(),
+                stage->Shader->getEntryPoint().size() }));
         auto Constants = stage->SpecializationConstants;
         std::ranges::sort(Constants, {}, &SpecializationConstant::Id);
         for (const auto& Constant : Constants)
         {
             hashValue(Hash, Constant.Id);
-            hashBytes(Hash, Constant.Data.data(), Constant.Data.size());
+            hashBytes(Hash, std::span { Constant.Data.data(), Constant.Data.size() });
         }
     }
     if (!Desc.DynamicStates.has(EDynamicState_t::VertexInput))
@@ -436,22 +423,21 @@ uint64_t calculateGraphicsPipelineHash(const GraphicsPipelineDescriptor& Desc)
 
 uint64_t calculateComputePipelineHash(const ComputePipelineDescriptor& Desc)
 {
-    uint64_t Hash = HashOffset;
+    uint64_t Hash = infra::Fnv1aOffsetBasis64;
     const uint64_t LayoutHash = Desc.Layout->getCompatibilityHash();
     const uint64_t ShaderHash = Desc.Compute.Shader->getContentHash();
     hashValue(Hash, LayoutHash);
     hashValue(Hash, ShaderHash);
     hashValue(Hash, EShaderStage_t::Compute);
-    hashBytes(
-        Hash,
+    hashBytes(Hash, std::as_bytes(std::span {
         Desc.Compute.Shader->getEntryPoint().data(),
-        Desc.Compute.Shader->getEntryPoint().size());
+        Desc.Compute.Shader->getEntryPoint().size() }));
     auto Constants = Desc.Compute.SpecializationConstants;
     std::ranges::sort(Constants, {}, &SpecializationConstant::Id);
     for (const auto& Constant : Constants)
     {
         hashValue(Hash, Constant.Id);
-        hashBytes(Hash, Constant.Data.data(), Constant.Data.size());
+        hashBytes(Hash, std::span { Constant.Data.data(), Constant.Data.size() });
     }
     return Hash;
 }
@@ -743,7 +729,7 @@ VulkanBindGroupLayout::VulkanBindGroupLayout(
     std::vector<vk::DescriptorBindingFlags> BindingFlags;
     Bindings.reserve(Entries.size());
     BindingFlags.reserve(Entries.size());
-    CompatibilityHash = HashOffset;
+    CompatibilityHash = infra::Fnv1aOffsetBasis64;
     uint32_t PreviousBinding = 0;
     bool HasPreviousBinding = false;
     bool UsesUpdateAfterBind = false;
@@ -845,7 +831,7 @@ VulkanPipelineLayout::VulkanPipelineLayout(
 
     std::vector<vk::DescriptorSetLayout> Layouts;
     Layouts.reserve(BindGroupLayouts.size());
-    CompatibilityHash = HashOffset;
+    CompatibilityHash = infra::Fnv1aOffsetBasis64;
     const uint64_t LayoutCount = BindGroupLayouts.size();
     appendKey(CompatibilityKey, LayoutCount);
     for (const auto& Layout : BindGroupLayouts)

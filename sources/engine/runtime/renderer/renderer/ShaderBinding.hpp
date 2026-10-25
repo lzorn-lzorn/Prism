@@ -1,6 +1,7 @@
 #pragma once
 
 #include <RHI.hpp>
+#include <infra/hash/Hash.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -24,13 +25,7 @@ using ResourceId = uint64_t;
  */
 [[nodiscard]] constexpr ResourceId makeResourceId(std::string_view Name) noexcept
 {
-    ResourceId hash = 14695981039346656037ull;
-    for (const char value : Name)
-    {
-        hash ^= static_cast<uint8_t>(value);
-        hash *= 1099511628211ull;
-    }
-    return hash;
+    return static_cast<ResourceId>(infra::hashString(Name));
 }
 
 /** @brief 通过反射发现的一个着色器可见描述符。 */

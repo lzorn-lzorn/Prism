@@ -1,9 +1,10 @@
 #pragma once
 
 #include "Window.hpp"
-#include "UIRenderer.hpp"
+#include "RHIUIRenderer.hpp"
 #include "TextConfig.hpp"
 #include "TextWidget.hpp"
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -45,6 +46,11 @@ public:
     std::string encodeText(std::string_view UTF8) const;
     std::string encodeText(std::u32string_view UTF32) const;
     IUIRenderer& getRenderer();
+    /**
+     * @brief 注册每帧回调(在 UI drawFrame 之后调用), 供宿主把 UI 数据提交给渲染器.
+     * @param Hook 无参回调; 空表示取消.
+     */
+    void setFrameHook(std::function<void()> Hook);
     std::unique_ptr<TextWidget> createTextWidget(std::string_view Text, float Size, float MaxWidth = 0, Color Tint = {1, 1, 1, 1});
     template<class Character, class Traits, class Allocator>
     std::unique_ptr<TextWidget> createTextWidget(const std::basic_string<Character, Traits, Allocator>& Text, float Size, float MaxWidth = 0, Color Tint = {1, 1, 1, 1})
@@ -59,7 +65,8 @@ private:
     void checkInitialized() const;
     ApplicationOptions Options;
     std::unique_ptr<IGenericPlatform> Platform;
-    std::shared_ptr<UIRenderer> Renderer;
+    std::shared_ptr<RHIUIRenderer> Renderer;
     std::unique_ptr<Window> MainWindow;
+    std::function<void()> FrameHook;
 };
 }

@@ -1,6 +1,6 @@
 add_internal_module(RendererCore
     TYPE                STATIC
-    PUBLIC_DEPENDENCY   Module::RHI Runtime::World Runtime::RendererRDG Runtime::RendererMaterial
+    PUBLIC_DEPENDENCY   Module::RHI Runtime::World Runtime::RendererRDG Runtime::RendererMaterial UI::UI
     PRIVATE_DEPENDENCY  Infra::Infra spirv-reflect-static
     ALIAS               Runtime::RendererCore
 )

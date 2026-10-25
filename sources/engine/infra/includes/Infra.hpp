@@ -21,6 +21,9 @@
 #include "infra/functions/HandleManager.hpp"
 #include "infra/functions/Tag.hpp"
 
+// ---------- Hash: 散列基础设施 ----------
+#include "infra/hash/Hash.hpp"
+
 // ---------- Math: 数学库 ----------
 #include "infra/math/Color.hpp"
 #include "infra/math/Geometry.hpp"

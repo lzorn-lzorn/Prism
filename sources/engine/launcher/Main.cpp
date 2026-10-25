@@ -12,6 +12,7 @@
 #include "ModuleLoader.hpp"
 #include "RTGlobal.hpp"
 #include "game/Game.hpp"
+#include <renderer/RendererServer.hpp>
 #include <SDL3/SDL_main.h>
 #include <algorithm>
 #include <cstddef>
@@ -143,6 +144,40 @@ int main(int Argc, char** Argv)
 
         auto& App = ui::GenericApplication::self();
         App.initialize(std::move(Options));
+
+        // 引擎 Vulkan 渲染器: 复用编辑器窗口, 走 RDG 多 Pass 渲染(3D + UI 合并).
+        // 把 Game 的场景渲染进一个 Viewport(由编辑器指定的相机 + 渲染目标).
+        auto& Renderer = runtime::renderer::RendererServer::self();
+        {
+            auto& NativeWindow = App.getMainWindow().getNativeWindow();
+            // 非拥有 shared_ptr: 窗口生命周期由 GenericApplication 的 MainWindow 管理.
+            ui::GenericWindowPointer WindowHandle(&NativeWindow, [](ui::IGenericWindow*) {});
+            Renderer.initialize(rhi::ESupportedBackendAPI::Vulkan, WindowHandle);
+        }
+        if (!Renderer.isInitialized())
+            throw std::runtime_error("Renderer initialization did not complete.");
+        {
+            const ui::UISize Size = App.getMainWindow().getNativeWindow().getSize();
+            runtime::renderer::Viewport MainViewport;
+            MainViewport.Name = "MainViewport";
+            MainViewport.Target.Width = static_cast<uint32_t>(Size.Width);
+            MainViewport.Target.Height = static_cast<uint32_t>(Size.Height);
+            MainViewport.Width = MainViewport.Target.Width;
+            MainViewport.Height = MainViewport.Target.Height;
+            Renderer.setRenderViewport(MainViewport);
+        }
+
+        // 每帧回调: 把 UI 控件树产出的绘制列表提交给引擎 RHI, 再跑一帧 RDG 渲染.
+        App.setFrameHook([&]() {
+            auto* UI = dynamic_cast<ui::RHIUIRenderer*>(&App.getRenderer());
+            if (UI)
+            {
+                // 绘制列表与纹理脏区成对提交: 顶点走 UIRenderPass, 像素走 staging→copy.
+                Renderer.submitUIDrawLists(UI->getDrawLists(), UI->collectTextureUploads());
+            }
+            (void)Renderer.renderFrameGraph();
+        });
+
         {
             auto& Window = App.getMainWindow();
 
@@ -479,11 +514,14 @@ int main(int Argc, char** Argv)
             Window.setContentRoot(std::move(Root));
         }
         const int ExitCode = App.run();
+        Renderer.shutdown();
         GSeedEngine.destroy();
         return ExitCode;
     }
     catch (const std::exception& Error)
     {
+        runtime::renderer::RendererServer::self().shutdown();
+        GSeedEngine.destroy();
         std::cerr << "Editor error: " << Error.what() << '\n';
         return 1;
     }

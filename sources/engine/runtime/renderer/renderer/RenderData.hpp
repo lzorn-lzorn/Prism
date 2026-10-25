@@ -2,6 +2,7 @@
 
 #include <material/Material.hpp>
 #include <RHI.hpp>
+#include <UIDrawList.hpp>
 
 #include <infra/math/Color.hpp>
 #include <infra/math/Matrix.hpp>
@@ -340,6 +341,20 @@ struct RenderFrameSubmission
     /** 2D/UI 合批结果(由 UI 合成模块从控件树产出, 供 UIRenderPass 消费). */
     UIBatchList UIBatches;
 
+    /**
+     * @brief 原始 UI 绘制列表(顶点/索引/批次), 由 RHIUIRenderer 从控件树产出.
+     * @note 取代 SDL GPU 后, UI 走此原始顶点路径(任意几何: 圆/虚线/旋转/渐变),
+     *       由 UIRenderPass 上传顶点/索引并以 ui shader 绘制.
+     */
+    std::vector<ui::UIDrawList> UIDrawLists;
+
+    /**
+     * @brief 与 UIDrawLists 配套的纹理脏区数据块(字体图集/图片).
+     * @note UIRenderPass 在进入 render scope 前把这些块拷进 staging buffer 并做
+     *       copyBufferToImage; 未出现的句柄视为内容未变, 不重复上传.
+     */
+    std::vector<ui::UISampledTextureUpload> TextureUploads;
+
     LightList Lights;
     FluidList Fluids;
     GasVolumeList Gases;
@@ -355,6 +370,8 @@ struct RenderFrameSubmission
         OpaqueDraws.clear();
         TransparentDraws.clear();
         UIBatches.clear();
+        UIDrawLists.clear();
+        TextureUploads.clear();
         Lights.clear();
         Fluids.clear();
         Gases.clear();

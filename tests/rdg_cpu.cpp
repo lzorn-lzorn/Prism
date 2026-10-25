@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ============================================================================
  *  tests/rdg_cpu.cpp
  * ============================================================================
@@ -405,6 +405,13 @@ public:
 		Calls.push_back(ECall::Image);
 		++FallbackImageCount;
 		return std::make_shared<StubImage>();
+	}
+
+	[[nodiscard]] std::shared_ptr<rhi::RImageView> createImageView(
+		const std::shared_ptr<rhi::RImage>&, const TextureDesc&) override
+	{
+		// CPU 测试不实例化真实视图.
+		return nullptr;
 	}
 };
 

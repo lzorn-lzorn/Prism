@@ -1,6 +1,6 @@
 #pragma once
 
-#include <rdg/RDGBuilder.hpp>
+#include <rdg/RDG.hpp>
 #include <renderer/RenderProxyWorld.hpp>
 
 #include <infra/math/Matrix.hpp>
@@ -34,6 +34,9 @@
 namespace runtime::renderer
 {
 
+/** @brief 帧图算法命名空间别名(::renderer::rdg). */
+namespace rdg = ::renderer::rdg;
+
 /**
  * @brief 渲染视图: 相机矩阵的渲染器侧最小表示.
  *
@@ -56,7 +59,7 @@ struct RenderView
 struct RenderFrameResources
 {
     /** 场景主深度(DepthPrePass 写, Opaque 读). */
-    RDGResourceId SceneDepth { InvalidRDGResourceId };
+    rdg::ResourceId SceneDepth {};
     // 未来扩展: GBuffer[0..N]、HDR SceneColor、HiZ、ShadowAtlas...
 };
 
@@ -75,7 +78,7 @@ struct RenderContext
      */
     const RenderFrameSubmission* Submission { nullptr };
     /** 最终输出目标(由 RendererServer::renderFrameGraph 导入的交换链图). */
-    RDGResourceId Backbuffer { InvalidRDGResourceId };
+    rdg::ResourceId Backbuffer {};
     /** 共享 transient 句柄(可变, 子渲染器按需填充/读取). */
     RenderFrameResources& FrameResources;
     uint32_t FrameIndex { 0 };
@@ -86,8 +89,8 @@ struct RenderContext
 /**
  * @brief 细粒度子渲染器接口.
  *
- * 每个实现只负责一类 Pass. addPasses 里只声明资源读写与附件, 并通过 RDGPassBuilder
- * 拿到 transient 资源句柄; 真正的录制发生在 RDGExecuteContext 的 Execute 回调里.
+ * 每个实现只负责一类 Pass. addPasses 里只声明资源读写与附件, 并通过 RDGBuilder
+ * 拿到 transient 资源句柄; 真正的录制发生在 RDGPassContext 的 Execute 回调里.
  */
 class IRenderPass
 {
@@ -98,11 +101,11 @@ public:
     [[nodiscard]] virtual const char* getName() const noexcept = 0;
 
     /**
-     * @brief 向 Builder 声明本渲染器负责的 Pass(不执行 compile/execute).
-     * @param Builder 本帧共享的 RDG 构建器(UI 与 3D 合并于此).
+     * @brief 向帧图声明本渲染器负责的 Pass(不执行 compile/execute).
+     * @param Graph 本帧共享的 RDG 帧图(UI 与 3D 合并于此).
      * @param Context 只读上下文(World/View/UI/尺寸).
      */
-    virtual void addPasses(RDGBuilder& Builder, const RenderContext& Context) = 0;
+    virtual void addPasses(rdg::RDGGraph& Graph, const RenderContext& Context) = 0;
 };
 
 } // namespace runtime::renderer

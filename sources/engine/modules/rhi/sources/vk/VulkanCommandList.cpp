@@ -10,6 +10,8 @@
 #include "VulkanRHI.hpp"
 #include "VulkanSync.hpp"
 
+#include <infra/hash/Hash.hpp>
+
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -1001,23 +1003,19 @@ void VulkanCommandList::beginRenderingLegacy(const RenderingInfo& Info)
         AttachmentDescriptions.empty() ? nullptr : AttachmentDescriptions.data(),
         1, &Subpass);
 
-    // 以附件描述逐字段做 FNV-1a 混合, 得到稳定的 renderpass 缓存 key.
-    uint64_t Key = 14695981039346656037ull;
-    const auto mix = [&Key](uint64_t Value)
-    {
-        Key ^= Value + 0x9e3779b97f4a7c15ull + (Key << 6) + (Key >> 2);
-    };
+    // 以附件描述逐字段混合, 得到稳定的 renderpass 缓存 key.
+    uint64_t Key = infra::Fnv1aOffsetBasis64;
     for (const auto& Attachment : AttachmentDescriptions)
     {
-        mix(static_cast<uint64_t>(static_cast<uint32_t>(Attachment.flags)));
-        mix(static_cast<uint64_t>(Attachment.format));
-        mix(static_cast<uint64_t>(Attachment.samples));
-        mix(static_cast<uint64_t>(Attachment.loadOp));
-        mix(static_cast<uint64_t>(Attachment.storeOp));
-        mix(static_cast<uint64_t>(Attachment.stencilLoadOp));
-        mix(static_cast<uint64_t>(Attachment.stencilStoreOp));
-        mix(static_cast<uint64_t>(Attachment.initialLayout));
-        mix(static_cast<uint64_t>(Attachment.finalLayout));
+        infra::hashCombine(Key, static_cast<uint64_t>(static_cast<uint32_t>(Attachment.flags)));
+        infra::hashCombine(Key, static_cast<uint64_t>(Attachment.format));
+        infra::hashCombine(Key, static_cast<uint64_t>(Attachment.samples));
+        infra::hashCombine(Key, static_cast<uint64_t>(Attachment.loadOp));
+        infra::hashCombine(Key, static_cast<uint64_t>(Attachment.storeOp));
+        infra::hashCombine(Key, static_cast<uint64_t>(Attachment.stencilLoadOp));
+        infra::hashCombine(Key, static_cast<uint64_t>(Attachment.stencilStoreOp));
+        infra::hashCombine(Key, static_cast<uint64_t>(Attachment.initialLayout));
+        infra::hashCombine(Key, static_cast<uint64_t>(Attachment.finalLayout));
     }
 
     const vk::RenderPass RenderPass = Device->getOrCreateRenderPass(Key, RenderPassInfo);
@@ -2176,7 +2174,9 @@ void VulkanCommandList::validateRenderingCompatibility(const RPipeline& Pipeline
 
 void VulkanCommandList::validateDynamicStates(const RPipeline& Pipeline) const
 {
-    const EDynamicStates Missing = Pipeline.getDynamicStates() & ~InitializedDynamicStates;
+    // 直接对底层整数取反, 规避 Flags::operator~ 在部分编译器下的异常行为.
+    const EDynamicStates Missing =
+        Pipeline.getDynamicStates() & EDynamicStates { ~InitializedDynamicStates.Value };
     if (Missing)
         throw std::logic_error("Draw requires every dynamic pipeline state to be initialized.");
 }

@@ -190,7 +190,9 @@ void VulkanRHI::createVkInstance()
         VK_MAKE_VERSION(1, 0, 0),
         "SeedEngine",
         VK_MAKE_VERSION(1, 0, 0),
-        VK_API_VERSION_1_0
+        // 1.3 是 sync2(vkCmdPipelineBarrier2/vkQueueSubmit2)与动态渲染的最低核心版本;
+        // 特性仍按"核心版本或扩展"逐项协商, 实例版本 ≥1.3 才保证这些核心命令可用.
+        VK_API_VERSION_1_3
     );
 
     std::vector<const char*> Layers;

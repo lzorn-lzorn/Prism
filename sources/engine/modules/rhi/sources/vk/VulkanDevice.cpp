@@ -15,6 +15,9 @@
 #include "VulkanSync.hpp"
 #include "VulkanTexture.hpp"
 #include "VulkanWSI.hpp"
+
+#include <infra/hash/Hash.hpp>
+
 #include <algorithm>
 #include <limits>
 #include <stdexcept>
@@ -602,18 +605,14 @@ vk::RenderPass VulkanDevice::getOrCreateRenderPass(
 vk::RenderPass VulkanDevice::getOrCreateCompatibleRenderPass(
     const RenderingSignature& Signature)
 {
-    uint64_t Key = 14695981039346656037ull;
-    const auto mix = [&Key](uint64_t Value)
-    {
-        Key ^= Value + 0x9e3779b97f4a7c15ull + (Key << 6) + (Key >> 2);
-    };
-    mix(Signature.ColorAttachmentCount);
+    uint64_t Key = infra::Fnv1aOffsetBasis64;
+    infra::hashCombine(Key, Signature.ColorAttachmentCount);
     for (uint32_t Index = 0; Index < Signature.ColorAttachmentCount; ++Index)
-        mix(static_cast<uint64_t>(Signature.ColorFormats[Index]));
-    mix(static_cast<uint64_t>(Signature.DepthFormat));
-    mix(static_cast<uint64_t>(Signature.StencilFormat));
-    mix(static_cast<uint64_t>(Signature.SampleCount));
-    mix(Signature.ViewMask);
+        infra::hashCombine(Key, static_cast<uint64_t>(Signature.ColorFormats[Index]));
+    infra::hashCombine(Key, static_cast<uint64_t>(Signature.DepthFormat));
+    infra::hashCombine(Key, static_cast<uint64_t>(Signature.StencilFormat));
+    infra::hashCombine(Key, static_cast<uint64_t>(Signature.SampleCount));
+    infra::hashCombine(Key, Signature.ViewMask);
 
     if (const auto It = CompatibleRenderPassCache.find(Key); It != CompatibleRenderPassCache.end())
         return It->second.get();

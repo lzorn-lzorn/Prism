@@ -1,9 +1,12 @@
 #include <renderer/RendererServer.hpp>
 
+#include <renderer/RenderThread.hpp>
 #include <renderer/ShaderBinding.hpp>
 #include <RHIServer.hpp>
 
+#include <atomic>
 #include <fstream>
+#include <future>
 #include <stdexcept>
 #include <vector>
 #include <array>
@@ -36,12 +39,35 @@ struct RendererServer::Implementation
     uint64_t NextTimelineValue { 1 };
     uint32_t Width { 0 };
     uint32_t Height { 0 };
-    bool SurfaceRecoveryRequired { false };
-    std::optional<double> LastGPUFrameTimeNanoseconds;
+    std::atomic<bool> SurfaceRecoveryRequired { false };
+    std::atomic<double> LastGPUFrameTimeNanoseconds { -1.0 };
 
     // 渲染世界与 UI 渲染器(Renderer 持有的高层状态).
     RenderProxyWorld ProxyWorld;
     RenderFrameSubmission LastSubmission;
+
+    // 待消费的 UI 绘制列表(GameThread 提交, buildRenderSubmission 消费后清空).
+    std::vector<ui::UIDrawList> PendingUIDrawLists;
+    // 与绘制列表配套的纹理脏区(同上生命周期).
+    std::vector<ui::UISampledTextureUpload> PendingTextureUploads;
+
+    // 场景渲染器(PassScheduler); 当前帧相机矩阵由 RenderThreadWorker 持有(命令投递).
+    RenderPassScheduler SceneRenderer;
+
+    // 当前渲染视口(Editor 3DView 面板或 standalone 主视口); GameThread 写入, 只读访问.
+    Viewport ActiveViewport {};
+
+    // RDG 瞬态资源池(placed resource 别名); 跨帧复用, 生命周期与设备一致.
+    std::unique_ptr<rdg::RDGResourcePool> RDGPool;
+
+    /**
+     * @brief 渲染线程: 消费渲染命令 + 串行执行帧录制/提交任务.
+     *
+     * renderFrame / renderFrameGraph 在 GameThread 上完成 World→Submission 的
+     * 预处理后, 把"RDG 构建 + 录制 + 提交"打包成任务投递到这里, 由渲染线程执行,
+     * 从而把 RHI 的 CPU 侧开销从 GameThread 挪走(帧 pacing 仍由下方 fence 承担).
+     */
+    RenderThread RenderThreadWorker;
 
     /**
      * @brief 一帧录制回调: 接收命令列表、交换链图像/视图、尺寸与图像是否已初始化.
@@ -63,7 +89,9 @@ struct RendererServer::Implementation
             ? std::numeric_limits<uint64_t>::max()
             : (uint64_t { 1 } << valid_bits) - 1;
         const uint64_t delta = (values[1] - values[0]) & mask;
-        LastGPUFrameTimeNanoseconds = Frame.TimestampQueries->timestampTicksToNanoseconds(delta);
+        LastGPUFrameTimeNanoseconds.store(
+            Frame.TimestampQueries->timestampTicksToNanoseconds(delta),
+            std::memory_order_relaxed);
         Frame.TimestampPending = false;
     }
 
@@ -74,6 +102,7 @@ struct RendererServer::Implementation
         Width = static_cast<uint32_t>(std::max(0, Window->getSize().Width));
         Height = static_cast<uint32_t>(std::max(0, Window->getSize().Height));
         GraphicsQueue = Device->getQueue(rhi::ECommandQueueType::Graphics);
+        RDGPool = std::make_unique<rdg::RDGResourcePool>(*Device);
         // 1.0 基线: 时间线信号量不可用时用 per-frame fence 做帧 pacing 与延迟释放.
         UseTimelineSemaphore = Device->getFeatures().TimelineSemaphore;
         if (UseTimelineSemaphore)
@@ -105,6 +134,18 @@ struct RendererServer::Implementation
         RenderFinishedSemaphores.resize(Swapchain->getImageCount());
         for (auto& semaphore : RenderFinishedSemaphores)
             semaphore = Device->createSemaphore();
+
+        // 注册默认 Pass 链(声明顺序即执行顺序, 拓扑由 RDG 后续接管):
+        //   Shadow → DepthPre → Opaque → Transparent → PostProcess → UI.
+        SceneRenderer.addPass(std::make_unique<ShadowRenderPass>());
+        SceneRenderer.addPass(std::make_unique<DepthPrePass>());
+        SceneRenderer.addPass(std::make_unique<OpaqueRenderPass>());
+        SceneRenderer.addPass(std::make_unique<TransparentRenderPass>());
+        SceneRenderer.addPass(std::make_unique<PostProcessRenderPass>());
+        SceneRenderer.addPass(std::make_unique<UIRenderPass>());
+
+        // 最后启动渲染线程: 保证其上所有资源已就绪.
+        RenderThreadWorker.start();
     }
 
     void recreate(uint32_t NewWidth, uint32_t NewHeight)
@@ -127,7 +168,8 @@ struct RendererServer::Implementation
 
     bool recoverSurface()
     {
-        if (!SurfaceRecoveryRequired || Device->getStatus() != rhi::EDeviceStatus::Ready)
+        if (!SurfaceRecoveryRequired.load(std::memory_order_relaxed) ||
+            Device->getStatus() != rhi::EDeviceStatus::Ready)
             return false;
         auto* rhi_instance = rhi::RenderServer::self().getRHI();
         if (!rhi_instance || !rhi_instance->recoverSurface(Window) ||
@@ -137,7 +179,7 @@ struct RendererServer::Implementation
         ImageInitialized.assign(Swapchain->getImageCount(), false);
         RenderFinishedSemaphores.assign(Swapchain->getImageCount(), {});
         for (auto& semaphore : RenderFinishedSemaphores) semaphore = Device->createSemaphore();
-        SurfaceRecoveryRequired = false;
+        SurfaceRecoveryRequired.store(false, std::memory_order_relaxed);
         return true;
     }
 };
@@ -148,10 +190,10 @@ RendererServer::EFrameStatus RendererServer::Implementation::renderFrameImpl(con
         throw std::logic_error("Renderer must be initialized before rendering a frame.");
     if (Device->getStatus() != rhi::EDeviceStatus::Ready)
         return RendererServer::EFrameStatus::DeviceLost;
-    if (SurfaceRecoveryRequired ||
+    if (SurfaceRecoveryRequired.load(std::memory_order_relaxed) ||
         Swapchain->getStatus() == rhi::ESwapchainStatus::SurfaceLost)
     {
-        SurfaceRecoveryRequired = true;
+        SurfaceRecoveryRequired.store(true, std::memory_order_relaxed);
         return RendererServer::EFrameStatus::SurfaceLost;
     }
     Device->collectDeferredReleases();
@@ -192,7 +234,7 @@ RendererServer::EFrameStatus RendererServer::Implementation::renderFrameImpl(con
         return RendererServer::EFrameStatus::DeviceLost;
     if (acquired.Status == rhi::EAcquireStatus::SurfaceLost)
     {
-        SurfaceRecoveryRequired = true;
+        SurfaceRecoveryRequired.store(true, std::memory_order_relaxed);
         return RendererServer::EFrameStatus::SurfaceLost;
     }
     if (acquired.Status == rhi::EAcquireStatus::NotReady)
@@ -271,7 +313,7 @@ RendererServer::EFrameStatus RendererServer::Implementation::renderFrameImpl(con
     }
     if (present_status == rhi::EPresentStatus::SurfaceLost)
     {
-        SurfaceRecoveryRequired = true;
+        SurfaceRecoveryRequired.store(true, std::memory_order_relaxed);
         return RendererServer::EFrameStatus::SurfaceLost;
     }
     if (acquired.Status == rhi::EAcquireStatus::Suboptimal)
@@ -326,6 +368,21 @@ void RendererServer::initialize(
 
 void RendererServer::shutdown() noexcept
 {
+    // 先停渲染线程: 它可能正在录制/提交, 必须在设备 waitIdle 前合入.
+    // RenderThreadWorker 析构会再次 requestStop/join(幂等), 此处显式调用保证顺序.
+    if (Impl)
+    {
+        try
+        {
+            Impl->RenderThreadWorker.requestStop();
+            Impl->RenderThreadWorker.join();
+        }
+        catch (...)
+        {
+            // 关闭路径不得抛出.
+        }
+    }
+
     auto& server = rhi::RenderServer::self();
     if (const auto& device = server.getDevice())
     {
@@ -339,6 +396,8 @@ void RendererServer::shutdown() noexcept
             // Destructors and failure cleanup must not throw; RHI shutdown remains safe.
         }
     }
+    // 释放 UI 绘制缓存(静态持有 RHI 管线/缓冲), 必须在设备销毁前执行.
+    releaseUIDrawCache();
     Impl.reset();
     server.shutdown();
 }
@@ -355,27 +414,38 @@ const std::shared_ptr<rhi::RDevice>& RendererServer::getDevice() const noexcept
 
 std::optional<double> RendererServer::getLastGPUFrameTimeNanoseconds() const noexcept
 {
-    return Impl ? Impl->LastGPUFrameTimeNanoseconds : std::nullopt;
+    if (!Impl)
+        return std::nullopt;
+    const double Value = Impl->LastGPUFrameTimeNanoseconds.load(std::memory_order_relaxed);
+    return Value < 0.0 ? std::nullopt : std::optional<double> { Value };
 }
 
 bool RendererServer::deferRelease(std::shared_ptr<void> Resource)
 {
     if (!Impl || !Impl->Device || !Resource)
         return false;
-    if (Impl->UseTimelineSemaphore)
-    {
-        if (!Impl->FrameTimeline)
-            return false;
-        // The timeline value snapshots all submissions made before this call. The device queue
-        // retains entries until that value completes; collection never waits.
-        return Impl->Device->deferRelease(
-            std::move(Resource), Impl->FrameTimeline, Impl->NextTimelineValue - 1);
-    }
-    // 1.0 基线: 以当前帧 fence 作为完成点.
-    const auto& frame = Impl->Frames[Impl->FrameIndex];
-    if (!frame.FrameFence)
-        return false;
-    return Impl->Device->deferRelease(std::move(Resource), frame.FrameFence);
+    // 帧索引 / 时间线值归渲染线程所有, 因此延迟释放也必须在渲染线程上执行, 避免竞争.
+    std::promise<bool> Promise;
+    std::future<bool> Future = Promise.get_future();
+    Impl->RenderThreadWorker.postTask([this, Resource = std::move(Resource),
+        Promise = std::move(Promise)]() mutable {
+        bool Ok = false;
+        if (Impl->UseTimelineSemaphore && Impl->FrameTimeline)
+        {
+            // 时间线值快照了本次调用前所有提交; 设备队列持有它们直到完成, 收集时不等待.
+            Ok = Impl->Device->deferRelease(
+                std::move(Resource), Impl->FrameTimeline, Impl->NextTimelineValue - 1);
+        }
+        else
+        {
+            // 1.0 基线: 以当前帧 fence 作为完成点.
+            const auto& Frame = Impl->Frames[Impl->FrameIndex];
+            Ok = Frame.FrameFence &&
+                Impl->Device->deferRelease(std::move(Resource), Frame.FrameFence);
+        }
+        Promise.set_value(Ok);
+    });
+    return Future.get();
 }
 
 void RendererServer::runBindGroupSmokeTest()
@@ -567,95 +637,162 @@ RendererServer::EFrameStatus RendererServer::renderFrame(const FrameRecorder& Re
 {
     if (!Impl)
         throw std::logic_error("Renderer must be initialized before rendering a frame.");
-    return Impl->renderFrameImpl([&](rhi::RCommandList& Commands,
-        const std::shared_ptr<rhi::RImage>& Image,
-        const std::shared_ptr<rhi::RImageView>& View,
-        uint32_t Width, uint32_t Height, bool ImageInitialized) {
-        // 单渲染作用域历史路径: 手动 barrier + 清屏 + 用户回调.
-        const rhi::ImageBarrier begin_barrier {
-            .Image = Image,
-            .Before = ImageInitialized
-                ? rhi::EResourceState::Present
-                : rhi::EResourceState::Undefined,
-            .After = rhi::EResourceState::RenderTarget
-        };
-        Commands.imageBarriers(std::span(&begin_barrier, 1));
+    // 录制/提交在渲染线程上执行; GameThread 用 promise/future 阻塞等待本帧结果,
+    // 由此实现"游戏领先渲染"的帧握手(渲染线程内部再以 fence 做 GPU 侧的帧 pacing).
+    std::promise<EFrameStatus> Promise;
+    std::future<EFrameStatus> Future = Promise.get_future();
+    Impl->RenderThreadWorker.postTask([this, Recorder, Promise = std::move(Promise)]() mutable {
+        const EFrameStatus Status = Impl->renderFrameImpl([&](rhi::RCommandList& Commands,
+            const std::shared_ptr<rhi::RImage>& Image,
+            const std::shared_ptr<rhi::RImageView>& View,
+            uint32_t Width, uint32_t Height, bool ImageInitialized) {
+            // 单渲染作用域历史路径: 手动 barrier + 清屏 + 用户回调.
+            const rhi::ImageBarrier begin_barrier {
+                .Image = Image,
+                .Before = ImageInitialized
+                    ? rhi::EResourceState::Present
+                    : rhi::EResourceState::Undefined,
+                .After = rhi::EResourceState::RenderTarget
+            };
+            Commands.imageBarriers(std::span(&begin_barrier, 1));
 
-        const rhi::ColorAttachment color {
-            .View = View,
-            .LoadOp = rhi::ELoadOp::Clear,
-            .StoreOp = rhi::EStoreOp::Store,
-            .ClearValue = {
-                .Type = rhi::EClearColorType::Float,
-                .Float32 = { 0.025f, 0.035f, 0.055f, 1.0f }
-            }
-        };
-        const rhi::RenderingInfo rendering {
-            .Area = { 0, 0, Width, Height },
-            .ColorAttachments = std::span(&color, 1)
-        };
-        Commands.beginRendering(rendering);
-        if (Recorder)
-            Recorder(Commands, View, Width, Height);
-        Commands.endRendering();
+            const rhi::ColorAttachment color {
+                .View = View,
+                .LoadOp = rhi::ELoadOp::Clear,
+                .StoreOp = rhi::EStoreOp::Store,
+                .ClearValue = {
+                    .Type = rhi::EClearColorType::Float,
+                    .Float32 = { 0.025f, 0.035f, 0.055f, 1.0f }
+                }
+            };
+            const rhi::RenderingInfo rendering {
+                .Area = { 0, 0, Width, Height },
+                .ColorAttachments = std::span(&color, 1)
+            };
+            Commands.beginRendering(rendering);
+            if (Recorder)
+                Recorder(Commands, View, Width, Height);
+            Commands.endRendering();
 
-        const rhi::ImageBarrier present_barrier {
-            .Image = Image,
-            .Before = rhi::EResourceState::RenderTarget,
-            .After = rhi::EResourceState::Present
-        };
-        Commands.imageBarriers(std::span(&present_barrier, 1));
+            const rhi::ImageBarrier present_barrier {
+                .Image = Image,
+                .Before = rhi::EResourceState::RenderTarget,
+                .After = rhi::EResourceState::Present
+            };
+            Commands.imageBarriers(std::span(&present_barrier, 1));
+        });
+        Promise.set_value(Status);
     });
+    return Future.get();
 }
 
 RendererServer::EFrameStatus RendererServer::renderFrameGraph(const FrameGraphSetup& Setup)
 {
-    if (!Impl || !Impl->Device)
+    if (!Impl || !Impl->Device || !Impl->RDGPool)
         throw std::logic_error("Renderer must be initialized before rendering a frame.");
-    return Impl->renderFrameImpl([&](rhi::RCommandList& Commands,
-        const std::shared_ptr<rhi::RImage>& Image,
-        const std::shared_ptr<rhi::RImageView>& View,
-        uint32_t Width, uint32_t Height, bool ImageInitialized) {
-        // RDG 多 Pass 路径: 交换链图像作为 backbuffer 被图托管.
-        RDGBuilder builder(*Impl->Device);
-        const RDGResourceId backbuffer = builder.importImage(Image, View, "Backbuffer",
-            ImageInitialized ? rhi::EResourceState::Present : rhi::EResourceState::Undefined);
+    // 刷新 World → Renderer 的统一交换包(GameThread 侧预处理; 渲染线程读其快照).
+    (void)buildRenderSubmission();
+    std::promise<EFrameStatus> Promise;
+    std::future<EFrameStatus> Future = Promise.get_future();
+    Impl->RenderThreadWorker.postTask([this, Setup, Promise = std::move(Promise)]() mutable {
+        const EFrameStatus Status = Impl->renderFrameImpl([&](rhi::RCommandList& Commands,
+            const std::shared_ptr<rhi::RImage>& Image,
+            const std::shared_ptr<rhi::RImageView>& View,
+            uint32_t Width, uint32_t Height, bool ImageInitialized) {
+            // RDG 多 Pass 路径: 交换链图像作为 backbuffer 被图托管.
+            rdg::RDGGraph graph;
+            rdg::ResourceId backbuffer {};
+            graph.addSetupPass("ImportBackbuffer", [&](rdg::RDGBuilder& b) {
+                backbuffer = b.importTexture("Backbuffer", Image, View);
+            });
 
-        if (Setup)
-        {
-            // 应用用 SceneRenderer 编排子渲染器(3D 各阶段 + UI)向同一 RDG 声明 Pass.
-            Setup(builder, backbuffer);
-        }
-        else
-        {
-            // 无回调: 退化为一次清屏 Pass.
-            builder.addGraphicsPass("Clear",
-                [&](RDGPassBuilder& PassBuilder) {
-                    PassBuilder.renderTarget(backbuffer, rhi::ELoadOp::Clear,
-                        rhi::EStoreOp::Store,
-                        { .Type = rhi::EClearColorType::Float,
-                          .Float32 = { 0.025f, 0.035f, 0.055f, 1.0f } });
-                },
-                [](RDGExecuteContext&) {});
-        }
+            if (Setup)
+            {
+                // 应用自定义 Pass 编排(可覆盖默认 Pass 链).
+                Setup(graph, backbuffer);
+            }
+            else if (Impl->SceneRenderer.getPassCount() > 0)
+            {
+                // 无回调: 驱动 SceneRenderer 声明 Shadow → DepthPre → Opaque →
+                // Transparent → Post → UI 的完整 Pass 链, 3D 与 2D 合并进同一张帧图.
+                // 视图取渲染线程当前值(setRenderView 已作为命令投递并应用).
+                RenderFrameResources frame_resources;
+                const RenderContext context {
+                    .ProxyWorld = Impl->ProxyWorld,
+                    .View = Impl->RenderThreadWorker.getCurrentView(),
+                    .Submission = &Impl->LastSubmission,
+                    .Backbuffer = backbuffer,
+                    .FrameResources = frame_resources,
+                    .FrameIndex = Impl->FrameIndex,
+                    .Width = Width,
+                    .Height = Height,
+                };
+                Impl->SceneRenderer.build(graph, context);
+            }
+            else
+            {
+                // 无子 Pass: 声明一次 backbuffer 写入(仅供出口 barrier 正确推导).
+                graph.addPass("Clear", [&](rdg::RDGBuilder& b) {
+                    const std::array color { backbuffer };
+                    b.setRenderTargets(color);
+                    b.setType(rdg::ERDGPassType::Raster);
+                });
+            }
 
-        builder.compile();
-        builder.execute(Commands);
+            // 瞬态堆已按帧在飞数三缓冲, 跨帧复用安全, 重新启用别名.
+            const rdg::RDGCompiledPlan plan = graph.compile(Impl->RDGPool.get(), /*EnableAliasing=*/true);
 
-        // 交换链出口: 最后一个 Pass 已把 backbuffer 写到 RenderTarget, 这里统一转 Present.
-        const rhi::ImageBarrier present_barrier {
-            .Image = Image,
-            .Before = rhi::EResourceState::RenderTarget,
-            .After = rhi::EResourceState::Present
-        };
-        Commands.imageBarriers(std::span(&present_barrier, 1));
+            // 交换链入口: 图对 imported 资源不插入布局屏障, 这里显式转换到 RenderTarget.
+            const rhi::ImageBarrier begin_barrier {
+                .Image = Image,
+                .Before = ImageInitialized
+                    ? rhi::EResourceState::Present
+                    : rhi::EResourceState::Undefined,
+                .After = rhi::EResourceState::RenderTarget
+            };
+            Commands.imageBarriers(std::span(&begin_barrier, 1));
+
+            graph.execute(Commands, plan);
+
+            // 交换链出口: 最后一个 Pass 已把 backbuffer 写到 RenderTarget, 这里统一转 Present.
+            const rhi::ImageBarrier present_barrier {
+                .Image = Image,
+                .Before = rhi::EResourceState::RenderTarget,
+                .After = rhi::EResourceState::Present
+            };
+            Commands.imageBarriers(std::span(&present_barrier, 1));
+        });
+        Promise.set_value(Status);
     });
+    return Future.get();
 }
 
 RenderProxyWorld& RendererServer::getRenderProxyWorld() noexcept
 {
     static RenderProxyWorld Fallback;
     return Impl ? Impl->ProxyWorld : Fallback;
+}
+
+RenderPassScheduler& RendererServer::getSceneRenderer() noexcept
+{
+    static RenderPassScheduler Fallback;
+    return Impl ? Impl->SceneRenderer : Fallback;
+}
+
+void RendererServer::setRenderView(const RenderView& InView) noexcept
+{
+    // 视图归渲染线程所有: 以命令投递, 由渲染线程在下一帧前应用, 避免跨线程写竞争.
+    if (Impl)
+        Impl->RenderThreadWorker.enqueue(RenderCommand { RenderCommandSetRenderView { InView } });
+}
+
+void RendererServer::setRenderViewport(const Viewport& InViewport)
+{
+    if (!Impl)
+        return;
+    // 视口描述缓存于 GameThread 侧(编辑器只读), 相机则投递给渲染线程.
+    Impl->ActiveViewport = InViewport;
+    setRenderView(InViewport.Camera);
 }
 
 const RenderFrameSubmission& RendererServer::buildRenderSubmission()
@@ -667,7 +804,22 @@ const RenderFrameSubmission& RendererServer::buildRenderSubmission()
     const EChangeFlags world_changes = Impl->ProxyWorld.consumeChangeFlags();
     const EChangeFlags ui_changes = {};
     Impl->ProxyWorld.buildSubmission(Impl->LastSubmission, world_changes, ui_changes);
+    // 消费 GameThread 侧提交的 UI 绘制列表与配套的纹理脏区.
+    Impl->LastSubmission.UIDrawLists = std::move(Impl->PendingUIDrawLists);
+    Impl->PendingUIDrawLists.clear();
+    Impl->LastSubmission.TextureUploads = std::move(Impl->PendingTextureUploads);
+    Impl->PendingTextureUploads.clear();
     return Impl->LastSubmission;
+}
+
+void RendererServer::submitUIDrawLists(
+    std::vector<ui::UIDrawList> DrawLists,
+    std::vector<ui::UISampledTextureUpload> TextureUploads)
+{
+    if (!Impl)
+        return;
+    Impl->PendingUIDrawLists = std::move(DrawLists);
+    Impl->PendingTextureUploads = std::move(TextureUploads);
 }
 
 const RenderFrameSubmission& RendererServer::getLastRenderSubmission() const noexcept
@@ -680,12 +832,16 @@ void RendererServer::resize(uint32_t Width, uint32_t Height)
 {
     if (!Impl || !Impl->Swapchain)
         throw std::logic_error("Renderer must be initialized before resizing.");
-    Impl->Width = Width;
-    Impl->Height = Height;
     if (Impl->Device->getStatus() != rhi::EDeviceStatus::Ready)
         throw std::runtime_error("Render device is lost; resize cannot recover device resources.");
-    if (!Impl->SurfaceRecoveryRequired)
+    // 交换链重建归渲染线程所有: 通过任务串行化, 避免与帧录制并发触碰 Swapchain/Frames.
+    Impl->RenderThreadWorker.postTask([this, Width, Height]() {
+        if (Impl->SurfaceRecoveryRequired.load(std::memory_order_relaxed))
+            return;
+        Impl->Width = Width;
+        Impl->Height = Height;
         Impl->recreate(Width, Height);
+    });
 }
 
 bool RendererServer::recoverSurface()

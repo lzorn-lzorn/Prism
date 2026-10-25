@@ -2,9 +2,12 @@
 
 #include <RHI.hpp>
 
-#include <rdg/RDGBuilder.hpp>
+#include <rdg/RDG.hpp>
+#include <renderer/RenderCommand.hpp>
 #include <renderer/RenderData.hpp>
+#include <renderer/RenderPassScheduler.hpp>
 #include <renderer/RenderProxyWorld.hpp>
+#include <renderer/Viewport.hpp>
 
 #include <memory>
 #include <functional>
@@ -20,6 +23,9 @@
  */
 namespace runtime::renderer
 {
+
+/** @brief 帧图算法命名空间别名(::renderer::rdg). */
+namespace rdg = ::renderer::rdg;
 
 /**
  * @brief 持有面向应用的 RHI 生命周期的渲染器门面。
@@ -52,7 +58,7 @@ public:
      * 回调内 import 的交换链图像已被 RDG 托管为 Backbuffer, 并作为参数传入.
      * 应用可用 SceneRenderer 编排各子渲染器向同一 RDG 声明 Pass, 实现 3D 与 UI 合并.
      */
-    using FrameGraphSetup = std::function<void(RDGBuilder&, RDGResourceId Backbuffer)>;
+    using FrameGraphSetup = std::function<void(rdg::RDGGraph&, rdg::ResourceId Backbuffer)>;
 
     [[nodiscard]] static RendererServer& self() noexcept;
 
@@ -88,6 +94,30 @@ public:
     /** @brief 兼容旧接口; 新代码请改用 getRenderProxyWorld(). */
     [[nodiscard]] RenderProxyWorld& getRenderWorld() noexcept { return getRenderProxyWorld(); }
 
+    /**
+     * @brief 场景渲染器(PassScheduler): 持有一组子 Pass, 供应用注册或自定义 Pass 链.
+     *
+     * renderFrameGraph 在无用户回调时, 会驱动该调度器声明
+     * Shadow → DepthPre → Opaque → Transparent → Post → UI 的完整 Pass 链,
+     * 使 3D 与 2D 合并进同一张帧图、同一条命令流.
+     */
+    [[nodiscard]] RenderPassScheduler& getSceneRenderer() noexcept;
+
+    /**
+     * @brief 设置当前帧的渲染视图(相机矩阵), 供 SceneRenderer 各 Pass 消费.
+     * @param InView 视图/投影/位置矩阵.
+     */
+    void setRenderView(const RenderView& InView) noexcept;
+
+    /**
+     * @brief 把游戏场景渲染进指定视口(Editor 的 3DView 面板或 standalone 主视口).
+     * @param InViewport 视口(相机 + 渲染目标 + 矩形).
+     *
+     * @note 内部会调用 setRenderView 把该视口的相机投递给渲染线程; 渲染目标(RT)
+     *       由 RTT 池按描述复用, 游戏输出到 RT 后由 UI 3DView 控件采样合成.
+     */
+    void setRenderViewport(const Viewport& InViewport);
+
     /** @brief UI 渲染器(控件树 -> 合批), 供应用提交控件树. */
 
     /**
@@ -100,6 +130,14 @@ public:
 
     /** @brief 最近一次 buildRenderSubmission() 的结果快照. */
     [[nodiscard]] const RenderFrameSubmission& getLastRenderSubmission() const noexcept;
+
+    /**
+     * @brief 提交一帧的 UI 绘制列表(GameThread 调用, 由 RHIUIRenderer 在帧边界提供).
+     * @param DrawLists 原始顶点/索引/批次; 内部复制, 随后由 UIRenderPass 消费.
+     * @param TextureUploads 与批次纹理句柄配套的脏区数据块; 为空表示纹理内容未变.
+     */
+    void submitUIDrawLists(std::vector<ui::UIDrawList> DrawLists,
+        std::vector<ui::UISampledTextureUpload> TextureUploads = {});
 
     /**
      * @brief 演练反射、自动资源解析与描述符绑定。

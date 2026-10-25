@@ -1,5 +1,7 @@
 #include "PipelineManager.hpp"
 
+#include <infra/hash/Hash.hpp>
+
 #include <algorithm>
 #include <atomic>
 #include <condition_variable>
@@ -150,13 +152,9 @@ struct PipelineKeyHash
 {
     size_t operator()(const PipelineKey& Key) const noexcept
     {
-        size_t Result = sizeof(size_t) == 8 ? 1469598103934665603ull : 2166136261u;
-        for (const auto Byte : Key)
-        {
-            Result ^= static_cast<size_t>(std::to_integer<uint8_t>(Byte));
-            Result *= sizeof(size_t) == 8 ? 1099511628211ull : 16777619u;
-        }
-        return Result;
+        uint64_t Seed = infra::Fnv1aOffsetBasis64;
+        infra::hashBytes(Seed, std::span { Key });
+        return static_cast<size_t>(Seed);
     }
 };
 } // namespace

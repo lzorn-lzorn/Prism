@@ -155,7 +155,9 @@ void VulkanImage::allocateAndBindMemory(DeviceMemoryAllocator* Allocator)
     }
 
     Device->getVkDevice().bindImageMemory(OwnedImage.get(), NativeMemory, MemoryOffset);
-    Memory = std::move(Memory);
+    // 赋给成员 Memory(保持显存存活); 之前"Memory = std::move(Memory)"是自移动 UB,
+    // 导致成员未持有显存, 显存随即被释放 → 图像引用已释放的显存.
+    this->Memory = std::move(Memory);
 }
 
 void* VulkanImage::getNativeHandle() const noexcept

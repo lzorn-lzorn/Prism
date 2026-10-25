@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 /**
  * ============================================================================
@@ -362,8 +362,9 @@ struct RDGResource
     bool                       KeepAlive { false }; ///< 标记导出: 不参与别名
 
     // ---- 外部注入 (Lifetime == Imported) ----
-    std::shared_ptr<rhi::RBuffer> ImportedBuffer;
-    std::shared_ptr<rhi::RImage>  ImportedImage;
+    std::shared_ptr<rhi::RBuffer>    ImportedBuffer;
+    std::shared_ptr<rhi::RImage>     ImportedImage;
+    std::shared_ptr<rhi::RImageView> ImportedView;
 
     // ---- 生命周期分析 (拓扑序 Pass 下标) ----
     uint32_t FirstUse { InvalidId };
@@ -418,6 +419,8 @@ struct RDGResourceBinding
     EResourceKind                  Kind { EResourceKind::None };
     std::shared_ptr<rhi::RBuffer>  Buffer;
     std::shared_ptr<rhi::RImage>   Image;
+    /** @brief 默认全范围视图(导入资源直接使用注入视图, 瞬态资源由池创建). */
+    std::shared_ptr<rhi::RImageView> View;
     /** @brief placed 资源在该堆内的偏移(独立创建时为 0). */
     uint64_t                       MemoryOffset { 0 };
 
@@ -481,6 +484,21 @@ public:
         if (!Id.isValid() || Id.Value >= Bindings.size())
             return Empty;
         return Bindings[Id.Value].Image;
+    }
+
+    /** @brief 取纹理的默认全范围视图; 未绑定或类型不符时返回 nullptr. */
+    [[nodiscard]] const std::shared_ptr<rhi::RImageView>& getViewShared(ResourceId Id) const noexcept
+    {
+        static const std::shared_ptr<rhi::RImageView> Empty;
+        if (!Id.isValid() || Id.Value >= Bindings.size())
+            return Empty;
+        return Bindings[Id.Value].View;
+    }
+
+    /** @brief 取纹理默认视图的裸指针; 未绑定或类型不符时返回 nullptr. */
+    [[nodiscard]] rhi::RImageView* getView(ResourceId Id) const noexcept
+    {
+        return getViewShared(Id).get();
     }
 
     /** @brief 带断言的 Buffer 访问. */
@@ -712,6 +730,11 @@ public:
     [[nodiscard]] virtual std::shared_ptr<rhi::RImage> createImage(
         const TextureDesc& Description) = 0;
 
+    /** @brief 为已创建的纹理生成默认全范围视图(供渲染作用域使用). */
+    [[nodiscard]] virtual std::shared_ptr<rhi::RImageView> createImageView(
+        const std::shared_ptr<rhi::RImage>& Image,
+        const TextureDesc& Description) = 0;
+
     /** @brief 释放所有堆; 调用前必须保证 GPU 已经空闲. */
     virtual void releaseHeaps() {}
 };
@@ -797,6 +820,9 @@ public:
 
     /** @brief 注入外部图像(交换链 / 持久化 RTT), 不参与别名. */
     [[nodiscard]] ResourceId importTexture(std::string_view Name, std::shared_ptr<rhi::RImage> Image);
+    /** @brief 注入外部图像与默认视图(供 Pass 的渲染作用域使用), 不参与别名. */
+    [[nodiscard]] ResourceId importTexture(std::string_view Name, std::shared_ptr<rhi::RImage> Image,
+        std::shared_ptr<rhi::RImageView> View);
     /** @brief 注入外部 Buffer, 不参与别名. */
     [[nodiscard]] ResourceId importBuffer(std::string_view Name, std::shared_ptr<rhi::RBuffer> Buffer);
 
@@ -1084,18 +1110,22 @@ public:
         const TextureDesc& Description) override;
     [[nodiscard]] std::shared_ptr<rhi::RBuffer> createBuffer(const BufferDesc& Description) override;
     [[nodiscard]] std::shared_ptr<rhi::RImage> createImage(const TextureDesc& Description) override;
+    [[nodiscard]] std::shared_ptr<rhi::RImageView> createImageView(
+        const std::shared_ptr<rhi::RImage>& Image,
+        const TextureDesc& Description) override;
     void releaseHeaps() override;
 
     /** @brief 禁用别名(用于 A/B 对照: 关掉就走独立创建路径). */
     void setAliasingEnabled(bool Enabled) noexcept { AliasingEnabled = Enabled; }
 
     /** @brief 实际创建的堆数量(测试/诊断用). */
-    [[nodiscard]] size_t getHeapCount() const noexcept { return Heaps.size(); }
+    [[nodiscard]] size_t getHeapCount() const noexcept { return Sets[SetIndex].Heaps.size(); }
 
     /** @brief 取某个堆; 越界或未创建时返回空(测试/诊断用). */
     [[nodiscard]] const std::shared_ptr<rhi::RTransientHeap>& getHeap(size_t Index) const noexcept
     {
         static const std::shared_ptr<rhi::RTransientHeap> Empty;
+        const auto& Heaps = Sets[SetIndex].Heaps;
         return Index < Heaps.size() ? Heaps[Index] : Empty;
     }
 
@@ -1104,18 +1134,30 @@ private:
     RDGPoolOptions PoolOptions;
     bool           AliasingEnabled { true };
     bool           AliasingSupported { false };
-    /** @brief 每个堆的 RHI 对象, 与计划中的堆下标一一对应. */
-    std::vector<std::shared_ptr<rhi::RTransientHeap>> Heaps;
-    /** @brief 本帧实际可用的堆(申请失败的堆不会参与子分配). */
-    std::vector<bool> CreatedHeaps;
-    /** @brief 本帧切出去的区间; 下一帧 beginFrame 时统一归还. */
+
+    /** @brief 归还区间: 记录某堆上切出的一段, 待下一轮归还. */
     struct ReleasedRange
     {
         std::shared_ptr<rhi::RTransientHeap> Heap;
         uint64_t                             Offset { 0 };
         uint64_t                             Size { 0 };
     };
-    std::vector<ReleasedRange> Released;
+
+    /** @brief 一帧使用的全部瞬态堆 + 其子分配状态. */
+    struct HeapSet
+    {
+        std::vector<std::shared_ptr<rhi::RTransientHeap>> Heaps;
+        std::vector<bool> CreatedHeaps;
+        std::vector<ReleasedRange> Released;
+    };
+
+    /**
+     * @brief 帧在飞三缓冲: 每帧轮换到下一组堆, 复用 N 帧前(已由 fence 保证 GPU 完成)
+     *        的那组. 避免"帧 N-1 的堆在帧 N 被复用, 而 GPU 仍在用帧 N-1 资源"的 use-after-free.
+     */
+    static constexpr size_t FramesInFlight = 3;
+    std::array<HeapSet, FramesInFlight> Sets;
+    size_t SetIndex { 0 };
 };
 
 // ============================================================================
