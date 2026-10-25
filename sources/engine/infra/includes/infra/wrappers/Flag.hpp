@@ -101,12 +101,10 @@ constexpr Flags<EnumType> operator^(Flags<EnumType> Lhs, EnumType Rhs) noexcept 
     return Lhs ^ Flags<EnumType>(Rhs);
 }
 
-template<enum_flag EnumType>
-constexpr Flags<EnumType> operator~(Flags<EnumType> Other) noexcept {
-    return ~Other;
-}
-
-
+// 注意: 这里刻意**不提供** operator~(Flags<EnumType>) 的自由函数重载.
+// 按值传参的自由重载在重载决议中优于"绑定 const 引用"的成员 operator~(FlagsBase),
+// 一旦存在就会自己调用自己, 形成无限递归(栈溢出). 对 Flags 对象取反由成员
+// operator~() 负责, 下面是针对裸枚举值的便捷重载.
 template<enum_flag EnumType>
 constexpr Flags<EnumType> operator~(EnumType Other) noexcept {
     return ~Flags<EnumType>(Other);

@@ -53,6 +53,11 @@ namespace
  */
 void fillDrawPacketGeometry(const RenderProxyVariant& Proxy, DrawPacket& Packet)
 {
+    // 对象变换与材质索引对所有几何代理都成立, 先统一填好.
+    const RenderProxyHeader& Header = getHeader(Proxy);
+    Packet.LocalToWorld = Header.LocalToWorld;
+    Packet.MaterialId = Header.MaterialId;
+
     std::visit([&](const auto& Value) {
         using ProxyType = std::decay_t<decltype(Value)>;
         if constexpr (std::is_same_v<ProxyType, MeshRenderProxy>)

@@ -1,5 +1,6 @@
 #include <renderer/RenderPassScheduler.hpp>
 
+#include <renderer/MeshShaders.hpp>
 #include <renderer/UIShaders.hpp>
 
 #include <algorithm>
@@ -74,13 +75,60 @@ void setFullViewport(rhi::RCommandList& command_list, uint32_t width, uint32_t h
     command_list.setScissors(scissors);
 }
 
-/** @brief 开始一个颜色(可选深度)渲染作用域, 并设置全屏视口. */
+/**
+ * @brief 把视口与裁剪矩形限制到给定像素矩形内(编辑器视口面板).
+ *
+ * 3D 场景只允许在这个矩形里光栅化, 于是"渲染进编辑器里的 Viewport"不需要离屏
+ * 目标: 直接写交换链, 由 UI 在四周画出面板外框即可.
+ */
+void setRectViewport(rhi::RCommandList& command_list, const rhi::RenderArea& Rect)
+{
+    const std::array viewports { rhi::Viewport {
+        .X = static_cast<float>(Rect.X),
+        .Y = static_cast<float>(Rect.Y),
+        .Width = static_cast<float>(Rect.Width),
+        .Height = static_cast<float>(Rect.Height),
+    } };
+    const std::array scissors { Rect };
+    command_list.setViewports(viewports);
+    command_list.setScissors(scissors);
+}
+
+/**
+ * @brief 取本帧 3D 场景的像素矩形; 未设置(宽高为 0)时返回整屏矩形.
+ */
+[[nodiscard]] rhi::RenderArea resolveSceneRect(const RenderFrameSubmission* Submission,
+    uint32_t width, uint32_t height)
+{
+    if (Submission)
+    {
+        const rhi::RenderArea Rect = Submission->SceneViewport;
+        if (Rect.Width != 0 && Rect.Height != 0)
+        {
+            // 夹到目标范围内, 避免越界 scissor / viewport.
+            const int32_t Left = std::clamp(Rect.X, 0, static_cast<int32_t>(width));
+            const int32_t Top = std::clamp(Rect.Y, 0, static_cast<int32_t>(height));
+            const int32_t Right = std::clamp(
+                Rect.X + static_cast<int32_t>(Rect.Width), 0, static_cast<int32_t>(width));
+            const int32_t Bottom = std::clamp(
+                Rect.Y + static_cast<int32_t>(Rect.Height), 0, static_cast<int32_t>(height));
+            if (Right > Left && Bottom > Top)
+                return { Left, Top, static_cast<uint32_t>(Right - Left),
+                    static_cast<uint32_t>(Bottom - Top) };
+        }
+    }
+    return { 0, 0, width, height };
+}
+
+/** @brief 开始一个颜色(可选深度)渲染作用域, 并把视口限制到 SceneRect. */
 void beginColorScope(
     rhi::RCommandList& command_list, uint32_t width, uint32_t height,
     const std::shared_ptr<rhi::RImageView>& color_view, rhi::ELoadOp load_op,
-    const std::shared_ptr<rhi::RImageView>& depth_view = {})
+    const std::shared_ptr<rhi::RImageView>& depth_view = {},
+    const rhi::RenderArea* scene_rect = nullptr)
 {
     rhi::RenderingInfo info;
+    // 渲染作用域始终覆盖整个目标: 清屏/加载语义作用于全图, 实际光栅化由 viewport 限制.
     info.Area = { 0, 0, width, height };
 
     rhi::ColorAttachment color;
@@ -104,13 +152,17 @@ void beginColorScope(
     }
 
     command_list.beginRendering(info);
-    setFullViewport(command_list, width, height);
+    if (scene_rect)
+        setRectViewport(command_list, *scene_rect);
+    else
+        setFullViewport(command_list, width, height);
 }
 
-/** @brief 开始一个深度-only 渲染作用域, 并设置全屏视口. */
+/** @brief 开始一个深度-only 渲染作用域, 并把视口限制到 SceneRect. */
 void beginDepthScope(
     rhi::RCommandList& command_list, uint32_t width, uint32_t height,
-    const std::shared_ptr<rhi::RImageView>& depth_view)
+    const std::shared_ptr<rhi::RImageView>& depth_view,
+    const rhi::RenderArea* scene_rect = nullptr)
 {
     rhi::RenderingInfo info;
     info.Area = { 0, 0, width, height };
@@ -125,34 +177,180 @@ void beginDepthScope(
     info.DepthStencil = &depth;
 
     command_list.beginRendering(info);
-    setFullViewport(command_list, width, height);
+    if (scene_rect)
+        setRectViewport(command_list, *scene_rect);
+    else
+        setFullViewport(command_list, width, height);
+}
+
+// ============================================================================
+//  默认网格材质(scene mesh): 让尚未接入 MaterialSystem 的几何也能被画出来
+// ============================================================================
+
+/** @brief 网格绘制的管线变体: 由所在 Pass 的渲染作用域决定. */
+enum class ESceneMeshVariant
+{
+    /** 深度预通道 / 阴影: 只写深度, 无颜色附件. */
+    DepthOnly,
+    /** 不透明: 颜色 + 深度, 写深度. */
+    Opaque,
+    /** 透明: 颜色 + 深度, 不写深度, alpha 混合. */
+    Transparent,
+};
+
+/**
+ * @brief 默认网格材质的跨帧缓存(一条管线布局 + 三个变体管线).
+ *
+ * push constant 布局与 scene_mesh.vert.hlsl 对齐: MVP(64B) + World(64B) = 128B,
+ * 正好是 Vulkan 保证的最小 push constant 容量.
+ */
+struct SceneMeshCache
+{
+    std::shared_ptr<rhi::RPipelineLayout> Layout;
+    std::shared_ptr<rhi::RPipeline> DepthOnly;
+    std::shared_ptr<rhi::RPipeline> Opaque;
+    std::shared_ptr<rhi::RPipeline> Transparent;
+    bool Ready { false };
+};
+
+SceneMeshCache& sceneMeshCache()
+{
+    static SceneMeshCache Cache;
+    return Cache;
+}
+
+/** @brief 场景网格顶点: Position(float3) + Normal(float3) + Color(float4), stride 40. */
+constexpr uint32_t SceneMeshVertexStride = 40;
+/** @brief 默认网格材质的 push constant 字节数(MVP + World). */
+constexpr uint32_t SceneMeshPushConstantSize = 128;
+
+/** @brief 惰性创建默认网格材质的三条管线(仅一次). */
+void ensureSceneMeshCache(rhi::RDevice& device, SceneMeshCache& cache,
+    rhi::EFormat color_format, rhi::EFormat depth_format)
+{
+    if (cache.Ready)
+        return;
+
+    rhi::ShaderDescriptor vs;
+    vs.Stage = rhi::EShaderStage_t::Vertex;
+    vs.ByteCode.assign(SceneMeshVertexSpv.begin(), SceneMeshVertexSpv.end());
+    vs.EntryPoint = "main";
+    vs.DebugName = "SceneMeshVertex";
+    auto vertex_shader = device.createShader(vs);
+
+    rhi::ShaderDescriptor ps;
+    ps.Stage = rhi::EShaderStage_t::Pixel;
+    ps.ByteCode.assign(SceneMeshPixelSpv.begin(), SceneMeshPixelSpv.end());
+    ps.EntryPoint = "main";
+    ps.DebugName = "SceneMeshPixel";
+    auto pixel_shader = device.createShader(ps);
+
+    rhi::PipelineLayoutDescriptor layout_desc;
+    layout_desc.PushConstantRanges = {
+        { .Stages = rhi::EShaderStage_t::Vertex, .Offset = 0, .Size = SceneMeshPushConstantSize }
+    };
+    layout_desc.DebugName = "SceneMeshLayout";
+    cache.Layout = device.createPipelineLayout(layout_desc);
+
+    const auto make_pipeline = [&](ESceneMeshVariant variant, const char* name)
+    {
+        rhi::GraphicsPipelineDescriptor desc;
+        desc.Layout = cache.Layout;
+        desc.Vertex.Shader = vertex_shader;
+        desc.Pixel.Shader = pixel_shader;
+        desc.VertexInput.Buffers = {
+            { .Binding = 0, .Stride = SceneMeshVertexStride, .InputRate = rhi::EVertexInputRate::PerVertex }
+        };
+        desc.VertexInput.Attributes = {
+            { .Location = 0, .Binding = 0, .Format = rhi::EVertexFormat::Float3, .Offset = 0 },
+            { .Location = 1, .Binding = 0, .Format = rhi::EVertexFormat::Float3, .Offset = 12 },
+            { .Location = 2, .Binding = 0, .Format = rhi::EVertexFormat::Float4, .Offset = 24 },
+        };
+        // 编辑器预览场景以"看得见"为先: 不做背面剔除, 由深度测试保证遮挡正确,
+        // 这样调用方即使绕序不一致也不会整块消失.
+        desc.Rasterizer.CullMode = rhi::ECullMode::None;
+        desc.DepthStencil.DepthTestEnable = false;
+        desc.DepthStencil.DepthCompareOp = rhi::ECompareOp::LessEqual;
+        desc.DepthStencil.DepthWriteEnable = false;
+        desc.Rendering.DepthFormat = depth_format;
+        if (variant != ESceneMeshVariant::DepthOnly)
+        {
+            desc.Rendering.ColorFormats[0] = color_format;
+            desc.Rendering.ColorAttachmentCount = 1;
+        }
+        if (variant == ESceneMeshVariant::Transparent)
+        {
+            desc.Blend.Attachments[0].BlendEnable = true;
+            desc.Blend.Attachments[0].Color.SrcFactor = rhi::EBlendFactor::SrcAlpha;
+            desc.Blend.Attachments[0].Color.DstFactor = rhi::EBlendFactor::OneMinusSrcAlpha;
+            desc.Blend.Attachments[0].Color.Operation = rhi::EBlendOp::Add;
+            desc.Blend.Attachments[0].Alpha.SrcFactor = rhi::EBlendFactor::One;
+            desc.Blend.Attachments[0].Alpha.DstFactor = rhi::EBlendFactor::OneMinusSrcAlpha;
+            desc.Blend.Attachments[0].Alpha.Operation = rhi::EBlendOp::Add;
+        }
+        desc.DebugName = name;
+        return device.createGraphicsPipeline(desc);
+    };
+
+    cache.DepthOnly = make_pipeline(ESceneMeshVariant::DepthOnly, "SceneMeshDepthOnly");
+    cache.Opaque = make_pipeline(ESceneMeshVariant::Opaque, "SceneMeshOpaque");
+    cache.Transparent = make_pipeline(ESceneMeshVariant::Transparent, "SceneMeshTransparent");
+    cache.Ready = true;
 }
 
 /**
- * @brief 录制一个已解析的 DrawPacket: 绑定管线 / 常量 / 绑定组 / 顶点 / 索引并绘制.
+ * @brief 录制一个 DrawPacket: 优先用已解析的材质; 否则回落到默认网格材质.
  *
- * - Pipeline 为空表示该 packet 尚未经 MaterialSystem 解析, 直接跳过(安全降级);
- * - Push Constant 约定作用于 Vertex|Pixel 阶段(逐对象变换 + 材质参数);
- * - 仅索引绘制(DrawPacket 未携带非索引顶点数).
+ * - packet.Pipeline 非空: 走 MaterialSystem 已经解析好的完整状态(推送 packet.PushConstants);
+ * - packet.Pipeline 为空: 用默认网格材质, MVP = ViewProjection * LocalToWorld,
+ *   World = LocalToWorld, 这样在材质系统就绪前场景也能可见.
+ *
+ * @param variant        所在 Pass 的管线变体(决定颜色附件/深度写/混合).
+ * @param view_projection 本帧相机的 View-Projection(默认材质推导 MVP 用).
  */
-void recordDrawPacket(rhi::RCommandList& command_list, const DrawPacket& packet)
+void recordDrawPacket(rhi::RCommandList& command_list, const DrawPacket& packet,
+    ESceneMeshVariant variant, const infra::Matrix4x4& view_projection)
 {
-    if (!packet.Pipeline)
-        return;
-
-    command_list.bindPipeline(packet.Pipeline);
-
-    if (!packet.PushConstants.empty() && packet.PipelineLayout)
+    if (packet.Pipeline)
     {
-        command_list.pushConstants(packet.PipelineLayout,
-            rhi::EShaderStage_t::Vertex | rhi::EShaderStage_t::Pixel,
-            0, packet.PushConstants);
+        command_list.bindPipeline(packet.Pipeline);
+
+        if (!packet.PushConstants.empty() && packet.PipelineLayout)
+        {
+            command_list.pushConstants(packet.PipelineLayout,
+                rhi::EShaderStage_t::Vertex | rhi::EShaderStage_t::Pixel,
+                0, packet.PushConstants);
+        }
+
+        if (!packet.BindGroups.empty())
+        {
+            command_list.bindBindGroups(rhi::EPipelineType::Graphics, packet.PipelineLayout,
+                0, packet.BindGroups, packet.DynamicOffsets);
+        }
     }
-
-    if (!packet.BindGroups.empty())
+    else
     {
-        command_list.bindBindGroups(rhi::EPipelineType::Graphics, packet.PipelineLayout,
-            0, packet.BindGroups, packet.DynamicOffsets);
+        SceneMeshCache& cache = sceneMeshCache();
+        rhi::RDevice& device = command_list.getDevice();
+        // 颜色格式与深度格式取自当前渲染作用域的附件(与管线变体一致).
+        ensureSceneMeshCache(device, cache, rhi::EFormat::BGRA8_UNorm, rhi::EFormat::D32_Float);
+        const std::shared_ptr<rhi::RPipeline>& pipeline =
+            variant == ESceneMeshVariant::DepthOnly ? cache.DepthOnly
+            : variant == ESceneMeshVariant::Transparent ? cache.Transparent
+            : cache.Opaque;
+        if (!pipeline || !cache.Layout)
+            return;
+
+        command_list.bindPipeline(pipeline);
+
+        // 着色器按"四个行向量"读取矩阵(见 scene_mesh.vert.hlsl 里关于
+        // DXC 把 mul(M,v) 降级为 OpVectorTimesMatrix 的说明), 这里直接按行拷贝.
+        const infra::Matrix4x4 mvp = view_projection * packet.LocalToWorld;
+        std::array<std::byte, SceneMeshPushConstantSize> constants {};
+        std::memcpy(constants.data(), mvp.M.data(), sizeof(float) * 16);
+        std::memcpy(constants.data() + sizeof(float) * 16,
+            packet.LocalToWorld.M.data(), sizeof(float) * 16);
+        command_list.pushConstants(cache.Layout, rhi::EShaderStage_t::Vertex, 0, constants);
     }
 
     if (!packet.VertexBindings.empty())
@@ -168,11 +366,12 @@ void recordDrawPacket(rhi::RCommandList& command_list, const DrawPacket& packet)
     }
 }
 
-/** @brief 录制一个已按 SortKey 排序的绘制列表. */
-void recordDrawList(rhi::RCommandList& command_list, const DrawList& draw_list)
+/** @brief 录制一个已按 SortKey 排序的绘制列表(默认材质变体 + 相机矩阵). */
+void recordDrawList(rhi::RCommandList& command_list, const DrawList& draw_list,
+    ESceneMeshVariant variant, const infra::Matrix4x4& view_projection)
 {
     for (const DrawPacket& packet : draw_list)
-        recordDrawPacket(command_list, packet);
+        recordDrawPacket(command_list, packet, variant, view_projection);
 }
 
 /**
@@ -617,7 +816,7 @@ void recordUIDrawLists(
 
 } // namespace
 
-/** @brief 释放 UI 绘制缓存(管线/布局/缓冲/纹理), 需在 RHI 设备销毁前调用. */
+/** @brief 释放 UI 绘制缓存(管线/布局/缓冲/纹理)与默认网格材质, 需在 RHI 设备销毁前调用. */
 void releaseUIDrawCache() noexcept
 {
     UIDrawCache& Cache = uiDrawCache();
@@ -631,6 +830,13 @@ void releaseUIDrawCache() noexcept
     Cache.StagingBuffer.reset();
     Cache.StagingCapacity = 0;
     Cache.Ready = false;
+
+    SceneMeshCache& Scene = sceneMeshCache();
+    Scene.DepthOnly.reset();
+    Scene.Opaque.reset();
+    Scene.Transparent.reset();
+    Scene.Layout.reset();
+    Scene.Ready = false;
 }
 
 // ============================================================================
@@ -647,10 +853,13 @@ void ShadowRenderPass::addPasses(rdg::RDGGraph& Graph, const RenderContext& Cont
         b.setType(rdg::ERDGPassType::Raster);
         b.setExecute([Context, shadow_atlas](rdg::RDGPassContext& ctx) {
             auto& command_list = ctx.getCommandList();
+            const rhi::RenderArea SceneRect = resolveSceneRect(Context.Submission,
+                Context.Width, Context.Height);
             beginDepthScope(command_list, Context.Width, Context.Height,
-                ctx.getViewShared(shadow_atlas));
+                ctx.getViewShared(shadow_atlas), &SceneRect);
             if (Context.Submission)
-                recordDrawList(command_list, Context.Submission->ShadowDraws);
+                recordDrawList(command_list, Context.Submission->ShadowDraws,
+                    ESceneMeshVariant::DepthOnly, Context.View.ViewProjection);
             // TODO: 逐光源上传阴影视角矩阵(ShadowDraws 已按灯光/级联排序).
             command_list.endRendering();
         });
@@ -668,11 +877,14 @@ void DepthPrePass::addPasses(rdg::RDGGraph& Graph, const RenderContext& Context)
         b.setType(rdg::ERDGPassType::Raster);
         b.setExecute([Context, depth](rdg::RDGPassContext& ctx) {
             auto& command_list = ctx.getCommandList();
+            const rhi::RenderArea SceneRect = resolveSceneRect(Context.Submission,
+                Context.Width, Context.Height);
             beginDepthScope(command_list, Context.Width, Context.Height,
-                ctx.getViewShared(depth));
+                ctx.getViewShared(depth), &SceneRect);
             // 深度预通道复用不透明绘制列表, 由深度-only 管线建立 Early-Z.
             if (Context.Submission)
-                recordDrawList(command_list, Context.Submission->OpaqueDraws);
+                recordDrawList(command_list, Context.Submission->OpaqueDraws,
+                    ESceneMeshVariant::DepthOnly, Context.View.ViewProjection);
             command_list.endRendering();
         });
     });
@@ -686,12 +898,15 @@ void OpaqueRenderPass::addPasses(rdg::RDGGraph& Graph, const RenderContext& Cont
         b.setType(rdg::ERDGPassType::Raster);
         b.setExecute([Context](rdg::RDGPassContext& ctx) {
             auto& command_list = ctx.getCommandList();
+            const rhi::RenderArea SceneRect = resolveSceneRect(Context.Submission,
+                Context.Width, Context.Height);
             beginColorScope(command_list, Context.Width, Context.Height,
                 ctx.getViewShared(Context.Backbuffer), rhi::ELoadOp::Clear,
-                ctx.getViewShared(Context.FrameResources.SceneDepth));
+                ctx.getViewShared(Context.FrameResources.SceneDepth), &SceneRect);
             // 优先消费预处理的交换包; 无 Submission 时回退到 collectVisible(需 MaterialSystem 解析管线).
             if (Context.Submission)
-                recordDrawList(command_list, Context.Submission->OpaqueDraws);
+                recordDrawList(command_list, Context.Submission->OpaqueDraws,
+                    ESceneMeshVariant::Opaque, Context.View.ViewProjection);
             command_list.endRendering();
         });
     });
@@ -705,11 +920,15 @@ void TransparentRenderPass::addPasses(rdg::RDGGraph& Graph, const RenderContext&
         b.setType(rdg::ERDGPassType::Raster);
         b.setExecute([Context](rdg::RDGPassContext& ctx) {
             auto& command_list = ctx.getCommandList();
+            const rhi::RenderArea SceneRect = resolveSceneRect(Context.Submission,
+                Context.Width, Context.Height);
             beginColorScope(command_list, Context.Width, Context.Height,
-                ctx.getViewShared(Context.Backbuffer), rhi::ELoadOp::Load);
+                ctx.getViewShared(Context.Backbuffer), rhi::ELoadOp::Load,
+                ctx.getViewShared(Context.FrameResources.SceneDepth), &SceneRect);
             // 透明列表已按深度从后向前排序; 只读深度不写深度.
             if (Context.Submission)
-                recordDrawList(command_list, Context.Submission->TransparentDraws);
+                recordDrawList(command_list, Context.Submission->TransparentDraws,
+                    ESceneMeshVariant::Transparent, Context.View.ViewProjection);
             command_list.endRendering();
         });
     });

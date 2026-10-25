@@ -889,6 +889,12 @@ void VulkanCommandList::endRendering()
     InsideRendering = false;
     RenderingUsesSecondaryCommandBuffers = false;
     ActiveRenderingSignature = {};
+    // 管线只在某个渲染作用域内与其附件兼容, 不能跨作用域复用.
+    // 结束作用域时清空绑定, 使下一次 beginRendering 的"已绑管线兼容性"检查
+    // 针对的是本作用域真正会绑定的管线, 而不是上一个 Pass 残留的那条.
+    BoundGraphicsPipeline.reset();
+    BoundComputePipeline.reset();
+    BoundRayTracingPipeline.reset();
 }
 
 void VulkanCommandList::beginRenderingLegacy(const RenderingInfo& Info)
@@ -2174,9 +2180,7 @@ void VulkanCommandList::validateRenderingCompatibility(const RPipeline& Pipeline
 
 void VulkanCommandList::validateDynamicStates(const RPipeline& Pipeline) const
 {
-    // 直接对底层整数取反, 规避 Flags::operator~ 在部分编译器下的异常行为.
-    const EDynamicStates Missing =
-        Pipeline.getDynamicStates() & EDynamicStates { ~InitializedDynamicStates.Value };
+    const EDynamicStates Missing = Pipeline.getDynamicStates() & ~InitializedDynamicStates;
     if (Missing)
         throw std::logic_error("Draw requires every dynamic pipeline state to be initialized.");
 }

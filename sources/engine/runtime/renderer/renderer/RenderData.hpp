@@ -101,6 +101,17 @@ struct DrawPacket
     /** 顶点工厂句柄: 决定顶点语义/顶点着色器变体. */
     ::renderer::VertexFactoryHandle VertexFactory;
 
+    /**
+     * @brief 对象的世界矩阵(由 RenderProxy 头信息带入).
+     *
+     * 录制时为默认材质推导 MVP 用: MVP = ViewProjection * LocalToWorld.
+     * 已经由材质系统解析好管线/BindGroup 的 Packet 可以忽略该字段.
+     */
+    infra::Matrix4x4 LocalToWorld = infra::Matrix4x4::Identity();
+
+    /** 材质表索引(由 RenderProxy 头信息带入, 供材质系统解析管线). */
+    uint32_t MaterialId { 0 };
+
     /** 可执行管线(不可变, 由 PipelineManager 缓存). */
     std::shared_ptr<rhi::RPipeline> Pipeline;
     /** 管线布局(与 BindGroups 的 ABI 对应). */
@@ -355,6 +366,14 @@ struct RenderFrameSubmission
      */
     std::vector<ui::UISampledTextureUpload> TextureUploads;
 
+    /**
+     * @brief 3D 场景在最终画面中的像素矩形(编辑器视口区域).
+     *
+     * 3D Pass 只在这个矩形内设置 viewport/scissor, 从而把场景"画进视口面板";
+     * Width 或 Height 为 0 表示整屏(非编辑器/无面板的独立运行模式).
+     */
+    rhi::RenderArea SceneViewport {};
+
     LightList Lights;
     FluidList Fluids;
     GasVolumeList Gases;
@@ -372,6 +391,7 @@ struct RenderFrameSubmission
         UIBatches.clear();
         UIDrawLists.clear();
         TextureUploads.clear();
+        SceneViewport = {};
         Lights.clear();
         Fluids.clear();
         Gases.clear();

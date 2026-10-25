@@ -1,518 +1,701 @@
 #include "GenericApplication.hpp"
 #include "ApplicationCommandLine.hpp"
 #include "CommandLineParser.hpp"
-#include "CanvasPanel.hpp"
-#include "TextWidget.hpp"
 #include "FlexibleSlot.hpp"
 #include "HorizontalBox.hpp"
+#include "TextWidget.hpp"
 #include "VerticalBox.hpp"
-#include "ImageWidget.hpp"
-#include "ImageImporter.hpp"
-#include "Style.hpp"
 #include "ModuleLoader.hpp"
 #include "RTGlobal.hpp"
 #include "game/Game.hpp"
 #include <renderer/RendererServer.hpp>
 #include <SDL3/SDL_main.h>
 #include <algorithm>
-#include <cstddef>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <exception>
 #include <iostream>
 #include <memory>
+#include <span>
 #include <string>
 #include <utility>
+#include <vector>
 
+/**
+ * ============================================================================
+ *  基础编辑器示例
+ * ============================================================================
+ *
+ *  本文件是引擎的组合根 + 一个最小可用的编辑器界面:
+ *
+ *      菜单栏
+ *      ├── 大纲(Outliner)   │  Viewport(3D 场景)   │  检查器(Inspector)
+ *      状态栏
+ *
+ *  [Viewport 怎么画]
+ *  引擎的 3D Pass(Shadow/DepthPre/Opaque/Transparent)只在一个像素矩形内设置
+ *  viewport + scissor, 该矩形由 UI 中"透明的场景占位控件"的绝对矩形每帧喂给
+ *  RendererServer::setSceneViewport(). 因此场景是直接渲染进交换链的编辑器面板区域,
+ *  不需要额外的离屏目标; UI 在其四周画出面板外框, 中间留空即可透出场景.
+ *
+ *  [场景从哪来]
+ *  游戏侧(RenderProxyWorld)提交 RenderProxy -> 帧交换包(DrawPacket) -> 3D Pass 录制.
+ *  材质系统尚未接入, 因此渲染器提供"默认网格材质"回落: 用 LocalToWorld 与相机
+ *  ViewProjection 推导 MVP, 通过 push constant 传入, 保证几何一定能被画出来.
+ * ============================================================================
+ */
 namespace
 {
-    constexpr ui::Color Red{0.86f, 0.20f, 0.22f, 1};
-    constexpr ui::Color Green{0.20f, 0.72f, 0.38f, 1};
-    constexpr ui::Color Blue{0.24f, 0.51f, 0.88f, 1};
-    constexpr ui::Color Yellow{0.92f, 0.74f, 0.22f, 1};
-    constexpr ui::Color Purple{0.56f, 0.34f, 0.78f, 1};
-    constexpr ui::Color Cyan{0.20f, 0.70f, 0.76f, 1};
-    constexpr ui::Color Orange{0.92f, 0.52f, 0.18f, 1};
-    constexpr ui::Color Gray{0.42f, 0.46f, 0.50f, 1};
-    constexpr ui::Color Border{0.08f, 0.08f, 0.08f, 1};
+// ============================================================================
+//  调色板(编辑器配色)
+// ============================================================================
+constexpr ui::Color PanelBackground{0.13f, 0.14f, 0.16f, 1.0f};
+constexpr ui::Color PanelHeaderBackground{0.17f, 0.18f, 0.21f, 1.0f};
+constexpr ui::Color PanelBorder{0.26f, 0.28f, 0.32f, 1.0f};
+constexpr ui::Color TextPrimary{0.90f, 0.91f, 0.93f, 1.0f};
+constexpr ui::Color TextMuted{0.58f, 0.61f, 0.66f, 1.0f};
+constexpr ui::Color TextAccent{0.40f, 0.78f, 0.92f, 1.0f};
+constexpr ui::Color TextValue{0.70f, 0.86f, 0.55f, 1.0f};
 
-    // 按系数提亮颜色, 用于选中态高亮.
-    ui::Color Brighten(ui::Color Color, float Factor)
+// ============================================================================
+//  数学辅助(行主序矩阵 + 列向量约定, 与 HLSL 的 mul(M, v) 一致)
+// ============================================================================
+
+/** @brief 平移矩阵. */
+[[nodiscard]] infra::Matrix4x4 makeTranslation(infra::Vec3f Translation)
+{
+    infra::Matrix4x4 Result = infra::Matrix4x4::Identity();
+    Result[0][3] = Translation.x();
+    Result[1][3] = Translation.y();
+    Result[2][3] = Translation.z();
+    return Result;
+}
+
+/** @brief 绕 Y 轴旋转(弧度). */
+[[nodiscard]] infra::Matrix4x4 makeRotationY(float Radians)
+{
+    const float C = std::cos(Radians);
+    const float S = std::sin(Radians);
+    infra::Matrix4x4 Result = infra::Matrix4x4::Identity();
+    Result[0][0] = C;
+    Result[0][2] = S;
+    Result[2][0] = -S;
+    Result[2][2] = C;
+    return Result;
+}
+
+/** @brief 绕 X 轴旋转(弧度). */
+[[nodiscard]] infra::Matrix4x4 makeRotationX(float Radians)
+{
+    const float C = std::cos(Radians);
+    const float S = std::sin(Radians);
+    infra::Matrix4x4 Result = infra::Matrix4x4::Identity();
+    Result[1][1] = C;
+    Result[1][2] = -S;
+    Result[2][1] = S;
+    Result[2][2] = C;
+    return Result;
+}
+
+/** @brief 等比缩放矩阵. */
+[[nodiscard]] infra::Matrix4x4 makeScale(float UniformScale)
+{
+    infra::Matrix4x4 Result = infra::Matrix4x4::Identity();
+    Result[0][0] = UniformScale;
+    Result[1][1] = UniformScale;
+    Result[2][2] = UniformScale;
+    return Result;
+}
+
+/**
+ * @brief 构造 Vulkan 约定的透视投影矩阵.
+ *
+ * Vulkan 的裁剪空间为 Y 向下、深度 0..1, 因此 Y 轴取负、深度按 0..1 映射
+ * (与 OpenGL 的 -1..1 不同).
+ */
+[[nodiscard]] infra::Matrix4x4 makePerspective(float FovYRadians, float Aspect, float Near, float Far)
+{
+    const float F = 1.0f / std::tan(FovYRadians * 0.5f);
+    infra::Matrix4x4 Result {};
+    Result[0][0] = F / std::max(Aspect, 0.0001f);
+    Result[1][1] = -F;
+    Result[2][2] = Far / (Near - Far);
+    Result[2][3] = (Far * Near) / (Near - Far);
+    Result[3][2] = -1.0f;
+    return Result;
+}
+
+/** @brief 构造右手系视图矩阵(相机看向 Target). */
+[[nodiscard]] infra::Matrix4x4 makeLookAt(infra::Vec3f Eye, infra::Vec3f Target, infra::Vec3f Up)
+{
+    const infra::Vec3f Backward = (Eye - Target).normalized({0.0f, 0.0f, 1.0f});
+    const infra::Vec3f Right = infra::Vec3f::cross(Up, Backward).normalized({1.0f, 0.0f, 0.0f});
+    const infra::Vec3f CameraUp = infra::Vec3f::cross(Backward, Right);
+
+    infra::Matrix4x4 Result = infra::Matrix4x4::Identity();
+    for (std::size_t Column = 0; Column < 3; ++Column)
     {
-        return {std::min(Color.R * Factor, 1.0f), std::min(Color.G * Factor, 1.0f),
-                std::min(Color.B * Factor, 1.0f), Color.A};
+        Result[0][Column] = Right[Column];
+        Result[1][Column] = CameraUp[Column];
+        Result[2][Column] = Backward[Column];
+    }
+    Result[0][3] = -Right.dot(Eye);
+    Result[1][3] = -CameraUp.dot(Eye);
+    Result[2][3] = -Backward.dot(Eye);
+    return Result;
+}
+
+// ============================================================================
+//  编辑器控件
+// ============================================================================
+
+/**
+ * @brief 带背景与边框的面板: 内部只放一个铺满的子控件.
+ *
+ * 弹性布局的容器本身不绘制, 因此编辑器的每一块区域都用它来"画底色 + 分隔线".
+ */
+class EditorPanel final : public ui::PanelWidget
+{
+public:
+    EditorPanel(std::unique_ptr<ui::Widget> Content, ui::Color Fill, ui::Color BorderColor)
+        : Fill(Fill), BorderColor(BorderColor)
+    {
+        auto& ContentSlot = addSlot(std::move(Content));
+        ui::Layout Stretch;
+        Stretch.setPreset(ui::LayoutPreset::StretchAll);
+        ContentSlot.setLayout(Stretch);
     }
 
-    // 固定尺寸的彩色盒子: 参与 flex 测量(返回固定尺寸), 并绘制填充 + 描边.
-    class SizedBox final : public ui::LeafWidget
+protected:
+    void onPaint(ui::PaintContext& Context) const override
     {
-    public:
-        SizedBox(ui::Vector2 Size, ui::Color Fill, ui::Color Stroke, float Thickness = 1.5f)
-            : Size(Size), Fill(Fill), Stroke(Stroke), Thickness(Thickness) {}
+        const ui::UIRect Bounds = getBounds();
+        const ui::UIRect Local{0, 0, Bounds.Width, Bounds.Height};
+        Context.fillRect(Local, Fill);
+        Context.drawRect(Local, BorderColor, 1.0f);
+    }
 
-    protected:
-        ui::Vector2 onMeasure(ui::Vector2) const override { return Size; }
+private:
+    ui::Color Fill;
+    ui::Color BorderColor;
+};
 
-        void onPaint(ui::PaintContext& Context) const override
-        {
-            const auto Bounds = getBounds();
-            Context.fillRect({0, 0, Bounds.Width, Bounds.Height}, Fill);
-            Context.drawRect({0, 0, Bounds.Width, Bounds.Height}, Stroke, Thickness);
-        }
+/**
+ * @brief 3D 场景占位控件: 自身不绘制任何内容.
+ *
+ * 它的绝对矩形就是"引擎 3D Pass 允许光栅化的区域"; 因为这一块没有被 UI 覆盖,
+ * 下层已经渲染好的 3D 场景就会直接透出来.
+ */
+class SceneViewportWidget final : public ui::LeafWidget
+{
+protected:
+    ui::Vector2 onMeasure(ui::Vector2) const override { return {0, 0}; }
+    void onPaint(ui::PaintContext&) const override {}
+};
 
-    private:
-        ui::Vector2 Size;
-        ui::Color Fill;
-        ui::Color Stroke;
-        float Thickness;
-    };
-
-    // 可交互的带标签盒子: 悬停时高亮边框, 点击时切换选中并打印命中的盒子,
-    // 用于验证 Z 序命中(重叠处应命中 Z 更高者).
-    class LabeledBox final : public ui::PanelWidget
+/** @brief 取控件的绝对矩形(逐级累加父控件的位置). */
+[[nodiscard]] ui::UIRect absoluteBounds(const ui::Widget& Target)
+{
+    ui::UIRect Result = Target.getBounds();
+    const ui::Slot* ParentSlot = Target.getSlot();
+    while (ParentSlot)
     {
-    public:
-        LabeledBox(std::string Tag, ui::Color Fill, std::unique_ptr<ui::TextWidget> Label)
-            : Tag(std::move(Tag)), Fill(Fill)
-        {
-            setAcceptEvents(true);
-            auto& TextSlot = addSlot(std::move(Label));
-            ui::Layout Center;
-            Center.setPreset(ui::LayoutPreset::Center);
-            TextSlot.setLayout(Center);
-            TextSlot.setAutoSize(true);
-        }
-
-    protected:
-        void onPaint(ui::PaintContext& Context) const override
-        {
-            const auto Bounds = getBounds();
-            const ui::Color CurrentFill = Selected ? Brighten(Fill, 1.35f) : Fill;
-            const ui::Color CurrentBorder = (Selected || Hovered) ? ui::Color{1, 1, 1, 1} : Border;
-            const float Thickness = (Selected || Hovered) ? 3.0f : 2.0f;
-            Context.fillRect({0, 0, Bounds.Width, Bounds.Height}, CurrentFill);
-            Context.drawRect({0, 0, Bounds.Width, Bounds.Height}, CurrentBorder, Thickness);
-        }
-
-        ui::EventReply onMouseEnter(const ui::MouseMoveEvent&, ui::UIPoint) override
-        {
-            Hovered = true;
-            invalidate(ui::EInvalidationReason::Paint);
-            return ui::EventReply::Handled;
-        }
-
-        ui::EventReply onMouseLeave(const ui::MouseMoveEvent&, ui::UIPoint) override
-        {
-            Hovered = false;
-            invalidate(ui::EInvalidationReason::Paint);
-            return ui::EventReply::Handled;
-        }
-
-        ui::EventReply onMouseButtonClicked(const ui::MouseButtonEvent&, ui::UIPoint) override
-        {
-            Selected = !Selected;
-            invalidate(ui::EInvalidationReason::Paint);
-            std::cout << "Clicked box: " << Tag << " (selected=" << (Selected ? "true" : "false") << ")\n";
-            return ui::EventReply::Handled;
-        }
-
-    private:
-        std::string Tag;
-        ui::Color Fill;
-        mutable bool Hovered{};
-        mutable bool Selected{};
-    };
+        const ui::Widget* Parent = ParentSlot->getParent();
+        if (!Parent)
+            break;
+        const ui::UIRect ParentBounds = Parent->getBounds();
+        Result.X += ParentBounds.X;
+        Result.Y += ParentBounds.Y;
+        ParentSlot = Parent->getSlot();
+    }
+    return Result;
 }
+
+// ============================================================================
+//  演示场景: 网格构造
+// ============================================================================
+
+/** @brief 场景网格顶点: Position(12B) + Normal(12B) + Color(16B) = 40B. */
+struct SceneVertex
+{
+    float Position[3];
+    float Normal[3];
+    float Color[4];
+};
+
+/** @brief 由源数据创建 host-visible 顶点/索引缓冲(小场景直接上传, 无需 staging). */
+std::shared_ptr<rhi::RBuffer> createVertexBuffer(rhi::RDevice& Device,
+    std::span<const SceneVertex> Data, const char* DebugName)
+{
+    rhi::RBuffer::Descriptor_t Desc;
+    Desc.Size = Data.size_bytes();
+    Desc.Usage = rhi::EBufferUsage::Vertex;
+    Desc.MemoryProperty = rhi::EMemoryProperty::HostVisible | rhi::EMemoryProperty::HostCoherent;
+    Desc.DebugName = DebugName;
+    auto Buffer = Device.createBuffer(Desc);
+    if (auto* Dst = static_cast<std::byte*>(Buffer->map(0, Data.size_bytes())))
+    {
+        std::memcpy(Dst, Data.data(), Data.size_bytes());
+        Buffer->unmap();
+    }
+    return Buffer;
+}
+
+/** @brief 创建索引缓冲. */
+std::shared_ptr<rhi::RBuffer> createIndexBuffer(rhi::RDevice& Device,
+    std::span<const std::uint32_t> Data, const char* DebugName)
+{
+    rhi::RBuffer::Descriptor_t Desc;
+    Desc.Size = Data.size_bytes();
+    Desc.Usage = rhi::EBufferUsage::Index;
+    Desc.MemoryProperty = rhi::EMemoryProperty::HostVisible | rhi::EMemoryProperty::HostCoherent;
+    Desc.DebugName = DebugName;
+    auto Buffer = Device.createBuffer(Desc);
+    if (auto* Dst = static_cast<std::byte*>(Buffer->map(0, Data.size_bytes())))
+    {
+        std::memcpy(Dst, Data.data(), Data.size_bytes());
+        Buffer->unmap();
+    }
+    return Buffer;
+}
+
+/** @brief 构造一个以原点为中心、边长 1 的立方体(24 顶点 / 36 索引, 逐面法线与逐面颜色). */
+runtime::renderer::StaticMesh makeUnitBoxMesh(rhi::RDevice& Device,
+    const std::array<ui::Color, 6>& FaceColors)
+{
+    constexpr float H = 0.5f;
+    // 六个面: +X, -X, +Y, -Y, +Z, -Z; 每个面 4 个角点(逆时针).
+    const std::array<std::array<float, 3>, 6> Normals {{
+        { 1, 0, 0 }, { -1, 0, 0 }, { 0, 1, 0 }, { 0, -1, 0 }, { 0, 0, 1 }, { 0, 0, -1 } }};
+    const std::array<std::array<std::array<float, 3>, 4>, 6> Corners {{
+        {{ { H,-H,-H }, { H,-H, H }, { H, H, H }, { H, H,-H } }},
+        {{ {-H,-H, H }, {-H,-H,-H }, {-H, H,-H }, {-H, H, H } }},
+        {{ {-H, H,-H }, { H, H,-H }, { H, H, H }, {-H, H, H } }},
+        {{ {-H,-H, H }, { H,-H, H }, { H,-H,-H }, {-H,-H,-H } }},
+        {{ {-H,-H, H }, {-H, H, H }, { H, H, H }, { H,-H, H } }},
+        {{ { H,-H,-H }, { H, H,-H }, {-H, H,-H }, {-H,-H,-H } }} }};
+
+    std::vector<SceneVertex> Vertices;
+    std::vector<std::uint32_t> Indices;
+    Vertices.reserve(24);
+    Indices.reserve(36);
+    for (std::size_t Face = 0; Face < 6; ++Face)
+    {
+        const auto Base = static_cast<std::uint32_t>(Vertices.size());
+        for (std::size_t Corner = 0; Corner < 4; ++Corner)
+        {
+            SceneVertex Vertex {};
+            std::memcpy(Vertex.Position, Corners[Face][Corner].data(), sizeof(float) * 3);
+            std::memcpy(Vertex.Normal, Normals[Face].data(), sizeof(float) * 3);
+            const ui::Color& Color = FaceColors[Face];
+            Vertex.Color[0] = Color.R;
+            Vertex.Color[1] = Color.G;
+            Vertex.Color[2] = Color.B;
+            Vertex.Color[3] = Color.A;
+            Vertices.push_back(Vertex);
+        }
+        Indices.insert(Indices.end(), { Base + 0, Base + 1, Base + 2, Base + 0, Base + 2, Base + 3 });
+    }
+
+    runtime::renderer::StaticMesh Mesh;
+    Mesh.VertexBuffer = createVertexBuffer(Device, Vertices, "EditorSceneBoxVB");
+    Mesh.IndexBuffer = createIndexBuffer(Device, Indices, "EditorSceneBoxIB");
+    Mesh.IndexFormat = rhi::EIndexFormat::UInt32;
+    Mesh.IndexCount = static_cast<std::uint32_t>(Indices.size());
+    Mesh.BoundsRadius = 0.866f;
+    return Mesh;
+}
+
+/** @brief 构造一块水平地面(y = Height, 覆盖 ±HalfExtent). */
+runtime::renderer::StaticMesh makeGroundMesh(rhi::RDevice& Device, float Height, float HalfExtent)
+{
+    const std::array<SceneVertex, 4> Vertices {{
+        { { -HalfExtent, Height, -HalfExtent }, { 0, 1, 0 }, { 0.20f, 0.21f, 0.24f, 1.0f } },
+        { { -HalfExtent, Height,  HalfExtent }, { 0, 1, 0 }, { 0.20f, 0.21f, 0.24f, 1.0f } },
+        { {  HalfExtent, Height,  HalfExtent }, { 0, 1, 0 }, { 0.20f, 0.21f, 0.24f, 1.0f } },
+        { {  HalfExtent, Height, -HalfExtent }, { 0, 1, 0 }, { 0.20f, 0.21f, 0.24f, 1.0f } } }};
+    const std::array<std::uint32_t, 6> Indices {{ 0, 1, 2, 0, 2, 3 }};
+
+    runtime::renderer::StaticMesh Mesh;
+    Mesh.VertexBuffer = createVertexBuffer(Device, Vertices, "EditorSceneGroundVB");
+    Mesh.IndexBuffer = createIndexBuffer(Device, Indices, "EditorSceneGroundIB");
+    Mesh.IndexFormat = rhi::EIndexFormat::UInt32;
+    Mesh.IndexCount = static_cast<std::uint32_t>(Indices.size());
+    Mesh.BoundsRadius = HalfExtent;
+    return Mesh;
+}
+
+// ============================================================================
+//  演示场景: 代理注册与逐帧动画
+// ============================================================================
+
+/** @brief 场景中的一个可动画物体. */
+struct SceneObject
+{
+    std::uint32_t ProxyIndex { 0 };
+    float Radius { 0.0f };
+    float Height { 0.0f };
+    float SpinSpeed { 0.0f };
+    float OrbitSpeed { 0.0f };
+    float Phase { 0.0f };
+    float Scale { 1.0f };
+    float Tilt { 0.0f };
+};
+
+/** @brief 演示场景: 地面 + 若干绕中心公转/自转的彩色立方体. */
+struct DemoScene
+{
+    std::vector<SceneObject> Objects;
+    float Elapsed { 0.0f };
+};
+
+/** @brief 把一个静态网格注册成不透明网格代理, 返回其代理索引. */
+std::uint32_t addMeshProxy(runtime::renderer::RendererServer& Renderer,
+    const std::shared_ptr<runtime::renderer::StaticMesh>& Mesh,
+    const infra::Matrix4x4& Transform, std::uint32_t StableOrder, float BoundsRadius)
+{
+    runtime::renderer::MeshRenderProxy Proxy;
+    Proxy.Header.EntityId = StableOrder + 1;
+    Proxy.Header.Kind = runtime::renderer::ERenderProxyKind::OpaqueMesh;
+    Proxy.Header.MaterialId = 0;
+    Proxy.Header.LocalToWorld = Transform;
+    Proxy.Header.BoundsCenterWS = { 0.0f, 0.0f, 0.0f };
+    Proxy.Header.BoundsRadius = BoundsRadius;
+    Proxy.Header.StableOrder = StableOrder;
+    Proxy.Mesh = Mesh;
+    Proxy.CastShadow = false;
+    return Renderer.getRenderProxyWorld().addProxy(std::move(Proxy));
+}
+
+/** @brief 构建演示场景(需要渲染器已初始化, 因为要创建 GPU 缓冲). */
+DemoScene createDemoScene(runtime::renderer::RendererServer& Renderer)
+{
+    DemoScene Scene;
+    const std::shared_ptr<rhi::RDevice> Device = Renderer.getDevice();
+    if (!Device)
+        return Scene;
+
+    // 地面: 一块深色地板, 让立方体有"落地"的参照.
+    const auto Ground = std::make_shared<runtime::renderer::StaticMesh>(
+        makeGroundMesh(*Device, -1.0f, 9.0f));
+    (void)addMeshProxy(Renderer, Ground, infra::Matrix4x4::Identity(), 0, 9.0f);
+
+    // 三个不同颜色的立方体, 各自公转 + 自转, 用于证明场景是逐帧在跑的.
+    // 每个立方体六个面用略有差异的同色系, 让立体感在光照下更清楚.
+    const std::array<std::array<ui::Color, 6>, 3> Palettes {{
+        {{ ui::Color{0.88f,0.30f,0.30f,1}, ui::Color{0.70f,0.22f,0.24f,1},
+           ui::Color{0.96f,0.42f,0.42f,1}, ui::Color{0.55f,0.18f,0.20f,1},
+           ui::Color{0.92f,0.36f,0.36f,1}, ui::Color{0.62f,0.20f,0.22f,1} }},
+        {{ ui::Color{0.26f,0.72f,0.42f,1}, ui::Color{0.20f,0.58f,0.34f,1},
+           ui::Color{0.34f,0.84f,0.50f,1}, ui::Color{0.16f,0.46f,0.28f,1},
+           ui::Color{0.30f,0.78f,0.46f,1}, ui::Color{0.18f,0.52f,0.30f,1} }},
+        {{ ui::Color{0.30f,0.52f,0.90f,1}, ui::Color{0.24f,0.42f,0.74f,1},
+           ui::Color{0.40f,0.62f,0.98f,1}, ui::Color{0.20f,0.34f,0.60f,1},
+           ui::Color{0.34f,0.56f,0.94f,1}, ui::Color{0.22f,0.38f,0.66f,1} }},
+    }};
+    for (std::size_t Index = 0; Index < Palettes.size(); ++Index)
+    {
+        const auto Box = std::make_shared<runtime::renderer::StaticMesh>(
+            makeUnitBoxMesh(*Device, Palettes[Index]));
+        SceneObject Object;
+        Object.Radius = 2.1f;
+        Object.Height = -0.55f;
+        Object.SpinSpeed = 0.9f + 0.35f * static_cast<float>(Index);
+        Object.OrbitSpeed = 0.35f + 0.12f * static_cast<float>(Index);
+        Object.Phase = 6.2831853f * static_cast<float>(Index) / static_cast<float>(Palettes.size());
+        Object.Scale = 1.15f;
+        Object.Tilt = 0.15f * static_cast<float>(Index);
+        Object.ProxyIndex = addMeshProxy(Renderer, Box, infra::Matrix4x4::Identity(),
+            static_cast<std::uint32_t>(Index + 1), 1.0f);
+        Scene.Objects.push_back(Object);
+    }
+    return Scene;
+}
+
+/** @brief 推进演示场景的动画: 立方体绕中心公转并自转. */
+void tickDemoScene(DemoScene& Scene, runtime::renderer::RendererServer& Renderer, float DeltaSeconds)
+{
+    Scene.Elapsed += DeltaSeconds;
+    for (const SceneObject& Object : Scene.Objects)
+    {
+        const float Orbit = Object.Phase + Scene.Elapsed * Object.OrbitSpeed;
+        const infra::Vec3f Position {
+            std::cos(Orbit) * Object.Radius, Object.Height, std::sin(Orbit) * Object.Radius };
+        const infra::Matrix4x4 Transform =
+            makeTranslation(Position) * makeRotationY(Scene.Elapsed * Object.SpinSpeed)
+            * makeRotationX(Object.Tilt) * makeScale(Object.Scale);
+        Renderer.getRenderProxyWorld().updateTransform(Object.ProxyIndex, Transform);
+    }
+}
+
+// ============================================================================
+//  编辑器界面构建
+// ============================================================================
+
+/** @brief 一行的两个文本: 左键名 + 右值. */
+std::unique_ptr<ui::Widget> makePropertyRow(ui::GenericApplication& App, const char32_t* Key,
+    const char32_t* Value)
+{
+    auto Row = std::make_unique<ui::HorizontalBox>();
+    Row->setSpacing(6);
+    auto& KeySlot = Row->addChild(App.createTextWidget(App.encodeText(Key), 12, 0, TextMuted));
+    KeySlot.setFlexBasis(78);
+    KeySlot.setAlignSelf(ui::ECrossAxisAlignment::Center);
+    auto& ValueSlot = Row->addChild(App.createTextWidget(App.encodeText(Value), 12, 0, TextValue));
+    ValueSlot.setFlexGrow(1);
+    ValueSlot.setAlignSelf(ui::ECrossAxisAlignment::Center);
+    return Row;
+}
+
+/** @brief 面板标题条文本. */
+std::unique_ptr<ui::Widget> makeSectionTitle(ui::GenericApplication& App, const char32_t* Title)
+{
+    return App.createTextWidget(App.encodeText(Title), 13, 0, TextAccent);
+}
+} // namespace
 
 int main(int Argc, char** Argv)
 {
     try
     {
-        // 启动引擎子系统: 模块加载器 + 日志 + 引擎(先于 Editor 启动).
+        // ---- 1. 引擎子系统(日志/模块/游戏) ----
         ModuleLoader::self();
         GSeedEngine.preinitialize();
-        // 托管一个演示游戏: 引擎会在自己的 initialize/run/destroy 中驱动其生命周期.
         GSeedEngine.attachGame(game::createDemoGame());
         GSeedEngine.initialize();
 
         ui::ApplicationOptions Options;
-        ui::CommandLineParser Parser("Editor", "编辑器特性演示");
+        ui::CommandLineParser Parser("Editor", "基础编辑器示例(编辑器界面 + 游戏视口)");
         ui::registerApplicationOptions(Parser, Options);
-        const auto Result = Parser.parse(Argc, Argv, std::cout, std::cerr);
-        if (Result.ShouldExit)
-        {
-            return Result.ExitCode;
-        }
+        const auto ParseResult = Parser.parse(Argc, Argv, std::cout, std::cerr);
+        if (ParseResult.ShouldExit)
+            return ParseResult.ExitCode;
 
+        // ---- 2. 编辑器窗口(UI) ----
         auto& App = ui::GenericApplication::self();
         App.initialize(std::move(Options));
+        auto& Window = App.getMainWindow();
+        Window.setBackgroundColor(PanelBackground);
 
-        // 引擎 Vulkan 渲染器: 复用编辑器窗口, 走 RDG 多 Pass 渲染(3D + UI 合并).
-        // 把 Game 的场景渲染进一个 Viewport(由编辑器指定的相机 + 渲染目标).
+        // ---- 3. 引擎渲染器(复用编辑器窗口, 走 RDG 多 Pass) ----
         auto& Renderer = runtime::renderer::RendererServer::self();
         {
-            auto& NativeWindow = App.getMainWindow().getNativeWindow();
+            auto& NativeWindow = Window.getNativeWindow();
             // 非拥有 shared_ptr: 窗口生命周期由 GenericApplication 的 MainWindow 管理.
             ui::GenericWindowPointer WindowHandle(&NativeWindow, [](ui::IGenericWindow*) {});
             Renderer.initialize(rhi::ESupportedBackendAPI::Vulkan, WindowHandle);
         }
         if (!Renderer.isInitialized())
             throw std::runtime_error("Renderer initialization did not complete.");
+
+        // ---- 4. 演示场景(需要 GPU 就绪) ----
+        DemoScene Scene = createDemoScene(Renderer);
+        std::cout << "Editor scene: " << Renderer.getRenderProxyWorld().getProxyCount()
+                  << " proxies\n";
+
+        // ---- 5. 编辑器界面 ----
+        // 视口控件需要每帧取绝对矩形, 用裸指针交给帧回调(所有权仍在控件树里).
+        const SceneViewportWidget* ViewportWidget = nullptr;
         {
-            const ui::UISize Size = App.getMainWindow().getNativeWindow().getSize();
-            runtime::renderer::Viewport MainViewport;
-            MainViewport.Name = "MainViewport";
-            MainViewport.Target.Width = static_cast<uint32_t>(Size.Width);
-            MainViewport.Target.Height = static_cast<uint32_t>(Size.Height);
-            MainViewport.Width = MainViewport.Target.Width;
-            MainViewport.Height = MainViewport.Target.Height;
-            Renderer.setRenderViewport(MainViewport);
-        }
-
-        // 每帧回调: 把 UI 控件树产出的绘制列表提交给引擎 RHI, 再跑一帧 RDG 渲染.
-        App.setFrameHook([&]() {
-            auto* UI = dynamic_cast<ui::RHIUIRenderer*>(&App.getRenderer());
-            if (UI)
-            {
-                // 绘制列表与纹理脏区成对提交: 顶点走 UIRenderPass, 像素走 staging→copy.
-                Renderer.submitUIDrawLists(UI->getDrawLists(), UI->collectTextureUploads());
-            }
-            (void)Renderer.renderFrameGraph();
-        });
-
-        {
-            auto& Window = App.getMainWindow();
-
-            // 调色板工具演示: 上层调用者填充颜色, 底层框架只提供 Palette/EColorRole 工具.
-            ui::Palette DemoPalette;
-            DemoPalette.setColor(ui::EColorRole::Window, {0.94f, 0.95f, 0.94f, 1});
-            DemoPalette.setColor(ui::EColorRole::Text, {1, 1, 1, 1});
-            DemoPalette.setColor(ui::EColorRole::Accent, Cyan);
-            Window.setBackgroundColor(DemoPalette.color(ui::EColorRole::Window));
-
-            // 窗口分辨率策略演示: Preset 档位 (F11 全屏; setResolution 会吸附到最近档位).
-            Window.setPresetResolutions({{1280, 720}, {1600, 900}, {1920, 1080}});
-            Window.setResizePolicy(ui::EWindowResizePolicy::Preset);
-            std::cout << "Window resize policy: Preset, " << Window.getPresetResolutions().size() << " tiers\n";
-
-            const auto MakeText = [&](const char32_t* Text, float Size, ui::Color Color)
-            {
-                return App.createTextWidget(App.encodeText(Text), Size, 0, Color);
-            };
-            const auto MakeBox = [&](ui::Vector2 Size, ui::Color Color)
-            {
-                return std::make_unique<SizedBox>(Size, Color, Border, 1.5f);
-            };
-
-            // 根布局: 一个垂直盒子, 逐段演示各类特性. 交叉轴 Stretch 让各段铺满宽度.
             auto Root = std::make_unique<ui::VerticalBox>();
-            Root->setSpacing(3);
+            Root->setSpacing(0);
 
-            // 标题.
+            // ---- 菜单栏 ----
             {
-                auto& Slot = Root->addChild(MakeText(U"Editor 特性演示: 一维 Flex 布局 (主轴/交叉轴/方向/间距/对齐/grow) + 锚点画布", 22, DemoPalette.color(ui::EColorRole::Text)));
-                Slot.setAlignSelf(ui::ECrossAxisAlignment::Center);
-                Slot.setMargin({16, 8, 16, 2});
-            }
+                auto Bar = std::make_unique<ui::HorizontalBox>();
+                Bar->setSpacing(14);
+                Bar->setCrossAxisAlignment(ui::ECrossAxisAlignment::Center);
+                auto& TitleSlot = Bar->addChild(
+                    App.createTextWidget("Prism Editor", 14, 0, TextPrimary));
+                TitleSlot.setMargin({10, 0, 0, 0});
+                TitleSlot.setAlignSelf(ui::ECrossAxisAlignment::Center);
+                for (const char32_t* Item : { U"File", U"Edit", U"View", U"Window", U"Help" })
+                    Bar->addChild(App.createTextWidget(App.encodeText(Item), 12, 0, TextMuted))
+                        .setAlignSelf(ui::ECrossAxisAlignment::Center);
+                auto& HintSlot = Bar->addChild(
+                    App.createTextWidget("  F11: fullscreen   Esc: quit", 11, 0, TextMuted));
+                HintSlot.setFlexGrow(1);
+                HintSlot.setAlignSelf(ui::ECrossAxisAlignment::Center);
 
-            // 1. 主轴对齐 justify-content: 六种模式各一行, 盒子在行内横向分布.
-            {
-                auto& Caption = Root->addChild(MakeText(U"1. 主轴对齐 justify-content (HorizontalBox)", 15, DemoPalette.color(ui::EColorRole::Accent)));
-                Caption.setMargin({16, 4, 16, 0});
-            }
-            const auto AddMainRow = [&](const char32_t* Name, ui::EMainAxisAlignment Mode)
-            {
-                auto Row = std::make_unique<ui::HorizontalBox>();
-                Row->setSpacing(8);
-                auto& Label = Row->addChild(MakeText(Name, 13, Gray));
-                Label.setFlexBasis(52);
-                Label.setAlignSelf(ui::ECrossAxisAlignment::Center);
-                auto Box = std::make_unique<ui::HorizontalBox>();
-                Box->setSpacing(5);
-                Box->setMainAxisAlignment(Mode);
-                Box->setCrossAxisAlignment(ui::ECrossAxisAlignment::Center);
-                Box->addChild(MakeBox({34, 16}, Red));
-                Box->addChild(MakeBox({46, 16}, Green));
-                Box->addChild(MakeBox({28, 16}, Blue));
-                auto& BoxSlot = Row->addChild(std::move(Box));
-                BoxSlot.setFlexGrow(1);
-                auto& RowSlot = Root->addChild(std::move(Row));
-                RowSlot.setMargin({16, 0, 16, 0});
-            };
-            AddMainRow(U"起点", ui::EMainAxisAlignment::Start);
-            AddMainRow(U"居中", ui::EMainAxisAlignment::Center);
-            AddMainRow(U"末尾", ui::EMainAxisAlignment::End);
-            AddMainRow(U"两端", ui::EMainAxisAlignment::SpaceBetween);
-            AddMainRow(U"环绕", ui::EMainAxisAlignment::SpaceAround);
-            AddMainRow(U"均分", ui::EMainAxisAlignment::SpaceEvenly);
-
-            // 2. 交叉轴对齐 align-items: 固定行高, 盒子高度不同, 观察其纵向摆放.
-            {
-                auto& Caption = Root->addChild(MakeText(U"2. 交叉轴对齐 align-items (行高固定 34)", 15, DemoPalette.color(ui::EColorRole::Accent)));
-                Caption.setMargin({16, 6, 16, 0});
-            }
-            const auto AddCrossRow = [&](const char32_t* Name, ui::ECrossAxisAlignment Mode)
-            {
-                auto Row = std::make_unique<ui::HorizontalBox>();
-                Row->setSpacing(10);
-                Row->setCrossAxisAlignment(Mode);
-                auto& Label = Row->addChild(MakeText(Name, 13, Gray));
-                Label.setFlexBasis(52);
-                Label.setAlignSelf(ui::ECrossAxisAlignment::Center);
-                Row->addChild(MakeBox({40, 10}, Red));
-                Row->addChild(MakeBox({40, 22}, Green));
-                Row->addChild(MakeBox({40, 32}, Blue));
-                auto& RowSlot = Root->addChild(std::move(Row));
-                RowSlot.setMargin({16, 0, 16, 0});
-                RowSlot.setFlexBasis(34);
-            };
-            AddCrossRow(U"起点", ui::ECrossAxisAlignment::Start);
-            AddCrossRow(U"居中", ui::ECrossAxisAlignment::Center);
-            AddCrossRow(U"末尾", ui::ECrossAxisAlignment::End);
-            AddCrossRow(U"拉伸", ui::ECrossAxisAlignment::Stretch);
-
-            // 3. flex-grow / 间距 / 反向 / 边距.
-            {
-                auto& Caption = Root->addChild(MakeText(U"3. flex-grow / 间距 / 反向 / 边距 / 收缩", 15, DemoPalette.color(ui::EColorRole::Accent)));
-                Caption.setMargin({16, 6, 16, 0});
-            }
-            // grow: 剩余宽度按 1:2 分配给两个盒子.
-            {
-                auto Row = std::make_unique<ui::HorizontalBox>();
-                Row->setSpacing(6);
-                Row->setCrossAxisAlignment(ui::ECrossAxisAlignment::Center);
-                auto& Label = Row->addChild(MakeText(U"grow", 13, Gray));
-                Label.setFlexBasis(52);
-                Label.setAlignSelf(ui::ECrossAxisAlignment::Center);
-                auto& G1 = Row->addChild(MakeBox({40, 22}, Purple));
-                G1.setFlexGrow(1);
-                auto& G2 = Row->addChild(MakeBox({40, 22}, Orange));
-                G2.setFlexGrow(2);
-                auto& RowSlot = Root->addChild(std::move(Row));
-                RowSlot.setMargin({16, 0, 16, 0});
-            }
-            // 间距: spacing=16.
-            {
-                auto Row = std::make_unique<ui::HorizontalBox>();
-                Row->setSpacing(16);
-                Row->setCrossAxisAlignment(ui::ECrossAxisAlignment::Center);
-                auto& Label = Row->addChild(MakeText(U"间距", 13, Gray));
-                Label.setFlexBasis(52);
-                Label.setAlignSelf(ui::ECrossAxisAlignment::Center);
-                Row->addChild(MakeBox({40, 22}, Red));
-                Row->addChild(MakeBox({40, 22}, Green));
-                Row->addChild(MakeBox({40, 22}, Blue));
-                auto& RowSlot = Root->addChild(std::move(Row));
-                RowSlot.setMargin({16, 0, 16, 0});
-            }
-            // 反向: RowReverse, 标签作为最后一个子项, 反向后落在最左侧.
-            {
-                auto Row = std::make_unique<ui::HorizontalBox>();
-                Row->setDirection(ui::EFlexDirection::RowReverse);
-                Row->setSpacing(6);
-                Row->setCrossAxisAlignment(ui::ECrossAxisAlignment::Center);
-                Row->addChild(MakeBox({36, 22}, Red));
-                Row->addChild(MakeBox({36, 22}, Green));
-                Row->addChild(MakeBox({36, 22}, Blue));
-                Row->addChild(MakeText(U"反向", 13, Gray));
-                auto& RowSlot = Root->addChild(std::move(Row));
-                RowSlot.setMargin({16, 0, 16, 0});
-            }
-            // 边距: 黄色盒子左右各加 18 的 margin.
-            {
-                auto Row = std::make_unique<ui::HorizontalBox>();
-                Row->setSpacing(6);
-                Row->setCrossAxisAlignment(ui::ECrossAxisAlignment::Center);
-                auto& Label = Row->addChild(MakeText(U"边距", 13, Gray));
-                Label.setFlexBasis(52);
-                Label.setAlignSelf(ui::ECrossAxisAlignment::Center);
-                auto& M = Row->addChild(MakeBox({40, 22}, Yellow));
-                M.setMargin({18, 0, 18, 0});
-                Row->addChild(MakeBox({40, 22}, Red));
-                auto& RowSlot = Root->addChild(std::move(Row));
-                RowSlot.setMargin({16, 0, 16, 0});
-            }
-            // 收缩 Shrink: 空间不足时按 flex-shrink 权重收缩(标签不参与收缩), 对比默认裁剪.
-            {
-                auto Row = std::make_unique<ui::HorizontalBox>();
-                Row->setSpacing(6);
-                Row->setOverflow(ui::EFlexOverflow::Shrink);
-                Row->setCrossAxisAlignment(ui::ECrossAxisAlignment::Center);
-                auto& Label = Row->addChild(MakeText(U"收缩", 13, Gray));
-                Label.setFlexBasis(52);
-                Label.setFlexShrink(0);
-                Label.setAlignSelf(ui::ECrossAxisAlignment::Center);
-                Row->addChild(MakeBox({220, 22}, Red));
-                Row->addChild(MakeBox({220, 22}, Green));
-                Row->addChild(MakeBox({220, 22}, Blue));
-                Row->addChild(MakeBox({220, 22}, Purple));
-                Row->addChild(MakeBox({220, 22}, Orange));
-                Row->addChild(MakeBox({220, 22}, Yellow));
-                auto& RowSlot = Root->addChild(std::move(Row));
-                RowSlot.setMargin({16, 0, 16, 0});
+                auto& Slot = Root->addChild(
+                    std::make_unique<EditorPanel>(std::move(Bar), PanelHeaderBackground, PanelBorder));
+                Slot.setFlexBasis(32);
             }
 
-            // 4. VerticalBox: 主轴沿 Y 的垂直布局.
+            // ---- 主体: 大纲 | 视口 | 检查器 ----
             {
-                auto& Caption = Root->addChild(MakeText(U"4. VerticalBox 垂直盒子 (间距 + 居中)", 15, DemoPalette.color(ui::EColorRole::Accent)));
-                Caption.setMargin({16, 6, 16, 0});
-            }
-            {
-                auto VBox = std::make_unique<ui::VerticalBox>();
-                VBox->setSpacing(6);
-                VBox->setCrossAxisAlignment(ui::ECrossAxisAlignment::Center);
-                VBox->addChild(MakeBox({120, 16}, Red));
-                VBox->addChild(MakeBox({160, 16}, Green));
-                VBox->addChild(MakeBox({90, 16}, Blue));
-                auto& RowSlot = Root->addChild(std::move(VBox));
-                RowSlot.setMargin({16, 0, 16, 4});
-                RowSlot.setFlexBasis(62);
-            }
+                auto Body = std::make_unique<ui::HorizontalBox>();
+                Body->setSpacing(0);
+                Body->setCrossAxisAlignment(ui::ECrossAxisAlignment::Stretch);
 
-            // 5. CanvasPanel: 锚点 / 位置 / 尺寸 / 对齐 / Z 序 / 旋转 / 透明度.
-            {
-                auto& Caption = Root->addChild(MakeText(U"5. CanvasPanel 锚点 / Z序 / 旋转 / 透明度 (悬停高亮, 点击选中)", 15, DemoPalette.color(ui::EColorRole::Accent)));
-                Caption.setMargin({16, 6, 16, 0});
-            }
-            {
-                auto Canvas = std::make_unique<ui::CanvasPanel>();
-                Canvas->setEnablePaintDashedBorder(true);
-                Canvas->setBorderColor({1, 0.2f, 0.2f, 1});
-                Canvas->setBorderThickness(2);
-
-                const auto AddCorner = [&](ui::LayoutPreset Preset, ui::Color Color, const char* Tag,
-                                           const char32_t* Label, ui::Vector2 Position, ui::Vector2 Size)
+                // 左侧大纲.
                 {
-                    auto& Slot = Canvas->addChildToCanvas(std::make_unique<LabeledBox>(Tag, Color, MakeText(Label, 13, {1, 1, 1, 1})));
-                    ui::Layout IVisual;
-                    IVisual.setPreset(Preset);
-                    Slot.setLayout(IVisual);
-                    Slot.setSize(Size);
-                    Slot.setPosition(Position);
-                };
-                AddCorner(ui::LayoutPreset::TopLeft, Red, "TopLeft", U"左上", {10, 6}, {104, 40});
-                AddCorner(ui::LayoutPreset::TopRight, Green, "TopRight", U"右上", {-114, 6}, {104, 40});
-                AddCorner(ui::LayoutPreset::BottomLeft, Blue, "BottomLeft", U"左下", {10, -46}, {104, 40});
-                AddCorner(ui::LayoutPreset::BottomRight, Yellow, "BottomRight", U"右下", {-114, -46}, {104, 40});
-
-                // 旋转: 轴心设为中心, 绕轴心旋转 30 度.
-                {
-                    auto& Slot = Canvas->addChildToCanvas(std::make_unique<LabeledBox>("Rotate", Purple, MakeText(U"旋转30°", 13, {1, 1, 1, 1})));
-                    ui::Layout IVisual;
-                    IVisual.setPreset(ui::LayoutPreset::Center);
-                    Slot.setLayout(IVisual);
-                    Slot.setSize({104, 40});
-                    Slot.setPosition({0, 0});
-                    Slot.setAlignment({0.5f, 0.5f});
-                    Slot.setRotation(0.5235987756f);
-                }
-
-                // Z 序 + 透明度: 顶层盒子 Z=5 半透明, 覆盖底层盒子.
-                {
-                    auto& Back = Canvas->addChildToCanvas(std::make_unique<LabeledBox>("Back", Gray, MakeText(U"底层 Z=0", 13, {1, 1, 1, 1})));
-                    ui::Layout IVisual;
-                    IVisual.setPreset(ui::LayoutPreset::Center);
-                    Back.setLayout(IVisual);
-                    Back.setSize({140, 64});
-                    Back.setPosition({70, -12});
-                    Back.setZOrder(0);
-
-                    auto& Front = Canvas->addChildToCanvas(std::make_unique<LabeledBox>("Front", Orange, MakeText(U"顶层 Z=5 半透明", 13, {1, 1, 1, 1})));
-                    Front.setLayout(IVisual);
-                    Front.setSize({110, 48});
-                    Front.setPosition({100, 6});
-                    Front.setZOrder(5);
-                    Front.getChild()->setOpacity(0.7f);
-                }
-
-                auto& RowSlot = Root->addChild(std::move(Canvas));
-                RowSlot.setMargin({16, 0, 16, 12});
-                RowSlot.setFlexBasis(120);
-                RowSlot.setFlexGrow(1);
-            }
-
-            // 6. ImageWidget + RenderTransform.
-            {
-                auto& Caption = Root->addChild(MakeText(U"6. ImageWidget (RenderTarget CPU 表示) + RenderTransform", 15, DemoPalette.color(ui::EColorRole::Accent)));
-                Caption.setMargin({16, 6, 16, 0});
-            }
-            {
-                auto Row = std::make_unique<ui::HorizontalBox>();
-                Row->setSpacing(24);
-                Row->setCrossAxisAlignment(ui::ECrossAxisAlignment::Center);
-
-                // 生成一张渐变图(CPU 像素), 演示 Image 的像素缓冲.
-                auto Image = std::make_shared<ui::Image>(96, 96);
-                auto Pixels = Image->getPixels();
-                for (int Y = 0; Y < 96; ++Y)
-                {
-                    for (int X = 0; X < 96; ++X)
+                    auto Content = std::make_unique<ui::VerticalBox>();
+                    Content->setSpacing(4);
+                    auto& HeadSlot = Content->addChild(makeSectionTitle(App, U"OUTLINER"));
+                    HeadSlot.setMargin({10, 8, 10, 2});
+                    for (const char32_t* Name :
+                        { U"Scene", U"  Ground", U"  RedCube", U"  GreenCube", U"  BlueCube",
+                          U"  DirectionalLight", U"  Camera" })
                     {
-                        const auto G = static_cast<unsigned char>((X * 255) / 95);
-                        const auto B = static_cast<unsigned char>((Y * 255) / 95);
-                        const std::size_t I = (static_cast<std::size_t>(Y) * 96 + X) * 4;
-                        Pixels[I] = std::byte{0x20};
-                        Pixels[I + 1] = static_cast<std::byte>(G);
-                        Pixels[I + 2] = static_cast<std::byte>(B);
-                        Pixels[I + 3] = std::byte{0xFF};
+                        const bool bTopLevel = Name[0] != U' ';
+                        auto& Slot = Content->addChild(App.createTextWidget(
+                            App.encodeText(Name), 12, 0, bTopLevel ? TextPrimary : TextMuted));
+                        Slot.setMargin({10, 0, 10, 0});
                     }
+                    auto& Slot = Body->addChild(std::make_unique<EditorPanel>(
+                        std::move(Content), PanelBackground, PanelBorder));
+                    Slot.setFlexBasis(180);
                 }
 
-                auto Picture = std::make_unique<ui::ImageWidget>(Image);
-                ui::RenderTransform RT;
-                RT.Scale = {1.5f, 1.5f};
-                RT.Rotation = 0.4f;
-                RT.Pivot = {0.5f, 0.5f};
-                Picture->setRenderTransform(RT);
-                Row->addChild(std::move(Picture)).setAlignSelf(ui::ECrossAxisAlignment::Center);
+                // 中间视口列: 标题条 + 场景区域 + 相机信息.
+                {
+                    auto Column = std::make_unique<ui::VerticalBox>();
+                    Column->setSpacing(0);
 
-                // 平铺 + 图集: 用左上 48x48 子区域平铺到 120x90.
-                auto Tiled = std::make_unique<ui::ImageWidget>(Image);
-                Tiled->setSize({120, 90});
-                Tiled->setFillMode(ui::EImageFillMode::Repeat);
-                Tiled->setSourceUV({0, 0, 0.5f, 0.5f});
-                Row->addChild(std::move(Tiled)).setAlignSelf(ui::ECrossAxisAlignment::Center);
+                    // 视口标题条.
+                    {
+                        auto Header = std::make_unique<ui::HorizontalBox>();
+                        Header->setSpacing(10);
+                        Header->setCrossAxisAlignment(ui::ECrossAxisAlignment::Center);
+                        auto& NameSlot = Header->addChild(
+                            App.createTextWidget("Viewport", 12, 0, TextPrimary));
+                        NameSlot.setMargin({10, 0, 0, 0});
+                        auto& ModeSlot = Header->addChild(
+                            App.createTextWidget("Perspective", 12, 0, TextAccent));
+                        ModeSlot.setFlexGrow(1);
+                        auto& StatSlot = Header->addChild(
+                            App.createTextWidget("RDG · 3D + UI", 11, 0, TextMuted));
+                        StatSlot.setMargin({0, 0, 10, 0});
+                        auto& Slot = Column->addChild(std::make_unique<EditorPanel>(
+                            std::move(Header), PanelHeaderBackground, PanelBorder));
+                        Slot.setFlexBasis(24);
+                    }
 
-                auto Text = MakeText(U"RenderTransform 文字", 18, DemoPalette.color(ui::EColorRole::Text));
-                ui::RenderTransform TextRT;
-                TextRT.Rotation = -0.25f;
-                TextRT.Pivot = {0.5f, 0.5f};
-                Text->setRenderTransform(TextRT);
-                Row->addChild(std::move(Text)).setAlignSelf(ui::ECrossAxisAlignment::Center);
+                    // 场景区域: 不绘制任何 UI, 透出引擎渲染好的 3D 场景.
+                    {
+                        auto ProbeWidget = std::make_unique<SceneViewportWidget>();
+                        ViewportWidget = ProbeWidget.get();
+                        auto& Slot = Column->addChild(std::move(ProbeWidget));
+                        Slot.setFlexGrow(1);
+                        Slot.setFlexBasis(0);
+                    }
 
-                auto& RowSlot = Root->addChild(std::move(Row));
-                RowSlot.setMargin({16, 0, 16, 10});
-                RowSlot.setFlexBasis(170);
+                    // 视口脚注.
+                    {
+                        auto Footer = std::make_unique<ui::HorizontalBox>();
+                        Footer->setSpacing(10);
+                        Footer->setCrossAxisAlignment(ui::ECrossAxisAlignment::Center);
+                        auto& InfoSlot = Footer->addChild(App.createTextWidget(
+                            "Camera  pos(6.5, 4.2, 8.4)  fov 50°  near 0.1  far 200  ·  Y-up / Vulkan NDC",
+                            11, 0, TextMuted));
+                        InfoSlot.setMargin({10, 0, 0, 0});
+                        InfoSlot.setFlexGrow(1);
+                        auto& Slot = Column->addChild(std::make_unique<EditorPanel>(
+                            std::move(Footer), PanelHeaderBackground, PanelBorder));
+                        Slot.setFlexBasis(22);
+                    }
+
+                    auto& Slot = Body->addChild(std::move(Column));
+                    Slot.setFlexGrow(1);
+                    Slot.setFlexBasis(0);
+                }
+
+                // 右侧检查器.
+                {
+                    auto Content = std::make_unique<ui::VerticalBox>();
+                    Content->setSpacing(5);
+                    auto& HeadSlot = Content->addChild(makeSectionTitle(App, U"INSPECTOR"));
+                    HeadSlot.setMargin({10, 8, 10, 2});
+                    auto& SubSlot = Content->addChild(
+                        App.createTextWidget("RedCube  (MeshRenderProxy)", 12, 0, TextPrimary));
+                    SubSlot.setMargin({10, 0, 10, 4});
+                    for (const auto& Row : { std::pair<const char32_t*, const char32_t*>{
+                             U"Kind", U"OpaqueMesh" },
+                             { U"Material", U"Default" }, { U"CastShadow", U"false" },
+                             { U"ProxyIndex", U"1" }, { U"Vertices", U"24" },
+                             { U"Indices", U"36" }, { U"Pipeline", U"DefaultMesh" } })
+                    {
+                        auto& Slot = Content->addChild(makePropertyRow(App, Row.first, Row.second));
+                        Slot.setMargin({10, 0, 10, 0});
+                    }
+                    auto& Slot = Body->addChild(std::make_unique<EditorPanel>(
+                        std::move(Content), PanelBackground, PanelBorder));
+                    Slot.setFlexBasis(220);
+                }
+
+                auto& Slot = Root->addChild(std::move(Body));
+                Slot.setFlexGrow(1);
+                Slot.setFlexBasis(0);
             }
 
-            // 7. 图片导入(ImageImporter 通用模块)渲染 assets/001.jpg.
+            // ---- 状态栏 ----
             {
-                auto& Caption = Root->addChild(MakeText(U"7. 图片导入 ImageImporter 渲染 assets/001.jpg", 15, DemoPalette.color(ui::EColorRole::Accent)));
-                Caption.setMargin({16, 6, 16, 0});
-            }
-            {
-                auto Row = std::make_unique<ui::HorizontalBox>();
-                Row->setSpacing(16);
-                Row->setCrossAxisAlignment(ui::ECrossAxisAlignment::Center);
-                auto Photo = ui::ImageImporter::loadFromFile("assets/001.jpg");
-                if (Photo)
-                {
-                    auto Picture = std::make_unique<ui::ImageWidget>(Photo);
-                    Picture->setSize({260, 180});
-                    Row->addChild(std::move(Picture)).setAlignSelf(ui::ECrossAxisAlignment::Center);
-                    Row->addChild(MakeText(U"已加载 assets/001.jpg", 14, DemoPalette.color(ui::EColorRole::Text)))
-                        .setAlignSelf(ui::ECrossAxisAlignment::Center);
-                }
-                else
-                {
-                    Row->addChild(MakeText(U"未找到 assets/001.jpg", 14, {1, 0.4f, 0.4f, 1}))
-                        .setAlignSelf(ui::ECrossAxisAlignment::Center);
-                }
-                auto& RowSlot = Root->addChild(std::move(Row));
-                RowSlot.setMargin({16, 0, 16, 12});
-                RowSlot.setFlexBasis(200);
+                auto Status = std::make_unique<ui::HorizontalBox>();
+                Status->setSpacing(16);
+                Status->setCrossAxisAlignment(ui::ECrossAxisAlignment::Center);
+                auto& Left = Status->addChild(App.createTextWidget(
+                    "Ready  |  3 proxies  |  DefaultMesh fallback", 11, 0, TextMuted));
+                Left.setMargin({10, 0, 0, 0});
+                Left.setFlexGrow(1);
+                auto& Right = Status->addChild(
+                    App.createTextWidget("Vulkan 1.4 · RTX 5070 Ti", 11, 0, TextMuted));
+                Right.setMargin({0, 0, 10, 0});
+                auto& Slot = Root->addChild(std::make_unique<EditorPanel>(
+                    std::move(Status), PanelHeaderBackground, PanelBorder));
+                Slot.setFlexBasis(24);
             }
 
             Window.setContentRoot(std::move(Root));
         }
+
+        // ---- 6. 每帧回调: 场景动画 → 相机 → 视口矩形 → 提交 UI → 渲染一帧 ----
+        auto LastTick = std::chrono::steady_clock::now();
+        App.setFrameHook([&]() {
+            const auto Now = std::chrono::steady_clock::now();
+            const float DeltaSeconds =
+                std::chrono::duration<float>(Now - LastTick).count();
+            LastTick = Now;
+
+            // (1) 场景动画: 立方体公转 + 自转.
+            tickDemoScene(Scene, Renderer, std::min(DeltaSeconds, 0.1f));
+
+            // (2) 3D 场景矩形 = 视口控件的绝对矩形(逻辑坐标, 与 UI 顶点同一坐标空间).
+            ui::UIRect SceneRect { 0, 0, 0, 0 };
+            if (ViewportWidget)
+                SceneRect = absoluteBounds(*ViewportWidget);
+
+            // (3) 相机: 视图 + 投影(投影按视口宽高比计算, 保证不拉伸).
+            {
+                const float Width = static_cast<float>(std::max(1.0f, SceneRect.Width));
+                const float Height = static_cast<float>(std::max(1.0f, SceneRect.Height));
+                const infra::Vec3f Eye { 6.5f, 4.2f, 8.4f };
+                runtime::renderer::RenderView View;
+                View.View = makeLookAt(Eye, { 0.0f, 0.1f, 0.0f }, { 0.0f, 1.0f, 0.0f });
+                View.Projection = makePerspective(0.8726646f /* 50° */, Width / Height, 0.1f, 200.0f);
+                View.ViewProjection = View.Projection * View.View;
+                View.CameraPosition = Eye;
+                Renderer.setRenderView(View);
+            }
+
+            // (4) 告诉渲染器"3D 只画在这个矩形里".
+            Renderer.setSceneViewport(rhi::RenderArea {
+                static_cast<std::int32_t>(SceneRect.X), static_cast<std::int32_t>(SceneRect.Y),
+                static_cast<std::uint32_t>(std::max(0.0f, SceneRect.Width)),
+                static_cast<std::uint32_t>(std::max(0.0f, SceneRect.Height)) });
+
+            // (5) 提交 UI 绘制列表与纹理脏区(编辑器界面画在场景之上, 中间留空).
+            if (auto* UI = dynamic_cast<ui::RHIUIRenderer*>(&App.getRenderer()))
+                Renderer.submitUIDrawLists(UI->getDrawLists(), UI->collectTextureUploads());
+
+            // (6) 跑一帧 RDG: Shadow → DepthPre → Opaque → Transparent → Post → UI.
+            (void)Renderer.renderFrameGraph();
+        });
+
+        // ---- 7. 主循环 ----
         const int ExitCode = App.run();
         Renderer.shutdown();
         GSeedEngine.destroy();

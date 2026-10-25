@@ -57,6 +57,9 @@ struct RendererServer::Implementation
     // 当前渲染视口(Editor 3DView 面板或 standalone 主视口); GameThread 写入, 只读访问.
     Viewport ActiveViewport {};
 
+    // 3D 场景在最终画面中的像素矩形(编辑器 Viewport 面板); 宽高为 0 表示整屏.
+    rhi::RenderArea SceneViewport {};
+
     // RDG 瞬态资源池(placed resource 别名); 跨帧复用, 生命周期与设备一致.
     std::unique_ptr<rdg::RDGResourcePool> RDGPool;
 
@@ -809,7 +812,16 @@ const RenderFrameSubmission& RendererServer::buildRenderSubmission()
     Impl->PendingUIDrawLists.clear();
     Impl->LastSubmission.TextureUploads = std::move(Impl->PendingTextureUploads);
     Impl->PendingTextureUploads.clear();
+    // 3D 场景的绘制矩形(编辑器视口面板); 未设置时为整屏.
+    Impl->LastSubmission.SceneViewport = Impl->SceneViewport;
     return Impl->LastSubmission;
+}
+
+void RendererServer::setSceneViewport(const rhi::RenderArea& Rect) noexcept
+{
+    if (!Impl)
+        return;
+    Impl->SceneViewport = Rect;
 }
 
 void RendererServer::submitUIDrawLists(

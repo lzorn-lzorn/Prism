@@ -118,6 +118,17 @@ public:
      */
     void setRenderViewport(const Viewport& InViewport);
 
+    /**
+     * @brief 设置 3D 场景在最终画面中的像素矩形(编辑器 Viewport 面板的区域).
+     *
+     * 3D Pass 只在这个矩形内设置 viewport/scissor, 因此场景会"画进"编辑器面板;
+     * 面板外框由 UI 绘制(中间留空即可透出场景). 宽或高为 0 表示整屏渲染.
+     *
+     * @param Rect 目标像素坐标下的矩形(相对渲染目标左上角).
+     * @note GameThread 调用; 值随下一帧交换包传给渲染线程.
+     */
+    void setSceneViewport(const rhi::RenderArea& Rect) noexcept;
+
     /** @brief UI 渲染器(控件树 -> 合批), 供应用提交控件树. */
 
     /**
