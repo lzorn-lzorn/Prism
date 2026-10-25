@@ -21,7 +21,7 @@ public:
     RHIServer& operator=(RHIServer&&) = delete;
 
     /** @brief Creates and initializes the selected backend and primary device. @param BackendAPI Backend implementation to instantiate. @param Window Window used to create presentation surface state. */
-    void initialize(ESupportedBackendAPI BackendAPI, const ui::GenericWindowPointer& Window);
+    void initialize(ESupportedBackendAPI BackendAPI, const runtime::platform::GenericWindowPointer& Window);
     /** @brief Waits for the device, releases device state, and destroys the backend instance. */
     void shutdown();
     /** @brief Reports whether both backend and logical device are available. @return True after successful initialize() and before shutdown(). */

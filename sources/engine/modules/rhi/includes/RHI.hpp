@@ -3082,7 +3082,7 @@ public:
     virtual ~IRHI() = default;
     
     /** @brief Initializes backend instance and presentation surface state. @param Window Native window abstraction that must outlive surface-dependent objects. */
-    virtual void initialize(const ui::GenericWindowPointer& Window) = 0;
+    virtual void initialize(const runtime::platform::GenericWindowPointer& Window) = 0;
     /** @brief Reports successful initialization. @return True when device creation may be attempted. */
     virtual bool isInitialized() const noexcept = 0;
     /** @brief Identifies the active backend. @return Backend API selected by this instance. */
@@ -3090,6 +3090,6 @@ public:
     /** @brief Creates a logical device. @return Device, or nullptr when initialization/capability negotiation fails. */
     virtual std::shared_ptr<RDevice> createDevice() = 0;
     /** @brief Recreates backend surface state after SurfaceLost. @param Window Current native window. @return True when swapchains may explicitly bind the new generation; false on failure/device loss. This never rebuilds device resources. */
-    [[nodiscard]] virtual bool recoverSurface(const ui::GenericWindowPointer& Window) { (void)Window; return false; }
+    [[nodiscard]] virtual bool recoverSurface(const runtime::platform::GenericWindowPointer& Window) { (void)Window; return false; }
 };
 }

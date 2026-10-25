@@ -15,6 +15,22 @@
 
 namespace ui
 {
+using runtime::platform::CustomEvent;
+using runtime::platform::DropEvent;
+using runtime::platform::Event;
+using runtime::platform::hasModifier;
+using runtime::platform::KeyEvent;
+using runtime::platform::Modifiers;
+using runtime::platform::MouseButtonEvent;
+using runtime::platform::MouseMoveEvent;
+using runtime::platform::MouseWheelEvent;
+using runtime::platform::PhysicalKey;
+using runtime::platform::QuitEvent;
+using runtime::platform::TextEditingEvent;
+using runtime::platform::TextInputEvent;
+using runtime::platform::WindowAction;
+using runtime::platform::WindowEvent;
+
 GenericApplication& GenericApplication::self()
 {
     FontService::self();
@@ -24,9 +40,15 @@ GenericApplication& GenericApplication::self()
 
 GenericApplication::~GenericApplication()
 {
+    shutdown();
+}
+
+void GenericApplication::shutdown()
+{
     MainWindow.reset();
     FontService::self().shutdown();
     Renderer.reset();
+    Platform = nullptr;
 }
 
 bool GenericApplication::isInitialized() const noexcept
@@ -42,7 +64,7 @@ void GenericApplication::checkInitialized() const
     }
 }
 
-void GenericApplication::initialize(ApplicationOptions InOptions)
+void GenericApplication::initialize(IGenericPlatform& InPlatform, ApplicationOptions InOptions)
 {
     if (isInitialized())
     {
@@ -52,6 +74,7 @@ void GenericApplication::initialize(ApplicationOptions InOptions)
     {
         Error::raise(EErrorCode::InvalidArgument, "Frame limit must be nonnegative");
     }
+    Platform = &InPlatform;
 #ifndef EDITOR_TEST_NO_GPU
     {
         if (InOptions.DiscoverSystemFonts &&
@@ -90,12 +113,7 @@ void GenericApplication::initialize(ApplicationOptions InOptions)
         }
     }
 #endif
-    auto NewPlatform = createPlatform();
-    if (!NewPlatform)
-    {
-        Error::raise(EErrorCode::Runtime, "Could not create application platform");
-    }
-    auto NewWindow = std::make_unique<Window>(*NewPlatform);
+    auto NewWindow = std::make_unique<Window>(InPlatform);
     std::shared_ptr<RHIUIRenderer> NewRenderer;
 #ifndef EDITOR_TEST_NO_GPU
     NewRenderer = std::make_shared<RHIUIRenderer>();
@@ -115,7 +133,6 @@ void GenericApplication::initialize(ApplicationOptions InOptions)
     }
     FontService::self().setDefaultFallbackFonts(std::move(DefaultFallbacks));
 #endif
-    Platform = std::move(NewPlatform);
     Renderer = std::move(NewRenderer);
     MainWindow = std::move(NewWindow);
 }
@@ -208,9 +225,8 @@ void GenericApplication::setFrameHook(std::function<void()> Hook)
     FrameHook = std::move(Hook);
 }
 
-int32_t GenericApplication::run()
+void GenericApplication::start()
 {
-    checkInitialized();
     auto* Window = &MainWindow->getNativeWindow();
     Window->startTextInput();
     Window->setTextInputArea({16, 16, 600, 30});
@@ -220,100 +236,113 @@ int32_t GenericApplication::run()
     std::println("Window {}: {}x{}, pixels {}x{}. Esc: quit, F11: fullscreen, Ctrl+V: clipboard; type, resize, scroll or drop files.", Window->getId(), Logical.Width, Logical.Height, Pixels.Width, Pixels.Height);
 
     Platform->postEvent({"editor.ready", std::string("Window ready")}, Window->getId());
-    bool Running = true, Fullscreen = false;
-    int32_t Frames = 0;
-    while (Running && (Options.FrameLimit == 0 || Frames < Options.FrameLimit))
+}
+
+bool GenericApplication::pumpEvents()
+{
+    auto* Window = &MainWindow->getNativeWindow();
+    bool Running = true;
+    while (auto Event = Platform->pollEvent())
     {
-        while (auto Event = Platform->pollEvent())
+        if (Event->get<QuitEvent>())
         {
-            if (Event->get<QuitEvent>())
+            Running = false;
+        }
+        if (Event->Window != 0 && Event->Window != Window->getId())
+        {
+            continue;
+        }
+        if (const auto* Change = Event->get<WindowEvent>())
+        {
+            if (Change->Action == WindowAction::CloseRequested)
             {
                 Running = false;
             }
-            if (Event->Window != 0 && Event->Window != Window->getId())
+            std::println("Window event {}: {}, {}", static_cast<int32_t>(Change->Action), Change->Data1, Change->Data2);
+
+        }
+        else if (const auto* Key = Event->get<KeyEvent>())
+        {
+            std::println("Key {}: {} {} {}", static_cast<int32_t>(Key->Physical), Key->Pressed ? "down" : "up", Key->Repeat ? "repeat" : "", hasModifier(Key->Modifiers, Modifiers::Control) ? "Ctrl" : "");
+            const auto KeyReply = MainWindow->dispatchKey(*Key);
+
+            if (KeyReply == EventReply::Unhandled && Key->Pressed && !Key->Repeat)
             {
-                continue;
-            }
-            if (const auto* Change = Event->get<WindowEvent>())
-            {
-                if (Change->Action == WindowAction::CloseRequested)
+                if (Key->Physical == PhysicalKey::Escape)
                 {
                     Running = false;
                 }
-                std::println("Window event {}: {}, {}", static_cast<int32_t>(Change->Action), Change->Data1, Change->Data2);
-
-            }
-            else if (const auto* Key = Event->get<KeyEvent>())
-            {
-                std::println("Key {}: {} {} {}", static_cast<int32_t>(Key->Physical), Key->Pressed ? "down" : "up", Key->Repeat ? "repeat" : "", hasModifier(Key->Modifiers, Modifiers::Control) ? "Ctrl" : "");
-                const auto KeyReply = MainWindow->dispatchKey(*Key);
-
-                if (KeyReply == EventReply::Unhandled && Key->Pressed && !Key->Repeat)
+                if (Key->Physical == PhysicalKey::F11)
                 {
-                    if (Key->Physical == PhysicalKey::Escape)
-                    {
-                        Running = false;
-                    }
-                    if (Key->Physical == PhysicalKey::F11)
-                    {
-                        Fullscreen = !Fullscreen;
-                        Window->setFullscreen(Fullscreen);
-                    }
-                    if (Key->Physical == PhysicalKey::V && hasModifier(Key->Modifiers, Modifiers::Control))
-                    {
-                        std::println("Clipboard: {}", Platform->getClipboardText());
-                    }
+                    Fullscreen = !Fullscreen;
+                    Window->setFullscreen(Fullscreen);
+                }
+                if (Key->Physical == PhysicalKey::V && hasModifier(Key->Modifiers, Modifiers::Control))
+                {
+                    std::println("Clipboard: {}", Platform->getClipboardText());
                 }
             }
-            else if (const auto* Text = Event->get<TextInputEvent>())
-            {
-                std::println("Text: {}", Text->Text);
-                Window->setTitle("Generic Editor | " + Text->Text);
-            }
-            else if (const auto* Composition = Event->get<TextEditingEvent>())
-            {
-                std::println("IME: {}", Composition->Text);
-            }
-            else if (const auto* Move = Event->get<MouseMoveEvent>())
-            {
-                MainWindow->dispatchMouseMove(*Move);
-                Window->setTitle("Generic Editor | mouse " + std::to_string(static_cast<int32_t>(Move->X))
-                                 + ", " + std::to_string(static_cast<int32_t>(Move->Y)));
-            }
-            else if (const auto* Click = Event->get<MouseButtonEvent>())
-            {
-                MainWindow->dispatchMouseButton(*Click);
-                std::println("Mouse button {}{}", static_cast<int32_t>(Click->NativeButton), Click->Pressed ? " down" : " up");
-            }
-            else if (const auto* Wheel = Event->get<MouseWheelEvent>())
-            {
-                MainWindow->dispatchMouseWheel(*Wheel);
-                std::println("Wheel: {} {}", Wheel->X, Wheel->Y);
-            }
-            else if (const auto* Drop = Event->get<DropEvent>())
-            {
-                std::println("Drop {}: {}", static_cast<int32_t>(Drop->Action), Drop->Data);
-            }
-            else if (const auto* Custom = Event->get<CustomEvent>())
-            {
-                std::println("Custom: {}", Custom->Name);
-            }
         }
-        if (!Running)
+        else if (const auto* Text = Event->get<TextInputEvent>())
         {
-            break;
+            std::println("Text: {}", Text->Text);
+            Window->setTitle("Generic Editor | " + Text->Text);
         }
-        if (!MainWindow->drawFrame(Renderer.get()))
+        else if (const auto* Composition = Event->get<TextEditingEvent>())
         {
-            Platform->delay(16);
+            std::println("IME: {}", Composition->Text);
         }
-        if (FrameHook)
+        else if (const auto* Move = Event->get<MouseMoveEvent>())
         {
-            FrameHook();
+            MainWindow->dispatchMouseMove(*Move);
+            Window->setTitle("Generic Editor | mouse " + std::to_string(static_cast<int32_t>(Move->X))
+                             + ", " + std::to_string(static_cast<int32_t>(Move->Y)));
         }
+        else if (const auto* Click = Event->get<MouseButtonEvent>())
+        {
+            MainWindow->dispatchMouseButton(*Click);
+            std::println("Mouse button {}{}", static_cast<int32_t>(Click->NativeButton), Click->Pressed ? " down" : " up");
+        }
+        else if (const auto* Wheel = Event->get<MouseWheelEvent>())
+        {
+            MainWindow->dispatchMouseWheel(*Wheel);
+            std::println("Wheel: {} {}", Wheel->X, Wheel->Y);
+        }
+        else if (const auto* Drop = Event->get<DropEvent>())
+        {
+            std::println("Drop {}: {}", static_cast<int32_t>(Drop->Action), Drop->Data);
+        }
+        else if (const auto* Custom = Event->get<CustomEvent>())
+        {
+            std::println("Custom: {}", Custom->Name);
+        }
+    }
+    return Running;
+}
+
+void GenericApplication::tick()
+{
+    if (!MainWindow->drawFrame(Renderer.get()))
+    {
+        Platform->delay(16);
+    }
+    if (FrameHook)
+    {
+        FrameHook();
+    }
+}
+
+int32_t GenericApplication::run()
+{
+    checkInitialized();
+    start();
+    int32_t Frames = 0;
+    while (pumpEvents() && (Options.FrameLimit == 0 || Frames < Options.FrameLimit))
+    {
+        tick();
         ++Frames;
     }
-    Window->stopTextInput();
+    MainWindow->getNativeWindow().stopTextInput();
     std::cout << "Completed " << Frames << " frames\n";
     return 0;
 }

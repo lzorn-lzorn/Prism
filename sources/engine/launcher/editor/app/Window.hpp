@@ -7,6 +7,16 @@
 
 namespace ui
 {
+using runtime::platform::EWindowResizePolicy;
+using runtime::platform::IGenericPlatform;
+using runtime::platform::IGenericWindow;
+using runtime::platform::KeyEvent;
+using runtime::platform::MouseButtonEvent;
+using runtime::platform::MouseMoveEvent;
+using runtime::platform::MouseWheelEvent;
+using runtime::platform::UISize;
+using runtime::platform::WindowConfigs;
+
 // 保留模式（增量渲染）的跨帧缓存；立即模式下 Window 不持有它（为 nullptr）。
 struct WindowRetainedState
 {

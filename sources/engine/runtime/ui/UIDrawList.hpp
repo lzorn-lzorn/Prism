@@ -10,6 +10,8 @@
 
 namespace ui
 {
+using runtime::platform::UISize;
+
 struct Color
 {
     float R{}, G{}, B{}, A{1.0f};

@@ -52,19 +52,19 @@ int g_checks = 0;
 // 最小窗口: 只为了拿到 SDL_Window* 给 Vulkan 创建 surface
 // ============================================================================
 
-class SdlTestWindow final : public ui::IGenericWindow
+class SdlTestWindow final : public runtime::platform::IGenericWindow
 {
 public:
 	explicit SdlTestWindow(SDL_Window* InWindow) : Window(InWindow) {}
 
-	[[nodiscard]] ui::WindowId getId() const noexcept override { return 0; }
-	[[nodiscard]] ui::UISize getSize() const override { return {64, 64}; }
-	[[nodiscard]] ui::UISize getPixelSize() const override { return {64, 64}; }
-	[[nodiscard]] ui::Rect getSafeArea() const override { return {0, 0, 64, 64}; }
+	[[nodiscard]] runtime::platform::WindowId getId() const noexcept override { return 0; }
+	[[nodiscard]] runtime::platform::UISize getSize() const override { return {64, 64}; }
+	[[nodiscard]] runtime::platform::UISize getPixelSize() const override { return {64, 64}; }
+	[[nodiscard]] runtime::platform::Rect getSafeArea() const override { return {0, 0, 64, 64}; }
 	[[nodiscard]] float getDisplayScale() const override { return 1.0f; }
 	[[nodiscard]] void* getNativeHandle() const noexcept override { return Window; }
 	void setTitle(const std::string&) override {}
-	void setSize(ui::UISize) override {}
+	void setSize(runtime::platform::UISize) override {}
 	void setResizable(bool) override {}
 	void show() override {}
 	void hide() override {}
@@ -72,7 +72,7 @@ public:
 	void setRelativeMouse(bool) override {}
 	void startTextInput() override {}
 	void stopTextInput() override {}
-	void setTextInputArea(ui::Rect, int) override {}
+	void setTextInputArea(runtime::platform::Rect, int) override {}
 
 private:
 	SDL_Window* Window { nullptr };

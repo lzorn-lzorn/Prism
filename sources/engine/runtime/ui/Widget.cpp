@@ -9,6 +9,11 @@
 
 namespace ui
 {
+using runtime::platform::KeyEvent;
+using runtime::platform::MouseButtonEvent;
+using runtime::platform::MouseMoveEvent;
+using runtime::platform::MouseWheelEvent;
+
 std::unique_ptr<PanelSlot> PanelWidget::createSlot(std::unique_ptr<Widget> Child)
 {
     return std::make_unique<PanelSlot>(*this, std::move(Child));

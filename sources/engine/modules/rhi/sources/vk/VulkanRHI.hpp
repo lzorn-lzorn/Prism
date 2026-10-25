@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <memory>
 #include <stdexcept>
@@ -533,17 +533,17 @@ public:
     VulkanRHI() = default;
     ~VulkanRHI() override;
 
-    void initialize(const ui::GenericWindowPointer& Window) override;
+    void initialize(const runtime::platform::GenericWindowPointer& Window) override;
     bool isInitialized() const noexcept override { return IsInitialized; }
     ESupportedBackendAPI getBackendAPI() const override { return ESupportedBackendAPI::Vulkan; }
     std::shared_ptr<RDevice> createDevice() override;
-    [[nodiscard]] bool recoverSurface(const ui::GenericWindowPointer& Window) override;
+    [[nodiscard]] bool recoverSurface(const runtime::platform::GenericWindowPointer& Window) override;
 
 public:
     vk::Device& getVkDevice() { return Context->Device.get(); }
 private:
     void createVkInstance();
-    void createVkSurface(const ui::GenericWindowPointer& Window);
+    void createVkSurface(const runtime::platform::GenericWindowPointer& Window);
     void pickPhysicalDevice();
     void createLogicalDevice();
 

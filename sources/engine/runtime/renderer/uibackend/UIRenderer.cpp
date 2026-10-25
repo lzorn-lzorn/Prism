@@ -18,6 +18,11 @@
 
 namespace ui
 {
+using runtime::platform::IGenericWindow;
+using runtime::platform::SdlWindow;
+using runtime::platform::UISize;
+namespace detail = runtime::platform::detail;
+
 namespace
 {
 template <class Type, auto Release> struct GPUResource

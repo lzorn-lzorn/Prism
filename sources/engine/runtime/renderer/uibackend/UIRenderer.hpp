@@ -6,6 +6,8 @@
 
 namespace ui
 {
+using runtime::platform::IGenericWindow;
+
 enum class EGpuBackend
 {
     Auto,

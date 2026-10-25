@@ -13,6 +13,7 @@ add_internal_library(Engine
 						Runtime::Camera
 						Runtime::Renderer
 						Runtime::Logger
+						Runtime::Platform
 )
 
 add_library(Runtime_Engine INTERFACE)

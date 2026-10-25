@@ -13,7 +13,7 @@ RHIServer::~RHIServer()
     shutdown();
 }
 
-void RHIServer::initialize(ESupportedBackendAPI BackendAPI, const ui::GenericWindowPointer& Window)
+void RHIServer::initialize(ESupportedBackendAPI BackendAPI, const runtime::platform::GenericWindowPointer& Window)
 {
     if (!Window)
     {

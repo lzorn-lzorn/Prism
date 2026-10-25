@@ -72,7 +72,7 @@ public:
      */
     void initialize(
         rhi::ESupportedBackendAPI BackendAPI,
-        const ui::GenericWindowPointer& Window);
+        const runtime::platform::GenericWindowPointer& Window);
 
     /** @brief 等待未完成的 GPU 工作并销毁 Renderer 持有的 RHI 状态。 */
     void shutdown() noexcept;

@@ -26,7 +26,7 @@ struct RendererServer::Implementation
     };
 
     static constexpr uint32_t FramesInFlight = 3;
-    ui::GenericWindowPointer Window;
+    runtime::platform::GenericWindowPointer Window;
     std::shared_ptr<rhi::RDevice> Device;
     std::shared_ptr<rhi::RQueue> GraphicsQueue;
     std::shared_ptr<rhi::RSwapchain> Swapchain;
@@ -98,7 +98,7 @@ struct RendererServer::Implementation
         Frame.TimestampPending = false;
     }
 
-    void create(const ui::GenericWindowPointer& InWindow, const std::shared_ptr<rhi::RDevice>& InDevice)
+    void create(const runtime::platform::GenericWindowPointer& InWindow, const std::shared_ptr<rhi::RDevice>& InDevice)
     {
         Window = InWindow;
         Device = InDevice;
@@ -362,7 +362,7 @@ RendererServer::~RendererServer()
 
 void RendererServer::initialize(
     rhi::ESupportedBackendAPI BackendAPI,
-    const ui::GenericWindowPointer& Window)
+    const runtime::platform::GenericWindowPointer& Window)
 {
     rhi::RenderServer::self().initialize(BackendAPI, Window);
     Impl = std::make_unique<Implementation>();

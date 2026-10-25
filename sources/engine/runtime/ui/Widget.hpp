@@ -12,6 +12,10 @@
 
 namespace ui
 {
+using runtime::platform::KeyEvent;
+using runtime::platform::MouseButtonEvent;
+using runtime::platform::MouseMoveEvent;
+using runtime::platform::MouseWheelEvent;
 
 // 控件可见性: 该可见性仅影响渲染; 命中与事件接收由 AcceptEvents 控制. 
 enum class EVisibility

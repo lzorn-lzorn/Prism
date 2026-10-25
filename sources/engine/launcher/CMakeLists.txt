@@ -1,4 +1,3 @@
-add_subdirectory(generic)
 add_subdirectory(editor)
 
 set(TARGET_NAME Launcher)
@@ -21,13 +20,16 @@ endif()
 
 SeedCopyResources(${TARGET_NAME})
 
-target_sources(${TARGET_NAME} PRIVATE Main.cpp)
+target_sources(${TARGET_NAME} PRIVATE
+    Main.cpp
+    ModuleLoader.cpp
+)
 
 target_include_directories(${TARGET_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_link_libraries(${TARGET_NAME} PRIVATE
     Editor::Editor
-    Generic::Generic
+    Runtime::Platform
     Infra::Infra
     Runtime::Runtime
     Game::Game

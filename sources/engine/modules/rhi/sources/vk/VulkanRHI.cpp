@@ -162,7 +162,7 @@ VulkanRHI::~VulkanRHI()
     Context.reset();
 }
 
-void VulkanRHI::initialize(const ui::GenericWindowPointer& Window)
+void VulkanRHI::initialize(const runtime::platform::GenericWindowPointer& Window)
 {
     if (!Window || !Window->getNativeHandle())
     {
@@ -242,7 +242,7 @@ void VulkanRHI::createVkInstance()
     Context->Instance = vk::createInstanceUnique(CreateInfo);
 }
 
-void VulkanRHI::createVkSurface(const ui::GenericWindowPointer& Window)
+void VulkanRHI::createVkSurface(const runtime::platform::GenericWindowPointer& Window)
 {
 #ifdef USE_SDL
     auto* SdlWindow = static_cast<SDL_Window*>(Window->getNativeHandle());
@@ -266,7 +266,7 @@ void VulkanRHI::createVkSurface(const ui::GenericWindowPointer& Window)
 #endif
 }
 
-bool VulkanRHI::recoverSurface(const ui::GenericWindowPointer& Window)
+bool VulkanRHI::recoverSurface(const runtime::platform::GenericWindowPointer& Window)
 {
     if (!IsInitialized || Context->isDeviceLost()) return false;
     const auto ResolvedWindow = Window ? Window : Context->Window.lock();

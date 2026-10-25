@@ -1,5 +1,5 @@
 add_internal_module(UI
-    PUBLIC_DEPENDENCY   Infra::Infra Generic::Generic
+    PUBLIC_DEPENDENCY   Infra::Infra Runtime::Platform
     PRIVATE_DEPENDENCY  freetype harfbuzz EditorEarcut
     ALIAS               UI::UI
 )

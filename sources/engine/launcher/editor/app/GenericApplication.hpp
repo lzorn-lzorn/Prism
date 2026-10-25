@@ -11,6 +11,8 @@
 
 namespace ui
 {
+using runtime::platform::IGenericPlatform;
+
 struct ApplicationOptions
 {
 #ifdef __APPLE__
@@ -34,7 +36,7 @@ public:
     GenericApplication& operator=(const GenericApplication&) = delete;
     GenericApplication(GenericApplication&&) = delete;
     GenericApplication& operator=(GenericApplication&&) = delete;
-    void initialize(ApplicationOptions Options = {});
+    void initialize(IGenericPlatform& Platform, ApplicationOptions Options = {});
     bool isInitialized() const noexcept;
     Window& getMainWindow();
     const Window& getMainWindow() const;
@@ -57,6 +59,17 @@ public:
     {
         return createTextWidget(getTextBytes(Text), Size, MaxWidth, Tint);
     }
+    /**
+     * @brief 轮询并派发平台事件; 返回是否应继续运行(false 表示收到退出请求).
+     * 由宿主(Engine 主循环)每帧调用.
+     */
+    bool pumpEvents();
+    /** @brief 一次性启动: 开启文本输入、发布 ready 事件等(进入主循环前调用一次). */
+    void start();
+    /** @brief 执行一帧 UI 工作: 排版/绘制/呈现内容根, 随后调用 FrameHook. */
+    void tick();
+    /** @brief 释放窗口、字体会话与 UI 渲染器(析构前可显式调用, 幂等). */
+    void shutdown();
     int32_t run();
 
 private:
@@ -64,9 +77,10 @@ private:
     ~GenericApplication();
     void checkInitialized() const;
     ApplicationOptions Options;
-    std::unique_ptr<IGenericPlatform> Platform;
+    IGenericPlatform* Platform{nullptr};
     std::shared_ptr<RHIUIRenderer> Renderer;
     std::unique_ptr<Window> MainWindow;
     std::function<void()> FrameHook;
+    bool Fullscreen{false};
 };
 }

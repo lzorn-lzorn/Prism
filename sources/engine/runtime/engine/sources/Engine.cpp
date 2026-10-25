@@ -1,5 +1,7 @@
 #include "engine/Engine.hpp"
 #include "logger/Logger.hpp"
+#include "IGenericPlatform.hpp"
+#include <chrono>
 #include <string_view>
 
 namespace runtime
@@ -65,6 +67,11 @@ void Engine::preinitialize()
 
     // 初始化 RHI
 
+    // 驱动引擎自身子系统的基础设置阶段(日志、平台运行时、配置加载等)。
+    for (auto& Subsystem : Subsystems)
+    {
+        Subsystem->preinitialize();
+    }
 }
 void Engine::initialize() 
 {
@@ -80,16 +87,33 @@ void Engine::initialize()
 
     // 加载 Game 或者启动 Editor 模式 
     // 引擎自身子系统就绪后, 才轮到"游戏生命周期"起步.
+    for (auto& Subsystem : Subsystems)
+    {
+        Subsystem->initialize();
+    }
     if (GameInstance)
     {
         GameInstance->preinitialize();
         GameInstance->initialize();
     }
+    if (EditorInstance)
+    {
+        EditorInstance->preinitialize();
+        EditorInstance->initialize();
+    }
 }
-void Engine::postinitialize() {}
+void Engine::postinitialize()
+{
+    for (auto& Subsystem : Subsystems)
+    {
+        Subsystem->postinitialize();
+    }
+}
 void Engine::run()
 {
-    if (!ShouldQuit)
+    using Clock = std::chrono::steady_clock;
+    auto LastTick = Clock::now();
+    while (!ShouldQuit)
     {
         if (IsFirstFrame)
         {
@@ -99,19 +123,23 @@ void Engine::run()
             {
                 GameInstance->postinitialize();
             }
+            if (EditorInstance)
+            {
+                EditorInstance->postinitialize();
+            }
             IsFirstFrame = false;
         }
 
         // 计算 DeltaTime
+        const auto Now = Clock::now();
+        const float DeltaTime = std::chrono::duration<float>(Now - LastTick).count();
+        LastTick = Now;
 
-        // 处理输入事件, 向 UI 逐层传递, UI 不处理再传递给世界
+        // 处理输入事件、更新世界、渲染: 交由各子系统在 tick 内完成.
+        // 引擎只负责按固定顺序驱动: 先子系统(UI 事件泵/帧工作、渲染), 再游戏.
+        tick(DeltaTime);
 
-        // 更新世界
-
-        // 渲染
-
-        
-        // 处理日志
+        // 处理日志(手动泵帧模式)
         if (Logger::self().getRunMode() == Logger::ERunMode::ManualFramePump)
         {
             if (!Logger::self().pumpFrame(512, std::chrono::milliseconds(10)))
@@ -123,22 +151,45 @@ void Engine::run()
 }
 void Engine::tick(float DeltaTime)
 {
-    // 引擎主循环内, 驱动被托管游戏的一帧.
+    // 引擎主循环内, 先驱动引擎自身子系统, 再驱动被托管游戏的一帧.
+    for (auto& Subsystem : Subsystems)
+    {
+        Subsystem->tick(DeltaTime);
+    }
     if (GameInstance)
     {
         GameInstance->tick(DeltaTime);
+    }
+    if (EditorInstance)
+    {
+        EditorInstance->tick(DeltaTime);
     }
 }
 void Engine::render() {}
 void Engine::quit() { ShouldQuit = true; }
 void Engine::destroy() 
 {
-    // 先销毁游戏(托管实体), 再拆引擎自身子系统 —— 与 initialize 的顺序相反.
+    // 先销毁游戏/编辑器(托管实体), 再拆引擎自身子系统 —— 与 initialize 的顺序相反.
     if (GameInstance)
     {
         GameInstance->destroy();
     }
     GameInstance.reset();
+    if (EditorInstance)
+    {
+        EditorInstance->destroy();
+    }
+    EditorInstance.reset();
+
+    // 引擎自身子系统按注册逆序关闭(后初始化先关闭)。
+    for (auto It = Subsystems.rbegin(); It != Subsystems.rend(); ++It)
+    {
+        (*It)->shutdown();
+    }
+    Subsystems.clear();
+
+    // 平台最后释放: 所有依赖窗口/平台的子系统都已关闭.
+    PlatformInstance.reset();
 
     // TODO: 停止日志、释放渲染线程等引擎自身资源.
 }
@@ -151,6 +202,48 @@ void Engine::attachGame(std::unique_ptr<IGame> Game)
 bool Engine::hasGame() const noexcept
 {
     return GameInstance != nullptr;
+}
+
+void Engine::attachEditor(std::unique_ptr<IEditor> Editor)
+{
+    EditorInstance = std::move(Editor);
+}
+
+bool Engine::hasEditor() const noexcept
+{
+    return EditorInstance != nullptr;
+}
+
+void Engine::registerSubsystem(std::unique_ptr<ISubsystem> Subsystem)
+{
+    if (Subsystem)
+    {
+        Subsystems.push_back(std::move(Subsystem));
+    }
+}
+
+Engine::Engine() = default;
+
+Engine::~Engine() = default;
+
+void Engine::attachPlatform(std::unique_ptr<platform::IGenericPlatform> Platform)
+{
+    PlatformInstance = std::move(Platform);
+}
+
+platform::IGenericPlatform& Engine::getPlatform()
+{
+    return *PlatformInstance;
+}
+
+const platform::IGenericPlatform& Engine::getPlatform() const
+{
+    return *PlatformInstance;
+}
+
+bool Engine::hasPlatform() const noexcept
+{
+    return PlatformInstance != nullptr;
 }
 
 }

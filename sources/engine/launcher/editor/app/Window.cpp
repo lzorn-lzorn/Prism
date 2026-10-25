@@ -6,6 +6,16 @@
 
 namespace ui
 {
+using runtime::platform::EWindowResizePolicy;
+using runtime::platform::IGenericPlatform;
+using runtime::platform::IGenericWindow;
+using runtime::platform::KeyEvent;
+using runtime::platform::MouseButtonEvent;
+using runtime::platform::MouseMoveEvent;
+using runtime::platform::MouseWheelEvent;
+using runtime::platform::UISize;
+using runtime::platform::WindowConfigs;
+
 namespace
 {
 bool isSameRect(UIRect Left, UIRect Right) noexcept

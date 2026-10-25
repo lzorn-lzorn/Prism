@@ -64,7 +64,7 @@ struct VulkanContext final
     // The initialized backend currently exposes one SDL surface. Each swapchain retains
     // its generation, so replacing this pointer never invalidates native destruction order.
     std::shared_ptr<VulkanSurfaceState> Surface;
-    std::weak_ptr<ui::IGenericWindow> Window;
+    std::weak_ptr<runtime::platform::IGenericWindow> Window;
     uint64_t NextSurfaceGeneration { 1 };
     std::atomic<EDeviceStatus> DeviceStatus { EDeviceStatus::Ready };
     // Populated from the feature bits actually passed to vkCreateDevice, never raw hardware support.
