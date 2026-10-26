@@ -847,7 +847,16 @@ private:
     }
 
 private:
+    // 标准 [[no_unique_address]] 在 MSVC ABI(cl.exe / clang-cl)下不被支持, clang-cl 会报
+    // -Wunknown-attributes; 该 ABI 下改用 MSVC 拼写 [[msvc::no_unique_address]].
+    // 其它编译器在支持时使用标准属性, 否则退化为不施加任何属性.
+#if defined(_MSC_VER)
+    [[msvc::no_unique_address]]
+#elif defined(__has_cpp_attribute)
+#  if __has_cpp_attribute(no_unique_address) >= 201803L
     [[no_unique_address]]
+#  endif
+#endif
     InlineStorage<InlineSize> Inline{};
 
     void* Object = nullptr;

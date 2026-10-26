@@ -17,7 +17,7 @@ enum class EImageFillMode
 
 // ImageWidget: 显示一个 Image(RenderTarget 的 CPU 表示).
 // 支持: 显式尺寸(默认图片大小)、内容偏移、填充模式(拉伸/平铺/居中)、图集(UV 子区域)、溢出裁剪.
-class ImageWidget : public Widget
+class ImageWidget : public LeafWidget
 {
 public:
     ImageWidget() = default;
