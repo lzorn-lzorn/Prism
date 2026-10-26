@@ -7,8 +7,15 @@
 #include "HorizontalBox.hpp"
 #include "TextWidget.hpp"
 #include "VerticalBox.hpp"
+#include "PlatformEvents.hpp"
 
+#include "engine/IGameInstance.hpp"
+#include "engine/IPlaySession.hpp"
+#include "engine/SimulationClock.hpp"
+#include <logger/Logger.hpp>
 #include <renderer/RendererServer.hpp>
+#include <renderer/WorldRenderBridge.hpp>
+#include <world/WorldSnapshot.hpp>
 
 #include <algorithm>
 #include <array>
@@ -16,9 +23,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <iostream>
+#include <format>
 #include <memory>
 #include <span>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -36,6 +44,8 @@ constexpr ui::Color TextPrimary{0.90f, 0.91f, 0.93f, 1.0f};
 constexpr ui::Color TextMuted{0.58f, 0.61f, 0.66f, 1.0f};
 constexpr ui::Color TextAccent{0.40f, 0.78f, 0.92f, 1.0f};
 constexpr ui::Color TextValue{0.70f, 0.86f, 0.55f, 1.0f};
+
+constexpr float Pi = 3.14159265358979f;
 
 // ============================================================================
 //  数学辅助(行主序矩阵 + 列向量约定, 与 HLSL 的 mul(M, v) 一致)
@@ -131,8 +141,6 @@ constexpr ui::Color TextValue{0.70f, 0.86f, 0.55f, 1.0f};
 
 /**
  * @brief 带背景与边框的面板: 内部只放一个铺满的子控件.
- *
- * 弹性布局的容器本身不绘制, 因此编辑器的每一块区域都用它来"画底色 + 分隔线".
  */
 class EditorPanel final : public ui::PanelWidget
 {
@@ -192,7 +200,7 @@ protected:
 }
 
 // ============================================================================
-//  演示场景: 网格构造
+//  演示场景: 网格构造(共享几何; 编辑世界与运行世界引用同一份)
 // ============================================================================
 
 /** @brief 场景网格顶点: Position(12B) + Normal(12B) + Color(16B) = 40B. */
@@ -246,7 +254,7 @@ runtime::renderer::StaticMesh makeUnitBoxMesh(rhi::RDevice& Device,
     constexpr float H = 0.5f;
     // 六个面: +X, -X, +Y, -Y, +Z, -Z; 每个面 4 个角点(逆时针).
     const std::array<std::array<float, 3>, 6> Normals {{
-        { 1, 0, 0 }, { -1, 0, 0 }, { 0, 1, 0 }, { 0, -1, 0 }, { 0, 0, 1 }, { 0, 0, -1 } }};
+        { 1, 0, 0 }, { -1, 0, 0 }, { 0, 1, 0 }, { 0, -1, 0 }, { 0, 0, 1 }, { 0, 0, -1 }}};
     const std::array<std::array<std::array<float, 3>, 4>, 6> Corners {{
         {{ { H,-H,-H }, { H,-H, H }, { H, H, H }, { H, H,-H } }},
         {{ {-H,-H, H }, {-H,-H,-H }, {-H, H,-H }, {-H, H, H } }},
@@ -306,109 +314,6 @@ runtime::renderer::StaticMesh makeGroundMesh(rhi::RDevice& Device, float Height,
 }
 
 // ============================================================================
-//  演示场景: 代理注册与逐帧动画
-// ============================================================================
-
-/** @brief 场景中的一个可动画物体. */
-struct SceneObject
-{
-    std::uint32_t ProxyIndex { 0 };
-    float Radius { 0.0f };
-    float Height { 0.0f };
-    float SpinSpeed { 0.0f };
-    float OrbitSpeed { 0.0f };
-    float Phase { 0.0f };
-    float Scale { 1.0f };
-    float Tilt { 0.0f };
-};
-
-/** @brief 演示场景: 地面 + 若干绕中心公转/自转的彩色立方体. */
-struct DemoScene
-{
-    std::vector<SceneObject> Objects;
-    float Elapsed { 0.0f };
-};
-
-/** @brief 把一个静态网格注册成不透明网格代理, 返回其代理索引. */
-std::uint32_t addMeshProxy(runtime::renderer::RendererServer& Renderer,
-    const std::shared_ptr<runtime::renderer::StaticMesh>& Mesh,
-    const infra::Matrix4x4& Transform, std::uint32_t StableOrder, float BoundsRadius)
-{
-    runtime::renderer::MeshRenderProxy Proxy;
-    Proxy.Header.EntityId = StableOrder + 1;
-    Proxy.Header.Kind = runtime::renderer::ERenderProxyKind::OpaqueMesh;
-    Proxy.Header.MaterialId = 0;
-    Proxy.Header.LocalToWorld = Transform;
-    Proxy.Header.BoundsCenterWS = { 0.0f, 0.0f, 0.0f };
-    Proxy.Header.BoundsRadius = BoundsRadius;
-    Proxy.Header.StableOrder = StableOrder;
-    Proxy.Mesh = Mesh;
-    Proxy.CastShadow = false;
-    return Renderer.getRenderProxyWorld().addProxy(std::move(Proxy));
-}
-
-/** @brief 构建演示场景(需要渲染器已初始化, 因为要创建 GPU 缓冲). */
-DemoScene createDemoScene(runtime::renderer::RendererServer& Renderer)
-{
-    DemoScene Scene;
-    const std::shared_ptr<rhi::RDevice> Device = Renderer.getDevice();
-    if (!Device)
-        return Scene;
-
-    // 地面: 一块深色地板, 让立方体有"落地"的参照.
-    const auto Ground = std::make_shared<runtime::renderer::StaticMesh>(
-        makeGroundMesh(*Device, -1.0f, 9.0f));
-    (void)addMeshProxy(Renderer, Ground, infra::Matrix4x4::Identity(), 0, 9.0f);
-
-    // 三个不同颜色的立方体, 各自公转 + 自转, 用于证明场景是逐帧在跑的.
-    // 每个立方体六个面用略有差异的同色系, 让立体感在光照下更清楚.
-    const std::array<std::array<ui::Color, 6>, 3> Palettes {{
-        {{ ui::Color{0.88f,0.30f,0.30f,1}, ui::Color{0.70f,0.22f,0.24f,1},
-           ui::Color{0.96f,0.42f,0.42f,1}, ui::Color{0.55f,0.18f,0.20f,1},
-           ui::Color{0.92f,0.36f,0.36f,1}, ui::Color{0.62f,0.20f,0.22f,1} }},
-        {{ ui::Color{0.26f,0.72f,0.42f,1}, ui::Color{0.20f,0.58f,0.34f,1},
-           ui::Color{0.34f,0.84f,0.50f,1}, ui::Color{0.16f,0.46f,0.28f,1},
-           ui::Color{0.30f,0.78f,0.46f,1}, ui::Color{0.18f,0.52f,0.30f,1} }},
-        {{ ui::Color{0.30f,0.52f,0.90f,1}, ui::Color{0.24f,0.42f,0.74f,1},
-           ui::Color{0.40f,0.62f,0.98f,1}, ui::Color{0.20f,0.34f,0.60f,1},
-           ui::Color{0.34f,0.56f,0.94f,1}, ui::Color{0.22f,0.38f,0.66f,1} }},
-    }};
-    for (std::size_t Index = 0; Index < Palettes.size(); ++Index)
-    {
-        const auto Box = std::make_shared<runtime::renderer::StaticMesh>(
-            makeUnitBoxMesh(*Device, Palettes[Index]));
-        SceneObject Object;
-        Object.Radius = 2.1f;
-        Object.Height = -0.55f;
-        Object.SpinSpeed = 0.9f + 0.35f * static_cast<float>(Index);
-        Object.OrbitSpeed = 0.35f + 0.12f * static_cast<float>(Index);
-        Object.Phase = 6.2831853f * static_cast<float>(Index) / static_cast<float>(Palettes.size());
-        Object.Scale = 1.15f;
-        Object.Tilt = 0.15f * static_cast<float>(Index);
-        Object.ProxyIndex = addMeshProxy(Renderer, Box, infra::Matrix4x4::Identity(),
-            static_cast<std::uint32_t>(Index + 1), 1.0f);
-        Scene.Objects.push_back(Object);
-    }
-    return Scene;
-}
-
-/** @brief 推进演示场景的动画: 立方体绕中心公转并自转. */
-void tickDemoScene(DemoScene& Scene, runtime::renderer::RendererServer& Renderer, float DeltaSeconds)
-{
-    Scene.Elapsed += DeltaSeconds;
-    for (const SceneObject& Object : Scene.Objects)
-    {
-        const float Orbit = Object.Phase + Scene.Elapsed * Object.OrbitSpeed;
-        const infra::Vec3f Position {
-            std::cos(Orbit) * Object.Radius, Object.Height, std::sin(Orbit) * Object.Radius };
-        const infra::Matrix4x4 Transform =
-            makeTranslation(Position) * makeRotationY(Scene.Elapsed * Object.SpinSpeed)
-            * makeRotationX(Object.Tilt) * makeScale(Object.Scale);
-        Renderer.getRenderProxyWorld().updateTransform(Object.ProxyIndex, Transform);
-    }
-}
-
-// ============================================================================
 //  编辑器界面构建
 // ============================================================================
 
@@ -435,26 +340,150 @@ std::unique_ptr<ui::Widget> makeSectionTitle(ui::GenericApplication& App, const 
 } // namespace
 
 // ============================================================================
-//  EditorApplication 实现
+//  EditorApplication 实现(编辑器会话宿主)
 // ============================================================================
 
 struct EditorApplication::Impl
 {
+    enum class EMode : std::uint8_t
+    {
+        Edit,      // 编辑: 无运行世界; 渲染编辑世界, 用编辑器相机.
+        Play,      // 运行: 运行世界 tick; 渲染运行世界, 用游戏相机.
+        Simulate,  // 模拟: 运行世界 tick; 渲染运行世界, 用编辑器相机.
+    };
+
     ui::GenericApplication& App;
     runtime::renderer::RendererServer& Renderer;
-    DemoScene Scene;
-    const SceneViewportWidget* ViewportWidget{nullptr};
+    std::unique_ptr<runtime::IGameInstance> GameInstance;
 
-    Impl(ui::GenericApplication& InApp, runtime::renderer::RendererServer& InRenderer)
-        : App(InApp), Renderer(InRenderer)
+    // 模拟时钟(暂停/单步/慢放/固定步长/脱离渲染模拟).
+    runtime::SimulationClock Clock;
+
+    // 共享几何: 构建一次, 编辑世界与运行世界引用同一份 GPU 几何.
+    std::array<std::shared_ptr<runtime::renderer::StaticMesh>, 3> BoxMeshes {};
+    std::shared_ptr<runtime::renderer::StaticMesh> GroundMesh {};
+
+    // 编辑世界(可编辑关卡, 编辑器所有); 运行世界是其副本(由 PlaySession 持有).
+    runtime::world::WorldSnapshot EditorWorld;
+
+    // 资源解析器(GeometryId -> StaticMesh) + 桥(逻辑快照 -> 渲染代理).
+    struct DemoResolver final : runtime::renderer::IRenderResourceResolver
+    {
+        std::array<std::shared_ptr<runtime::renderer::StaticMesh>, 3> Boxes;
+        std::shared_ptr<runtime::renderer::StaticMesh> Ground;
+
+        std::shared_ptr<runtime::renderer::StaticMesh> resolveStaticMesh(std::uint64_t GeometryId) const override
+        {
+            switch (GeometryId)
+            {
+            case 1: return Boxes[0];
+            case 2: return Boxes[1];
+            case 3: return Boxes[2];
+            case 4: return Ground;
+            default: return nullptr;
+            }
+        }
+        bool resolveTerrainPatch(std::uint64_t, runtime::renderer::TerrainPatchData&) const override { return false; }
+        bool resolveFluidSurface(std::uint64_t, runtime::renderer::FluidSurfaceData&) const override { return false; }
+        bool resolveGasVolume(std::uint64_t, runtime::renderer::GasVolumeData&) const override { return false; }
+    };
+    std::unique_ptr<DemoResolver> Resolver;
+    runtime::renderer::WorldRenderBridge Bridge { nullptr };
+
+    std::unique_ptr<runtime::IPlaySession> PlaySession;
+    EMode Mode { EMode::Edit };
+    bool SessionFailed { false };
+    std::string LastStatus;
+
+    const SceneViewportWidget* ViewportWidget { nullptr };
+    ui::TextWidget* StatusText { nullptr };
+
+    Impl(ui::GenericApplication& InApp, runtime::renderer::RendererServer& InRenderer,
+        std::unique_ptr<runtime::IGameInstance> InGameInstance)
+        : App(InApp), Renderer(InRenderer), GameInstance(std::move(InGameInstance))
     {
     }
 
-    void buildScene()
+    void buildMeshes()
     {
-        Scene = createDemoScene(Renderer);
-        std::cout << "Editor scene: " << Renderer.getRenderProxyWorld().getProxyCount()
-                  << " proxies\n";
+        const std::shared_ptr<rhi::RDevice> Device = Renderer.getDevice();
+        if (!Device)
+            return;
+
+        const std::array<std::array<ui::Color, 6>, 3> Palettes {{
+            {{ ui::Color{0.88f,0.30f,0.30f,1}, ui::Color{0.70f,0.22f,0.24f,1},
+               ui::Color{0.96f,0.42f,0.42f,1}, ui::Color{0.55f,0.18f,0.20f,1},
+               ui::Color{0.92f,0.36f,0.36f,1}, ui::Color{0.62f,0.20f,0.22f,1} }},
+            {{ ui::Color{0.26f,0.72f,0.42f,1}, ui::Color{0.20f,0.58f,0.34f,1},
+               ui::Color{0.34f,0.84f,0.50f,1}, ui::Color{0.16f,0.46f,0.28f,1},
+               ui::Color{0.30f,0.78f,0.46f,1}, ui::Color{0.18f,0.52f,0.30f,1} }},
+            {{ ui::Color{0.30f,0.52f,0.90f,1}, ui::Color{0.24f,0.42f,0.74f,1},
+               ui::Color{0.40f,0.62f,0.98f,1}, ui::Color{0.20f,0.34f,0.60f,1},
+               ui::Color{0.34f,0.56f,0.94f,1}, ui::Color{0.22f,0.38f,0.66f,1} }},
+        }};
+        for (std::size_t I = 0; I < Palettes.size(); ++I)
+        {
+            BoxMeshes[I] = std::make_shared<runtime::renderer::StaticMesh>(
+                makeUnitBoxMesh(*Device, Palettes[I]));
+        }
+        GroundMesh = std::make_shared<runtime::renderer::StaticMesh>(
+            makeGroundMesh(*Device, -1.0f, 9.0f));
+    }
+
+    void buildResolver()
+    {
+        Resolver = std::make_unique<DemoResolver>();
+        Resolver->Boxes = BoxMeshes;
+        Resolver->Ground = GroundMesh;
+        Bridge.setResolver(Resolver.get());
+    }
+
+    /** @brief 构建编辑世界(可编辑关卡, 编辑器所有)。运行世界是它的副本. */
+    void buildEditorWorld()
+    {
+        EditorWorld.clear();
+        EditorWorld.Revision = 1;
+
+        const auto AddMesh = [&](std::uint64_t EntityId, runtime::world::ELogicObjectKind Kind,
+            std::uint64_t GeometryId, std::uint32_t StableOrder,
+            const infra::Matrix4x4& Transform, float BoundsRadius) {
+            runtime::world::LogicObjectSnapshot Object;
+            Object.Header.Id = EntityId;
+            Object.Header.Kind = Kind;
+            Object.Header.LocalToWorld = Transform;
+            Object.Header.PreviousLocalToWorld = Transform;
+            Object.Header.BoundsCenterWS = { 0.0f, 0.0f, 0.0f };
+            Object.Header.BoundsRadius = BoundsRadius;
+            Object.Header.StableOrder = StableOrder;
+            runtime::world::LogicRenderableRef Ref;
+            Ref.GeometryId = GeometryId;
+            Ref.MaterialId = 0;
+            Ref.Transparent = false;
+            Ref.CastShadow = false;
+            Object.Payload = Ref;
+            EditorWorld.Objects.push_back(std::move(Object));
+        };
+
+        // 地面: 静态.
+        AddMesh(1, runtime::world::ELogicObjectKind::StaticRenderable, 4, 0,
+            infra::Matrix4x4::Identity(), 9.0f);
+
+        // 三个彩色立方体: 动态可渲染, 由运行世界(Play 会话)动画; 初始为轨道起点.
+        for (std::size_t I = 0; I < 3; ++I)
+        {
+            const float Index = static_cast<float>(I);
+            const float Radius = 2.1f;
+            const float Height = -0.55f;
+            const float Phase = 2.0f * Pi * Index / 3.0f;
+            const float Tilt = 0.15f * Index;
+            const float Scale = 1.15f;
+            const infra::Vec3f Position {
+                std::cos(Phase) * Radius, Height, std::sin(Phase) * Radius };
+            const infra::Matrix4x4 Transform =
+                makeTranslation(Position) * makeRotationX(Tilt) * makeScale(Scale);
+            AddMesh(2 + I, runtime::world::ELogicObjectKind::DynamicRenderable,
+                1 + I, static_cast<std::uint32_t>(I + 1), Transform, 1.0f);
+        }
     }
 
     void buildUI()
@@ -487,7 +516,7 @@ struct EditorApplication::Impl
                 Bar->addChild(App.createTextWidget(App.encodeText(Item), 12, 0, TextMuted))
                     .setAlignSelf(ui::ECrossAxisAlignment::Center);
             auto& HintSlot = Bar->addChild(
-                App.createTextWidget("  F11: fullscreen   Esc: quit", 11, 0, TextMuted));
+                App.createTextWidget("  F5 Play  ·  F6 Pause  ·  F7 Step  ·  F9 Simulate  ·  1-4 speed", 11, 0, TextMuted));
             HintSlot.setFlexGrow(1);
             HintSlot.setAlignSelf(ui::ECrossAxisAlignment::Center);
 
@@ -588,12 +617,12 @@ struct EditorApplication::Impl
                 auto& HeadSlot = Content->addChild(makeSectionTitle(App, U"INSPECTOR"));
                 HeadSlot.setMargin({10, 8, 10, 2});
                 auto& SubSlot = Content->addChild(
-                    App.createTextWidget("RedCube  (MeshRenderProxy)", 12, 0, TextPrimary));
+                    App.createTextWidget("RedCube  (DynamicRenderable)", 12, 0, TextPrimary));
                 SubSlot.setMargin({10, 0, 10, 4});
                 for (const auto& Row : { std::pair<const char32_t*, const char32_t*>{
-                         U"Kind", U"OpaqueMesh" },
+                         U"Kind", U"Dynamic" },
                          { U"Material", U"Default" }, { U"CastShadow", U"false" },
-                         { U"ProxyIndex", U"1" }, { U"Vertices", U"24" },
+                         { U"GeometryId", U"1" }, { U"Vertices", U"24" },
                          { U"Indices", U"36" }, { U"Pipeline", U"DefaultMesh" } })
                 {
                     auto& Slot = Content->addChild(makePropertyRow(App, Row.first, Row.second));
@@ -614,9 +643,10 @@ struct EditorApplication::Impl
         {
             auto Status = std::make_unique<ui::HorizontalBox>();
             Status->setSpacing(16);
-            Status->setCrossAxisAlignment(ui::ECrossAxisAlignment::Center);
-            auto& Left = Status->addChild(App.createTextWidget(
-                "Ready  |  3 proxies  |  DefaultMesh fallback", 11, 0, TextMuted));
+            auto StatusWidget = App.createTextWidget(
+                "Edit  |  Running  |  1.00x  |  Render", 11, 0, TextMuted);
+            StatusText = StatusWidget.get();
+            auto& Left = Status->addChild(std::move(StatusWidget));
             Left.setMargin({10, 0, 0, 0});
             Left.setFlexGrow(1);
             auto& Right = Status->addChild(
@@ -631,65 +661,236 @@ struct EditorApplication::Impl
         Window.setContentRoot(std::move(Root));
     }
 
-    void renderFrame(float DeltaSeconds)
+    /** @brief 编辑器命令: Play/Stop/Pause/Step/慢放/Simulate 的按键入口. */
+    bool onKey(const runtime::platform::KeyEvent& Key)
     {
-        // (1) 场景动画: 立方体公转 + 自转.
-        tickDemoScene(Scene, Renderer, std::min(DeltaSeconds, 0.1f));
+        if (!Key.Pressed || Key.Repeat)
+            return false;
 
-        // (2) 3D 场景矩形 = 视口控件的绝对矩形(逻辑坐标, 与 UI 顶点同一坐标空间).
+        using runtime::platform::PhysicalKey;
+        switch (Key.Physical)
+        {
+        case PhysicalKey::F5: // Play / Stop
+            (Mode == EMode::Play) ? stopPlay() : startPlay(EMode::Play);
+            return true;
+        case PhysicalKey::F9: // Simulate / Stop
+            (Mode == EMode::Simulate) ? stopPlay() : startPlay(EMode::Simulate);
+            return true;
+        case PhysicalKey::F6: // Pause / Resume
+            Clock.togglePause();
+            return true;
+        case PhysicalKey::F7: // 单步(暂停时推进一帧)
+            Clock.requestStep();
+            return true;
+        case PhysicalKey::F8: // 脱离渲染模拟(无头追赶)
+            Clock.setSimulateWithoutRender(!Clock.isSimulateWithoutRender());
+            return true;
+        case PhysicalKey::Digit1: Clock.setTimeScale(0.25f); return true;
+        case PhysicalKey::Digit2: Clock.setTimeScale(1.0f); return true;
+        case PhysicalKey::Digit3: Clock.setTimeScale(2.0f); return true;
+        case PhysicalKey::Digit4: Clock.setTimeScale(4.0f); return true;
+        default:
+            return false;
+        }
+    }
+
+    void startPlay(EMode NewMode)
+    {
+        if (PlaySession)
+            stopPlay();
+        if (!GameInstance)
+            return;
+
+        // copy-on-play: 用编辑世界创建一份运行世界副本, 后续演化只发生在副本上.
+        PlaySession = GameInstance->createPlaySession(EditorWorld);
+        PlaySession->beginPlay();
+        Clock.resume();
+        Clock.setSimulateWithoutRender(false);
+        Mode = NewMode;
+        LOG_INFO(runtime::DefaultCategory, "[EditorHost] {} started (world copy of {} objects)",
+            Mode == EMode::Play ? "Play" : "Simulate", EditorWorld.Objects.size());
+    }
+
+    void stopPlay()
+    {
+        if (!PlaySession)
+            return;
+        try
+        {
+            PlaySession->endPlay();
+        }
+        catch (...)
+        {
+            // 关闭路径不得抛出.
+        }
+        PlaySession.reset(); // 丢弃运行世界副本; 编辑世界不受影响.
+        Mode = EMode::Edit;
+        Clock.resume();
+        LOG_INFO(runtime::DefaultCategory, "[EditorHost] Play stopped, editor world restored");
+    }
+
+    [[nodiscard]] runtime::renderer::RenderView computeView() const
+    {
         ui::UIRect SceneRect { 0, 0, 0, 0 };
         if (ViewportWidget)
             SceneRect = absoluteBounds(*ViewportWidget);
+        const float Width = static_cast<float>(std::max(1.0f, SceneRect.Width));
+        const float Height = static_cast<float>(std::max(1.0f, SceneRect.Height));
 
-        // (3) 相机: 视图 + 投影(投影按视口宽高比计算, 保证不拉伸).
+        runtime::SessionCamera Camera;
+        bool UseGameCamera = (Mode == EMode::Play) && PlaySession;
+        if (UseGameCamera)
         {
-            const float Width = static_cast<float>(std::max(1.0f, SceneRect.Width));
-            const float Height = static_cast<float>(std::max(1.0f, SceneRect.Height));
-            const infra::Vec3f Eye { 6.5f, 4.2f, 8.4f };
-            runtime::renderer::RenderView View;
-            View.View = makeLookAt(Eye, { 0.0f, 0.1f, 0.0f }, { 0.0f, 1.0f, 0.0f });
-            View.Projection = makePerspective(0.8726646f /* 50° */, Width / Height, 0.1f, 200.0f);
-            View.ViewProjection = View.Projection * View.View;
-            View.CameraPosition = Eye;
-            Renderer.setRenderView(View);
+            const auto GameCamera = PlaySession->getActiveCamera();
+            if (GameCamera)
+                Camera = *GameCamera;
+            else
+                UseGameCamera = false;
+        }
+        if (!UseGameCamera)
+        {
+            // 编辑器相机(编辑/模拟): 固定视角.
+            Camera.View = makeLookAt({ 6.5f, 4.2f, 8.4f }, { 0.0f, 0.1f, 0.0f }, { 0.0f, 1.0f, 0.0f });
+            Camera.Position = { 6.5f, 4.2f, 8.4f };
         }
 
-        // (4) 告诉渲染器"3D 只画在这个矩形里".
+        // 投影由宿主按实际视口重算(会话只提供取景).
+        Camera.Projection = makePerspective(0.8726646f /* 50° */, Width / Height, 0.1f, 200.0f);
+        Camera.ViewProjection = Camera.Projection * Camera.View;
+
+        runtime::renderer::RenderView View;
+        View.View = Camera.View;
+        View.Projection = Camera.Projection;
+        View.ViewProjection = Camera.ViewProjection;
+        View.CameraPosition = Camera.Position;
+        return View;
+    }
+
+    void updateStatusText()
+    {
+        if (!StatusText)
+            return;
+        const char* ModeName = Mode == EMode::Edit ? "Edit" : (Mode == EMode::Play ? "Play" : "Simulate");
+        const char* ClockState = Clock.isPaused() ? "Paused" : "Running";
+        const char* RenderState = Clock.isSimulateWithoutRender() ? "SimOnly" : "Render";
+        const std::string Status = std::format("{}  |  {}  |  {:.2f}x  |  {}", ModeName, ClockState,
+            Clock.getTimeScale(), RenderState);
+        if (Status != LastStatus)
+        {
+            LastStatus = Status;
+            StatusText->setText(Status);
+        }
+    }
+
+    void tick(float RealDeltaTime)
+    {
+        // 1. "谁 tick 谁"矩阵: 仅 Play/Simulate 时推进运行世界(经模拟时钟); 编辑态不 tick 游戏.
+        if (PlaySession)
+        {
+            SessionFailed = false;
+            Clock.advance(RealDeltaTime, [&](float DeltaTime) {
+                if (SessionFailed)
+                    return;
+                try
+                {
+                    PlaySession->tick(DeltaTime);
+                }
+                catch (const std::exception& Error)
+                {
+                    LOG_ERROR(runtime::DefaultCategory, "[EditorHost] Play session tick failed: {}", Error.what());
+                    SessionFailed = true;
+                }
+                catch (...)
+                {
+                    LOG_ERROR(runtime::DefaultCategory, "[EditorHost] Play session tick failed: unknown error");
+                    SessionFailed = true;
+                }
+            });
+            // 故障隔离: 游戏异常/请求结束 -> 停止 Play 并上报, 编辑器继续运行.
+            if (SessionFailed || PlaySession->wantsToEnd())
+                stopPlay();
+        }
+
+        // 2. 提交活动世界到渲染器(copy-on-play: 编辑世界 vs 运行世界).
+        auto& ProxyWorld = Renderer.getRenderProxyWorld();
+        if (PlaySession)
+            (void)Bridge.pullFrom(*PlaySession, ProxyWorld);
+        else
+            (void)Bridge.importSnapshot(EditorWorld, ProxyWorld);
+
+        // 3. 相机选择(编辑器相机 vs 游戏相机) + 渲染视图 + 场景视口.
+        Renderer.setRenderView(computeView());
+
+        ui::UIRect SceneRect { 0, 0, 0, 0 };
+        if (ViewportWidget)
+            SceneRect = absoluteBounds(*ViewportWidget);
         Renderer.setSceneViewport(rhi::RenderArea {
             static_cast<std::int32_t>(SceneRect.X), static_cast<std::int32_t>(SceneRect.Y),
             static_cast<std::uint32_t>(std::max(0.0f, SceneRect.Width)),
             static_cast<std::uint32_t>(std::max(0.0f, SceneRect.Height)) });
 
-        // (5) 提交 UI 绘制列表与纹理脏区(编辑器界面画在场景之上, 中间留空).
+        // 4. UI 绘制列表(编辑器界面画在场景之上, 中间留空).
         if (auto* UI = dynamic_cast<ui::RHIUIRenderer*>(&App.getRenderer()))
             Renderer.submitUIDrawLists(UI->getDrawLists(), UI->collectTextureUploads());
 
-        // (6) 跑一帧 RDG: Shadow → DepthPre → Opaque → Transparent → Post → UI.
-        (void)Renderer.renderFrameGraph();
+        // 5. 状态栏刷新(仅在变化时).
+        updateStatusText();
+
+        // 6. 渲染一帧 RDG(脱离渲染模拟时跳过).
+        if (!Clock.isSimulateWithoutRender())
+            (void)Renderer.renderFrameGraph();
     }
 };
 
-EditorApplication::EditorApplication(ui::GenericApplication& App, runtime::renderer::RendererServer& Renderer)
-    : ImplPtr(std::make_unique<Impl>(App, Renderer))
+EditorApplication::EditorApplication(ui::GenericApplication& App, runtime::renderer::RendererServer& Renderer,
+    std::unique_ptr<runtime::IGameInstance> GameInstance)
+    : ImplPtr(std::make_unique<Impl>(App, Renderer, std::move(GameInstance)))
 {
 }
 
 EditorApplication::~EditorApplication() = default;
 
-void EditorApplication::initialize()
+void EditorApplication::preinitialize()
 {
-    ImplPtr->buildScene();
-    ImplPtr->buildUI();
+    LOG_INFO(runtime::DefaultCategory, "[EditorHost] preinitialize");
 }
 
-void EditorApplication::tick(float DeltaTime)
+void EditorApplication::initialize()
 {
-    ImplPtr->renderFrame(DeltaTime);
+    ImplPtr->buildMeshes();
+    ImplPtr->buildResolver();
+    ImplPtr->buildEditorWorld();
+    ImplPtr->buildUI();
+
+    // 注册按键钩子: 驱动 Play/Stop/Pause/Step/慢放/Simulate 等编辑器命令.
+    ImplPtr->App.setKeyHandler([Impl = ImplPtr.get()](const runtime::platform::KeyEvent& Key) {
+        return Impl->onKey(Key);
+    });
+
+    LOG_INFO(runtime::DefaultCategory, "[EditorHost] initialize (editor world with {} objects)",
+        ImplPtr->EditorWorld.Objects.size());
+}
+
+void EditorApplication::postinitialize()
+{
+    LOG_INFO(runtime::DefaultCategory, "[EditorHost] postinitialize (first frame)");
+}
+
+void EditorApplication::tick(float RealDeltaTime)
+{
+    ImplPtr->tick(RealDeltaTime);
 }
 
 void EditorApplication::destroy()
 {
-    // 场景代理由 RenderProxyWorld 持有, 随 Renderer 关闭一起回收; 此处无需额外清理.
+    // 拆解顺序: 先停所有 Play 会话(先停游戏), 再释放 GameInstance; 渲染器随后由引擎
+    // 在子系统逆序关闭阶段拆除 —— 保证"游戏先于渲染器"关闭。
+    ImplPtr->stopPlay();
+    ImplPtr->App.setKeyHandler(nullptr); // 先解除输入钩子, 避免悬空回调.
+    if (ImplPtr->GameInstance)
+        ImplPtr->GameInstance->shutdown();
+    ImplPtr->GameInstance.reset();
+    LOG_INFO(runtime::DefaultCategory, "[EditorHost] destroy");
 }
 
 } // namespace editor

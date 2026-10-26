@@ -8,9 +8,9 @@ namespace runtime
 // Engine 按注册顺序依次驱动 preinitialize -> initialize -> postinitialize,
 // 并在每帧调用 tick(DeltaTime); 关闭时按注册的逆序调用 shutdown。
 //
-// 注意: 这与 IGame 的"宿主契约"是两回事 —— 这里描述的是"引擎自身子系统的
-// 生命周期"(常驻、跟随引擎自举), 而 IGame 描述的是"游戏实体的生命周期"
-// (可反复经历 initialize -> destroy, 例如 Play In Editor)。
+// 注意: 这与 ISessionHost 的"宿主契约"是两回事 —— 这里描述的是"引擎自身子系统的
+// 生命周期"(常驻、跟随引擎自举), 而 ISessionHost 描述的是"会话宿主的生命周期",
+// Play 会话(IPlaySession)在宿主内部可反复经历 beginPlay -> endPlay(例如 Play In Editor)。
 class ISubsystem
 {
 public:

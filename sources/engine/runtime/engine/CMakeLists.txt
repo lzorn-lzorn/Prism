@@ -9,6 +9,7 @@ add_internal_library(Engine
     INCLUDES            "${CMAKE_CURRENT_SOURCE_DIR}/includes"
 						"${CMAKE_CURRENT_SOURCE_DIR}/includes/engine"
     PRIVATE_INCLUDES    "${CMAKE_CURRENT_SOURCE_DIR}/sources"
+    PUBLIC_DEPENDENCY   Runtime::World
     PRIVATE_DEPENDENCY  Infra::Infra 
 						Runtime::Camera
 						Runtime::Renderer

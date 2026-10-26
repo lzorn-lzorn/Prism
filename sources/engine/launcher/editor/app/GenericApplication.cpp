@@ -225,6 +225,11 @@ void GenericApplication::setFrameHook(std::function<void()> Hook)
     FrameHook = std::move(Hook);
 }
 
+void GenericApplication::setKeyHandler(std::function<bool(const runtime::platform::KeyEvent&)> Handler)
+{
+    KeyHandler = std::move(Handler);
+}
+
 void GenericApplication::start()
 {
     auto* Window = &MainWindow->getNativeWindow();
@@ -268,18 +273,25 @@ bool GenericApplication::pumpEvents()
 
             if (KeyReply == EventReply::Unhandled && Key->Pressed && !Key->Repeat)
             {
-                if (Key->Physical == PhysicalKey::Escape)
+                if (KeyHandler && KeyHandler(*Key))
                 {
-                    Running = false;
+                    // 编辑器宿主消费了该键(Play/Stop/Pause/Step/慢放/Simulate 等), 跳过默认处理.
                 }
-                if (Key->Physical == PhysicalKey::F11)
+                else
                 {
-                    Fullscreen = !Fullscreen;
-                    Window->setFullscreen(Fullscreen);
-                }
-                if (Key->Physical == PhysicalKey::V && hasModifier(Key->Modifiers, Modifiers::Control))
-                {
-                    std::println("Clipboard: {}", Platform->getClipboardText());
+                    if (Key->Physical == PhysicalKey::Escape)
+                    {
+                        Running = false;
+                    }
+                    if (Key->Physical == PhysicalKey::F11)
+                    {
+                        Fullscreen = !Fullscreen;
+                        Window->setFullscreen(Fullscreen);
+                    }
+                    if (Key->Physical == PhysicalKey::V && hasModifier(Key->Modifiers, Modifiers::Control))
+                    {
+                        std::println("Clipboard: {}", Platform->getClipboardText());
+                    }
                 }
             }
         }

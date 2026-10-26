@@ -85,21 +85,16 @@ void Engine::initialize()
 
     // 加载整个引擎的配置
 
-    // 加载 Game 或者启动 Editor 模式 
-    // 引擎自身子系统就绪后, 才轮到"游戏生命周期"起步.
+    // 加载会话宿主(PlayerHost 或 EditorHost)
+    // 引擎自身子系统就绪后, 才轮到宿主生命周期起步.
     for (auto& Subsystem : Subsystems)
     {
         Subsystem->initialize();
     }
-    if (GameInstance)
+    if (SessionHost)
     {
-        GameInstance->preinitialize();
-        GameInstance->initialize();
-    }
-    if (EditorInstance)
-    {
-        EditorInstance->preinitialize();
-        EditorInstance->initialize();
+        SessionHost->preinitialize();
+        SessionHost->initialize();
     }
 }
 void Engine::postinitialize()
@@ -117,15 +112,11 @@ void Engine::run()
     {
         if (IsFirstFrame)
         {
-            // 引擎自己的第一帧, 随后才是游戏的第一帧.
+            // 引擎自己的第一帧, 随后才是宿主的第一帧.
             postinitialize();
-            if (GameInstance)
+            if (SessionHost)
             {
-                GameInstance->postinitialize();
-            }
-            if (EditorInstance)
-            {
-                EditorInstance->postinitialize();
+                SessionHost->postinitialize();
             }
             IsFirstFrame = false;
         }
@@ -151,67 +142,71 @@ void Engine::run()
 }
 void Engine::tick(float DeltaTime)
 {
-    // 引擎主循环内, 先驱动引擎自身子系统, 再驱动被托管游戏的一帧.
+    // 引擎主循环内, 先驱动引擎自身子系统, 再驱动被托管的会话宿主一帧.
     for (auto& Subsystem : Subsystems)
     {
         Subsystem->tick(DeltaTime);
     }
-    if (GameInstance)
+    if (SessionHost)
     {
-        GameInstance->tick(DeltaTime);
-    }
-    if (EditorInstance)
-    {
-        EditorInstance->tick(DeltaTime);
+        // 故障隔离(最后防线): 宿主自身的异常不得让引擎进程崩溃 —— 记录并优雅退出.
+        // 游戏级异常由宿主内部就近隔离(见 EditorHost/PlayerHost), 不会冒泡到这里.
+        try
+        {
+            SessionHost->tick(DeltaTime);
+        }
+        catch (const std::exception& Error)
+        {
+            LOG_ERROR(DefaultCategory, "Session host tick failed: {}", Error.what());
+            ShouldQuit = true;
+        }
+        catch (...)
+        {
+            LOG_ERROR(DefaultCategory, "Session host tick failed: unknown error");
+            ShouldQuit = true;
+        }
     }
 }
 void Engine::render() {}
 void Engine::quit() { ShouldQuit = true; }
 void Engine::destroy() 
 {
-    // 先销毁游戏/编辑器(托管实体), 再拆引擎自身子系统 —— 与 initialize 的顺序相反.
-    if (GameInstance)
+    // 1. 先停宿主: 宿主内部先停所有 Play 会话(先停游戏), 再停编辑世界/自身资源.
+    //    保证"游戏先于渲染器"关闭(渲染器在下一步才随子系统关闭).
+    if (SessionHost)
     {
-        GameInstance->destroy();
+        try
+        {
+            SessionHost->destroy();
+        }
+        catch (...)
+        {
+            // 关闭路径不得抛出.
+        }
     }
-    GameInstance.reset();
-    if (EditorInstance)
-    {
-        EditorInstance->destroy();
-    }
-    EditorInstance.reset();
+    SessionHost.reset();
 
-    // 引擎自身子系统按注册逆序关闭(后初始化先关闭)。
+    // 2. 引擎自身子系统按注册逆序关闭(后初始化先关闭)。
     for (auto It = Subsystems.rbegin(); It != Subsystems.rend(); ++It)
     {
         (*It)->shutdown();
     }
     Subsystems.clear();
 
-    // 平台最后释放: 所有依赖窗口/平台的子系统都已关闭.
+    // 3. 平台最后释放: 所有依赖窗口/平台的子系统都已关闭.
     PlatformInstance.reset();
 
     // TODO: 停止日志、释放渲染线程等引擎自身资源.
 }
 
-void Engine::attachGame(std::unique_ptr<IGame> Game)
+void Engine::attachSessionHost(std::unique_ptr<ISessionHost> Host)
 {
-    GameInstance = std::move(Game);
+    SessionHost = std::move(Host);
 }
 
-bool Engine::hasGame() const noexcept
+bool Engine::hasSessionHost() const noexcept
 {
-    return GameInstance != nullptr;
-}
-
-void Engine::attachEditor(std::unique_ptr<IEditor> Editor)
-{
-    EditorInstance = std::move(Editor);
-}
-
-bool Engine::hasEditor() const noexcept
-{
-    return EditorInstance != nullptr;
+    return SessionHost != nullptr;
 }
 
 void Engine::registerSubsystem(std::unique_ptr<ISubsystem> Subsystem)

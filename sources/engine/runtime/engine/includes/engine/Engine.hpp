@@ -6,8 +6,7 @@
 #include <utility>
 
 #include <RTCommon.hpp>
-#include "IGame.hpp"
-#include "IEditor.hpp"
+#include "ISessionHost.hpp"
 #include "ISubsystem.hpp"
 
 namespace runtime
@@ -56,13 +55,10 @@ public:
     bool shouldQuit() const { return ShouldQuit; }
     void destroy();
 
-    // 托管一个游戏实体: 引擎负责驱动其生命周期, 但不依赖具体游戏类型.
-    void attachGame(std::unique_ptr<IGame> Game);
-    [[nodiscard]] bool hasGame() const noexcept;
-
-    // 托管一个编辑器实体: 与 IGame 并列, 由引擎驱动其生命周期(编辑模式).
-    void attachEditor(std::unique_ptr<IEditor> Editor);
-    [[nodiscard]] bool hasEditor() const noexcept;
+    // 托管一个会话宿主(PlayerHost 或 EditorHost): 引擎负责驱动其生命周期,
+    // 但不依赖具体宿主类型。宿主的语义(编辑世界/运行世界、Play/Simulate)在宿主内部。
+    void attachSessionHost(std::unique_ptr<ISessionHost> Host);
+    [[nodiscard]] bool hasSessionHost() const noexcept;
 
     // 注册一个引擎子系统: Engine 拥有其所有权, 并按注册顺序驱动其生命周期;
     // shutdown 时按注册的逆序调用. 传入空指针会被忽略.
@@ -93,8 +89,7 @@ private:
 private:
     std::atomic<bool> ShouldQuit { false };
     bool IsFirstFrame { true };
-    std::unique_ptr<IGame> GameInstance { nullptr };
-    std::unique_ptr<IEditor> EditorInstance { nullptr };
+    std::unique_ptr<ISessionHost> SessionHost { nullptr };
     std::unique_ptr<platform::IGenericPlatform> PlatformInstance { nullptr };
     std::vector<std::unique_ptr<ISubsystem>> Subsystems;
 };

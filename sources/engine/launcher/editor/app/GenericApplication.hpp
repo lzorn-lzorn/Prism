@@ -4,6 +4,7 @@
 #include "RHIUIRenderer.hpp"
 #include "TextConfig.hpp"
 #include "TextWidget.hpp"
+#include "PlatformEvents.hpp"
 #include <functional>
 #include <memory>
 #include <string>
@@ -53,6 +54,12 @@ public:
      * @param Hook 无参回调; 空表示取消.
      */
     void setFrameHook(std::function<void()> Hook);
+    /**
+     * @brief 注册"未处理按键"钩子: 在控件未消费的按键上调用, 供编辑器宿主驱动
+     *        Play/Stop/Pause/Step/慢放/脱离渲染模拟 等编辑器命令。
+     * @param Handler 返回 true 表示该键已被消费(跳过默认快捷键处理); 空表示取消.
+     */
+    void setKeyHandler(std::function<bool(const runtime::platform::KeyEvent&)> Handler);
     std::unique_ptr<TextWidget> createTextWidget(std::string_view Text, float Size, float MaxWidth = 0, Color Tint = {1, 1, 1, 1});
     template<class Character, class Traits, class Allocator>
     std::unique_ptr<TextWidget> createTextWidget(const std::basic_string<Character, Traits, Allocator>& Text, float Size, float MaxWidth = 0, Color Tint = {1, 1, 1, 1})
@@ -81,6 +88,7 @@ private:
     std::shared_ptr<RHIUIRenderer> Renderer;
     std::unique_ptr<Window> MainWindow;
     std::function<void()> FrameHook;
+    std::function<bool(const runtime::platform::KeyEvent&)> KeyHandler;
     bool Fullscreen{false};
 };
 }
