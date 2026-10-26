@@ -1,5 +1,6 @@
 #pragma once
 
+#include <renderer/Culling.hpp>
 #include <renderer/RenderData.hpp>
 
 #include <infra/math/Matrix.hpp>
@@ -56,6 +57,43 @@ struct StaticMesh
     infra::Vec3f BoundsCenter { 0.0f, 0.0f, 0.0f };
     /** 包围球半径. */
     float BoundsRadius { 0.0f };
+
+    /**
+     * @brief LOD 层级(每级一套几何 + 切换距离).
+     *
+     * Lods 为空 = 单级网格(直接用上面的主字段); 非空 = 多级, Lods[0] 最精细,
+     * 其余按 SwitchDistance 递增切粗. 生成由离线烘焙/导入器负责(如 meshoptimizer
+     * 减面), 渲染层只负责"按距离选级".
+     */
+    struct LodLevel
+    {
+        std::shared_ptr<rhi::RBuffer> VertexBuffer;
+        std::shared_ptr<rhi::RBuffer> IndexBuffer;
+        rhi::EIndexFormat IndexFormat { rhi::EIndexFormat::UInt32 };
+        uint32_t IndexCount { 0 };
+        /** 观察距离大于等于该值(世界单位)时切换到此级. */
+        float SwitchDistance { 0.0f };
+    };
+    std::vector<LodLevel> Lods;
+
+    /**
+     * @brief 按观察距离选择 LOD 层级下标.
+     * @return 单级网格恒返回 0; 多级返回满足 Distance >= SwitchDistance 的最粗层级.
+     */
+    [[nodiscard]] uint32_t selectLod(float Distance) const noexcept
+    {
+        if (Lods.empty())
+            return 0;
+        uint32_t Selected = 0;
+        for (std::size_t I = 0; I < Lods.size(); ++I)
+        {
+            if (Distance >= Lods[I].SwitchDistance)
+                Selected = static_cast<uint32_t>(I);
+            else
+                break;
+        }
+        return Selected;
+    }
 };
 
 /** @brief RenderProxy 的主分类(按职责而非系统来源). */
@@ -135,11 +173,15 @@ using RenderProxyVariant = std::variant<MeshRenderProxy, TerrainRenderProxy,
  */
 using RenderProxy = MeshRenderProxy;
 
-/** @brief 一个可见代理: 代理索引 + 排序键. 是 RenderProxyWorld -> 子渲染器的交换结构. */
+/** @brief 一个可见代理: 代理索引 + 排序键 + 剔除/LOD 元信息. */
 struct VisibleProxy
 {
     uint32_t ProxyIndex { 0 };
     DrawPacket::SortKey Key { 0 };
+    /** 到相机的距离平方(用于 LOD 选择; 无相机时为 0). */
+    float DistanceSq { 0.0f };
+    /** 选中的 LOD 层级下标(单级网格恒为 0). */
+    uint32_t LodIndex { 0 };
 };
 
 /**
@@ -180,19 +222,26 @@ public:
     /**
      * @brief 收集可见代理并按 SortKey 排序.
      *
-     * v1 不做视锥/遮挡剔除(仅排序), 剔除见后续 P4 路线. 返回列表按 Key 升序稳定排序.
      * @param Out 输出可见代理列表(会先清空).
+     * @param CullFrustum 视锥; 非空时对包围球做保守剔除(半径<=0 的代理视为"未知边界, 不剔除").
+     * @param CameraPosition 相机位置; 非空时用于计算距离并选择 LOD.
      */
-    void collectVisible(std::vector<VisibleProxy>& Out) const;
+    void collectVisible(std::vector<VisibleProxy>& Out, const Frustum* CullFrustum = nullptr,
+        const infra::Vec3f* CameraPosition = nullptr) const;
 
     /**
      * @brief 按代理分类构建帧交换包, 供 RenderServer / SceneRenderer 消费.
      *
      * v1 先构建分类数据列表(光源/流体/气体/地形/刚体), DrawPacket 的实际管线解析由
      * MaterialSystem 后续填充.
+     *
+     * @param CullFrustum 视锥; 非空时启用保守视锥剔除.
+     * @param CameraPosition 相机位置; 非空时启用按距离的 LOD 选择.
      */
     void buildSubmission(RenderFrameSubmission& Out, EChangeFlags WorldChanges,
-        EChangeFlags UIChanges = EChangeFlags_t::None) const;
+        EChangeFlags UIChanges = EChangeFlags_t::None,
+        const Frustum* CullFrustum = nullptr,
+        const infra::Vec3f* CameraPosition = nullptr) const;
 
     /** @brief 清空所有代理并复位变化标志. */
     void clear() noexcept;

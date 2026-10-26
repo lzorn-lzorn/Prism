@@ -42,6 +42,15 @@ private:
     void create(vk::SwapchainKHR OldSwapchain = VK_NULL_HANDLE);
     void releaseImages();
     bool retirePresentGeneration() noexcept;
+    /**
+     * @brief 当前 surface 尺寸是否与交换链尺寸不一致.
+     *
+     * 部分平台(如 Windows)在窗口缩放后 acquireNextImageKHR 仍返回 Success, 不会
+     * 主动报告 OutOfDate, 因此需要在 acquire 前主动比较 surface 的 currentExtent.
+     * currentExtent 不确定(等于 UINT32_MAX)或为 0 时返回 false, 交由 acquire 的
+     * 失败/OutOfDate 信号处理.
+     */
+    [[nodiscard]] bool isSurfaceExtentChanged() const noexcept;
 
     VulkanDevice* Device;
     VulkanContextPtr Context;

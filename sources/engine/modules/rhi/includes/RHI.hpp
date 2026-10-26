@@ -485,7 +485,11 @@ enum class EVertexFormat {
     UInt4,
     Short2,
     Short4,
-    // 更多...
+    // ---- 压缩/归一化顶点格式(法线、切线、颜色等) ----
+    UByte4_Norm,      // R8G8B8A8_UNORM(归一化 uint8x4, 常用做法线/顶点色)
+    Short2_Norm,      // R16G16_SNORM
+    Short4_Norm,      // R16G16B16A16_SNORM(紧凑法线+切线)
+    Float10_10_10_2,  // A2B10G10R10_UNORM_PACK32(packed 10-10-10-2, 法线/切线的极致压缩)
 };
 
 /** @brief Selects index element width or disables indexed input. */

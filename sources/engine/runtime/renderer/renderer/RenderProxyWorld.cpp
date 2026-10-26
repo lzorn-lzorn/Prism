@@ -50,8 +50,9 @@ namespace
  *
  * 只填几何(顶点/索引缓冲与绘制参数); Pipeline/BindGroups 由 MaterialSystem 后续解析.
  * 网格与地形共享同一份索引绘制协议, 透明/刚体只是分类不同.
+ * @param LodIndex 网格代理的 LOD 层级下标(单级网格忽略).
  */
-void fillDrawPacketGeometry(const RenderProxyVariant& Proxy, DrawPacket& Packet)
+void fillDrawPacketGeometry(const RenderProxyVariant& Proxy, DrawPacket& Packet, uint32_t LodIndex = 0)
 {
     // 对象变换与材质索引对所有几何代理都成立, 先统一填好.
     const RenderProxyHeader& Header = getHeader(Proxy);
@@ -64,11 +65,24 @@ void fillDrawPacketGeometry(const RenderProxyVariant& Proxy, DrawPacket& Packet)
         {
             if (!Value.Mesh)
                 return;
-            Packet.VertexFactory = Value.Mesh->VertexFactory;
-            Packet.VertexBindings.push_back({ Value.Mesh->VertexBuffer, 0 });
-            Packet.IndexBuffer = Value.Mesh->IndexBuffer;
-            Packet.IndexFormat = Value.Mesh->IndexFormat;
-            Packet.IndexCount = Value.Mesh->IndexCount;
+            const StaticMesh& Mesh = *Value.Mesh;
+            Packet.VertexFactory = Mesh.VertexFactory;
+            if (Mesh.Lods.empty())
+            {
+                Packet.VertexBindings.push_back({ Mesh.VertexBuffer, 0 });
+                Packet.IndexBuffer = Mesh.IndexBuffer;
+                Packet.IndexFormat = Mesh.IndexFormat;
+                Packet.IndexCount = Mesh.IndexCount;
+            }
+            else
+            {
+                const StaticMesh::LodLevel& L = Mesh.Lods[std::min(LodIndex,
+                    static_cast<uint32_t>(Mesh.Lods.size() - 1))];
+                Packet.VertexBindings.push_back({ L.VertexBuffer, 0 });
+                Packet.IndexBuffer = L.IndexBuffer;
+                Packet.IndexFormat = L.IndexFormat;
+                Packet.IndexCount = L.IndexCount;
+            }
         }
         else if constexpr (std::is_same_v<ProxyType, TerrainRenderProxy>)
         {
@@ -172,20 +186,43 @@ EChangeFlags RenderProxyWorld::consumeChangeFlags() noexcept
     return Result;
 }
 
-void RenderProxyWorld::collectVisible(std::vector<VisibleProxy>& Out) const
+void RenderProxyWorld::collectVisible(std::vector<VisibleProxy>& Out, const Frustum* CullFrustum,
+    const infra::Vec3f* CameraPosition) const
 {
     Out.clear();
     Out.reserve(Proxies.size());
 
     for (uint32_t Index = 0; Index < Proxies.size(); ++Index)
     {
-        const RenderProxyHeader& Header = getHeader(Proxies[Index]);
+        const RenderProxyVariant& Proxy = Proxies[Index];
+        const RenderProxyHeader& Header = getHeader(Proxy);
         if (!isGeometryProxy(Header.Kind))
             continue;
+
+        // 保守视锥剔除: 仅对"有包围球"的代理(半径>0)生效; 半径<=0 视为边界未知, 不剔除.
+        if (CullFrustum && Header.BoundsRadius > 0.0f &&
+            !contains(*CullFrustum, Header.BoundsCenterWS, Header.BoundsRadius))
+            continue;
+
+        // 距离 + LOD(仅网格代理; 其余代理单级).
+        float Distance = 0.0f;
+        uint32_t LodIndex = 0;
+        if (const MeshRenderProxy* Mesh = std::get_if<MeshRenderProxy>(&Proxy))
+        {
+            if (Mesh->Mesh)
+            {
+                if (CameraPosition)
+                    Distance = (*CameraPosition - Header.BoundsCenterWS).length();
+                LodIndex = Mesh->Mesh->selectLod(Distance);
+            }
+        }
+
         const bool Transparent = isTransparentProxy(Header.Kind);
         Out.push_back({
             .ProxyIndex = Index,
             .Key = makeSortKey(Transparent, Header.MaterialId, Header.StableOrder),
+            .DistanceSq = Distance * Distance,
+            .LodIndex = LodIndex,
         });
     }
 
@@ -197,14 +234,14 @@ void RenderProxyWorld::collectVisible(std::vector<VisibleProxy>& Out) const
 }
 
 void RenderProxyWorld::buildSubmission(RenderFrameSubmission& Out, EChangeFlags WorldChanges,
-    EChangeFlags UIChanges) const
+    EChangeFlags UIChanges, const Frustum* CullFrustum, const infra::Vec3f* CameraPosition) const
 {
     Out.clear();
     Out.WorldChanges = WorldChanges;
     Out.UIChanges = UIChanges;
 
     std::vector<VisibleProxy> Visible;
-    collectVisible(Visible);
+    collectVisible(Visible, CullFrustum, CameraPosition);
     Out.OpaqueDraws.reserve(Visible.size());
     Out.TransparentDraws.reserve(Visible.size());
     Out.ShadowDraws.reserve(Visible.size());
@@ -217,7 +254,7 @@ void RenderProxyWorld::buildSubmission(RenderFrameSubmission& Out, EChangeFlags 
 
         DrawPacket Packet;
         Packet.Key = V.Key;
-        fillDrawPacketGeometry(Proxy, Packet);
+        fillDrawPacketGeometry(Proxy, Packet, V.LodIndex);
         if (Packet.IndexCount == 0)
             continue;
 

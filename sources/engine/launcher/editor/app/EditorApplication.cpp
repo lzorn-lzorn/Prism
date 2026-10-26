@@ -464,6 +464,15 @@ struct EditorApplication::Impl
 
         auto Root = std::make_unique<ui::VerticalBox>();
         Root->setSpacing(0);
+        Root->setOverflow(ui::EFlexOverflow::Shrink);
+
+        // 布局采用"等比伸缩"而非固定像素: 每个 flex 子项同时设置 flexBasis=参考尺寸 与
+        // flexGrow=同一参考尺寸, 使得 1280x720 下布局与原来完全一致, 而窗口放大后各栏按
+        // 同一比例同步增长(而不是只有中间视口吞掉全部增量).
+        // 参考尺寸为默认窗口 1280x720:
+        //   水平(主体)  左大纲 : 中间视口 : 右检查器 = 180 : 880 : 220
+        //   垂直(根)    菜单栏 : 主体 : 状态栏       =  32 : 664 :  24
+        //   垂直(视口列) 标题条 : 场景 : 脚注        =  24 : 618 :  22
 
         // ---- 菜单栏 ----
         {
@@ -485,6 +494,7 @@ struct EditorApplication::Impl
             auto& Slot = Root->addChild(
                 std::make_unique<EditorPanel>(std::move(Bar), PanelHeaderBackground, PanelBorder));
             Slot.setFlexBasis(32);
+            Slot.setFlexGrow(32);
         }
 
         // ---- 主体: 大纲 | 视口 | 检查器 ----
@@ -492,6 +502,7 @@ struct EditorApplication::Impl
             auto Body = std::make_unique<ui::HorizontalBox>();
             Body->setSpacing(0);
             Body->setCrossAxisAlignment(ui::ECrossAxisAlignment::Stretch);
+            Body->setOverflow(ui::EFlexOverflow::Shrink);
 
             // 左侧大纲.
             {
@@ -511,12 +522,14 @@ struct EditorApplication::Impl
                 auto& Slot = Body->addChild(std::make_unique<EditorPanel>(
                     std::move(Content), PanelBackground, PanelBorder));
                 Slot.setFlexBasis(180);
+                Slot.setFlexGrow(180);
             }
 
             // 中间视口列: 标题条 + 场景区域 + 相机信息.
             {
                 auto Column = std::make_unique<ui::VerticalBox>();
                 Column->setSpacing(0);
+                Column->setOverflow(ui::EFlexOverflow::Shrink);
 
                 // 视口标题条.
                 {
@@ -535,6 +548,7 @@ struct EditorApplication::Impl
                     auto& Slot = Column->addChild(std::make_unique<EditorPanel>(
                         std::move(Header), PanelHeaderBackground, PanelBorder));
                     Slot.setFlexBasis(24);
+                    Slot.setFlexGrow(24);
                 }
 
                 // 场景区域: 不绘制任何 UI, 透出引擎渲染好的 3D 场景.
@@ -542,8 +556,8 @@ struct EditorApplication::Impl
                     auto ProbeWidget = std::make_unique<SceneViewportWidget>();
                     ViewportWidget = ProbeWidget.get();
                     auto& Slot = Column->addChild(std::move(ProbeWidget));
-                    Slot.setFlexGrow(1);
-                    Slot.setFlexBasis(0);
+                    Slot.setFlexBasis(618);
+                    Slot.setFlexGrow(618);
                 }
 
                 // 视口脚注.
@@ -559,11 +573,12 @@ struct EditorApplication::Impl
                     auto& Slot = Column->addChild(std::make_unique<EditorPanel>(
                         std::move(Footer), PanelHeaderBackground, PanelBorder));
                     Slot.setFlexBasis(22);
+                    Slot.setFlexGrow(22);
                 }
 
                 auto& Slot = Body->addChild(std::move(Column));
-                Slot.setFlexGrow(1);
-                Slot.setFlexBasis(0);
+                Slot.setFlexBasis(880);
+                Slot.setFlexGrow(880);
             }
 
             // 右侧检查器.
@@ -587,11 +602,12 @@ struct EditorApplication::Impl
                 auto& Slot = Body->addChild(std::make_unique<EditorPanel>(
                     std::move(Content), PanelBackground, PanelBorder));
                 Slot.setFlexBasis(220);
+                Slot.setFlexGrow(220);
             }
 
             auto& Slot = Root->addChild(std::move(Body));
-            Slot.setFlexGrow(1);
-            Slot.setFlexBasis(0);
+            Slot.setFlexBasis(664);
+            Slot.setFlexGrow(664);
         }
 
         // ---- 状态栏 ----
@@ -609,6 +625,7 @@ struct EditorApplication::Impl
             auto& Slot = Root->addChild(std::make_unique<EditorPanel>(
                 std::move(Status), PanelHeaderBackground, PanelBorder));
             Slot.setFlexBasis(24);
+            Slot.setFlexGrow(24);
         }
 
         Window.setContentRoot(std::move(Root));

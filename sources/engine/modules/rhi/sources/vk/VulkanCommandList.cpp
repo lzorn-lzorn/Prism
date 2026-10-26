@@ -372,6 +372,10 @@ vk::Format vertexFormat(EVertexFormat Format)
     case EVertexFormat::UInt4: return vk::Format::eR32G32B32A32Uint;
     case EVertexFormat::Short2: return vk::Format::eR16G16Sint;
     case EVertexFormat::Short4: return vk::Format::eR16G16B16A16Sint;
+    case EVertexFormat::UByte4_Norm: return vk::Format::eR8G8B8A8Unorm;
+    case EVertexFormat::Short2_Norm: return vk::Format::eR16G16Snorm;
+    case EVertexFormat::Short4_Norm: return vk::Format::eR16G16B16A16Snorm;
+    case EVertexFormat::Float10_10_10_2: return vk::Format::eA2B10G10R10UnormPack32;
     }
     return vk::Format::eUndefined;
 }

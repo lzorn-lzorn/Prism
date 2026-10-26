@@ -20,8 +20,8 @@ class Engine final
 public:
     static Engine& self() 
     {
-        static Engine instance;
-        return instance;
+        static Engine Instance;
+        return Instance;
     }
     ~Engine();
     Engine(const Engine&) = delete;

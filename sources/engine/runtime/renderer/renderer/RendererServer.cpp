@@ -1,9 +1,11 @@
 #include <renderer/RendererServer.hpp>
 
+#include <renderer/Culling.hpp>
 #include <renderer/RenderThread.hpp>
 #include <renderer/ShaderBinding.hpp>
 #include <RHIServer.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <fstream>
 #include <future>
@@ -37,6 +39,7 @@ struct RendererServer::Implementation
     std::vector<bool> ImageInitialized;
     uint32_t FrameIndex { 0 };
     uint64_t NextTimelineValue { 1 };
+    // 渲染线程持有的交换链尺寸(像素); 由 create/recreate/resize 在渲染线程更新.
     uint32_t Width { 0 };
     uint32_t Height { 0 };
     std::atomic<bool> SurfaceRecoveryRequired { false };
@@ -56,6 +59,9 @@ struct RendererServer::Implementation
 
     // 当前渲染视口(Editor 3DView 面板或 standalone 主视口); GameThread 写入, 只读访问.
     Viewport ActiveViewport {};
+
+    // GameThread 侧的相机镜像(供剔除/LOD 在 buildSubmission 阶段使用; 只 GameThread 访问).
+    RenderView ActiveRenderView {};
 
     // 3D 场景在最终画面中的像素矩形(编辑器 Viewport 面板); 宽高为 0 表示整屏.
     rhi::RenderArea SceneViewport {};
@@ -786,7 +792,11 @@ void RendererServer::setRenderView(const RenderView& InView) noexcept
 {
     // 视图归渲染线程所有: 以命令投递, 由渲染线程在下一帧前应用, 避免跨线程写竞争.
     if (Impl)
+    {
         Impl->RenderThreadWorker.enqueue(RenderCommand { RenderCommandSetRenderView { InView } });
+        // GameThread 侧镜像: 供 buildSubmission 的视锥剔除/LOD 选择使用(同线程读写).
+        Impl->ActiveRenderView = InView;
+    }
 }
 
 void RendererServer::setRenderViewport(const Viewport& InViewport)
@@ -806,7 +816,10 @@ const RenderFrameSubmission& RendererServer::buildRenderSubmission()
 
     const EChangeFlags world_changes = Impl->ProxyWorld.consumeChangeFlags();
     const EChangeFlags ui_changes = {};
-    Impl->ProxyWorld.buildSubmission(Impl->LastSubmission, world_changes, ui_changes);
+    // 视锥剔除 + LOD: 使用 GameThread 侧相机镜像(与渲染线程当前视图一致).
+    const Frustum frustum = makeFrustum(Impl->ActiveRenderView.ViewProjection);
+    Impl->ProxyWorld.buildSubmission(Impl->LastSubmission, world_changes, ui_changes,
+        &frustum, &Impl->ActiveRenderView.CameraPosition);
     // 消费 GameThread 侧提交的 UI 绘制列表与配套的纹理脏区.
     Impl->LastSubmission.UIDrawLists = std::move(Impl->PendingUIDrawLists);
     Impl->PendingUIDrawLists.clear();
@@ -814,6 +827,11 @@ const RenderFrameSubmission& RendererServer::buildRenderSubmission()
     Impl->PendingTextureUploads.clear();
     // 3D 场景的绘制矩形(编辑器视口面板); 未设置时为整屏.
     Impl->LastSubmission.SceneViewport = Impl->SceneViewport;
+    // UI 顶点的逻辑坐标空间尺寸(高 DPI 下与交换链像素尺寸不同).
+    Impl->LastSubmission.UILogicalWidth =
+        static_cast<uint32_t>(std::max(0, Impl->Window->getSize().Width));
+    Impl->LastSubmission.UILogicalHeight =
+        static_cast<uint32_t>(std::max(0, Impl->Window->getSize().Height));
     return Impl->LastSubmission;
 }
 

@@ -122,6 +122,14 @@ AcquireResult VulkanSwapchain::acquireNextImage(
         !Surface || Surface != Context->Surface)
         return { EAcquireStatus::SurfaceLost, 0, 0 };
     if (!Swapchain) return { EAcquireStatus::NotReady, 0, 0 };
+    // 窗口缩放后, 部分平台(如 Windows)的 acquireNextImageKHR 仍会返回 Success,
+    // 不会主动报告 OutOfDate; 这里在 acquire 前主动比对 surface 尺寸, 变化时直接
+    // 返回 OutOfDate, 由上层 recreate() 用 surface 的 currentExtent 重建交换链.
+    if (isSurfaceExtentChanged())
+    {
+        recordStatus(ESwapchainStatus::OutOfDate);
+        return { EAcquireStatus::OutOfDate, 0, 0 };
+    }
     auto* Semaphore = semaphoreOf(SignalSemaphore, *Device);
     auto* Fence = fenceOf(SignalFence, *Device);
     if (!Semaphore && !Fence)
@@ -218,6 +226,28 @@ ESwapchainStatus VulkanSwapchain::getStatus() const noexcept
         return Result == VK_SUCCESS ? Persistent : *Mapped;
     }
     return Persistent;
+}
+
+bool VulkanSwapchain::isSurfaceExtentChanged() const noexcept
+{
+    if (!Surface || !Swapchain)
+        return false;
+    VkSurfaceCapabilitiesKHR Capabilities {};
+    const VkResult Result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+        static_cast<VkPhysicalDevice>(Context->PhysicalDevice),
+        static_cast<VkSurfaceKHR>(Surface->Handle), &Capabilities);
+    if (Result != VK_SUCCESS)
+        return false;
+    constexpr uint32_t UndefinedExtent = std::numeric_limits<uint32_t>::max();
+    // currentExtent 不确定(部分平台)时无法据此判断, 交由 acquire 的失败/OutOfDate 信号.
+    if (Capabilities.currentExtent.width == UndefinedExtent ||
+        Capabilities.currentExtent.height == UndefinedExtent)
+        return false;
+    // 最小化或 0 尺寸: 保持现状, 上层会因 acquire 失败/空图跳过渲染.
+    if (Capabilities.currentExtent.width == 0 || Capabilities.currentExtent.height == 0)
+        return false;
+    return Capabilities.currentExtent.width != Descriptor.Width ||
+           Capabilities.currentExtent.height != Descriptor.Height;
 }
 
 void VulkanSwapchain::recordStatus(ESwapchainStatus NewStatus) noexcept

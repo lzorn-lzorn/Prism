@@ -139,6 +139,18 @@ struct DrawPacket
     int32_t VertexOffset { 0 };
     uint32_t FirstInstance { 0 };
 
+    /**
+     * @brief 逐实例顶点缓冲(binding 1, PerInstance); 空表示单实例/无实例数据.
+     *
+     * 这是 GPU 实例化的数据通路: 当多个相同网格需要不同变换/材质参数时, 把逐实例
+     * 属性(如 world 矩阵、颜色)放入该缓冲, InstanceCount 指示实例数量. 管线需声明
+     * 一个 InputRate = PerInstance 的属性与这里对齐(默认网格材质暂未消费, 属预留通路).
+     */
+    std::shared_ptr<rhi::RBuffer> InstanceBuffer;
+    rhi::DeviceSizeType InstanceOffset { 0 };
+    /** 逐实例数据步长(字节); 0 表示使用与管线一致的单实例步长. */
+    uint32_t InstanceStride { 0 };
+
     /** 稳定排序键. */
     SortKey Key { 0 };
 };
@@ -374,6 +386,15 @@ struct RenderFrameSubmission
      */
     rhi::RenderArea SceneViewport {};
 
+    /**
+     * @brief 窗口逻辑尺寸(UI 顶点与裁剪矩形的坐标空间, Y 向下).
+     *
+     * UIDrawLists 中的顶点/Clip 均为逻辑坐标, 而渲染目标尺寸是像素尺寸;
+     * 高 DPI 下两者不等, UIRenderPass 需按 Logical/Pixel 之比映射到 NDC 与 scissor.
+     */
+    uint32_t UILogicalWidth { 0 };
+    uint32_t UILogicalHeight { 0 };
+
     LightList Lights;
     FluidList Fluids;
     GasVolumeList Gases;
@@ -392,6 +413,8 @@ struct RenderFrameSubmission
         UIDrawLists.clear();
         TextureUploads.clear();
         SceneViewport = {};
+        UILogicalWidth = 0;
+        UILogicalHeight = 0;
         Lights.clear();
         Fluids.clear();
         Gases.clear();

@@ -5,7 +5,9 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstring>
+#include <span>
 #include <unordered_map>
 #include <vector>
 
@@ -105,13 +107,27 @@ void setRectViewport(rhi::RCommandList& command_list, const rhi::RenderArea& Rec
         const rhi::RenderArea Rect = Submission->SceneViewport;
         if (Rect.Width != 0 && Rect.Height != 0)
         {
+            // 编辑器把视口矩形写在窗口逻辑坐标空间, 而这里需要像素坐标:
+            // 高 DPI 下按 逻辑/像素 比例换算, 与 UIRenderPass 保持同一映射.
+            const double logical_width = Submission->UILogicalWidth
+                ? Submission->UILogicalWidth : width;
+            const double logical_height = Submission->UILogicalHeight
+                ? Submission->UILogicalHeight : height;
+            const double scale_x = static_cast<double>(width) / logical_width;
+            const double scale_y = static_cast<double>(height) / logical_height;
             // 夹到目标范围内, 避免越界 scissor / viewport.
-            const int32_t Left = std::clamp(Rect.X, 0, static_cast<int32_t>(width));
-            const int32_t Top = std::clamp(Rect.Y, 0, static_cast<int32_t>(height));
-            const int32_t Right = std::clamp(
-                Rect.X + static_cast<int32_t>(Rect.Width), 0, static_cast<int32_t>(width));
-            const int32_t Bottom = std::clamp(
-                Rect.Y + static_cast<int32_t>(Rect.Height), 0, static_cast<int32_t>(height));
+            const int32_t Left = static_cast<int32_t>(std::clamp(
+                std::floor(static_cast<double>(Rect.X) * scale_x),
+                0.0, static_cast<double>(width)));
+            const int32_t Top = static_cast<int32_t>(std::clamp(
+                std::floor(static_cast<double>(Rect.Y) * scale_y),
+                0.0, static_cast<double>(height)));
+            const int32_t Right = static_cast<int32_t>(std::clamp(
+                std::ceil(static_cast<double>(Rect.X + Rect.Width) * scale_x),
+                static_cast<double>(Left), static_cast<double>(width)));
+            const int32_t Bottom = static_cast<int32_t>(std::clamp(
+                std::ceil(static_cast<double>(Rect.Y + Rect.Height) * scale_y),
+                static_cast<double>(Top), static_cast<double>(height)));
             if (Right > Left && Bottom > Top)
                 return { Left, Top, static_cast<uint32_t>(Right - Left),
                     static_cast<uint32_t>(Bottom - Top) };
@@ -355,6 +371,14 @@ void recordDrawPacket(rhi::RCommandList& command_list, const DrawPacket& packet,
 
     if (!packet.VertexBindings.empty())
         command_list.bindVertexBuffers(0, packet.VertexBindings);
+
+    // 逐实例属性缓冲(binding 1, PerInstance): 预留的 GPU 实例化数据通路.
+    // 默认网格材质管线未声明该槽位, 此时绑定是"多余绑定", 被管线忽略、无副作用.
+    if (packet.InstanceBuffer)
+    {
+        const rhi::VertexBufferBinding InstanceBinding { packet.InstanceBuffer, packet.InstanceOffset };
+        command_list.bindVertexBuffers(1, std::span<const rhi::VertexBufferBinding>(&InstanceBinding, 1));
+    }
 
     if (packet.IndexBuffer)
         command_list.bindIndexBuffer(packet.IndexBuffer, packet.IndexOffset, packet.IndexFormat);
@@ -700,10 +724,20 @@ void recordUIDrawLists(
         total_indices * sizeof(uint32_t), rhi::EBufferUsage::Index, "UIIndexBuffer");
 
     // 变换: 逻辑坐标 → NDC.
+    // UI 顶点与裁剪矩形都位于窗口"逻辑坐标"空间(高 DPI 下小于像素尺寸), 因此映射
+    // 分母必须是逻辑尺寸, 而不是交换链像素尺寸; 像素尺寸只用于把逻辑裁剪矩形换算成
+    // scissor(见下方 ScaleX/ScaleY).
+    const float logical_width = static_cast<float>(submission.UILogicalWidth
+        ? submission.UILogicalWidth : std::max(1u, width));
+    const float logical_height = static_cast<float>(submission.UILogicalHeight
+        ? submission.UILogicalHeight : std::max(1u, height));
     // 注意 Vulkan 的 NDC 是 Y 向下(+1 在屏幕底部), 而 UI 的逻辑坐标也是 Y 向下,
-    // 因此 Y 必须是正斜率: y=0 → -1(顶), y=height → +1(底).
-    const float sx = 2.0f / static_cast<float>(std::max(1u, width));
-    const float sy = 2.0f / static_cast<float>(std::max(1u, height));
+    // 因此 Y 必须是正斜率: y=0 → -1(顶), y=logical_height → +1(底).
+    const float sx = 2.0f / logical_width;
+    const float sy = 2.0f / logical_height;
+    // 逻辑坐标 → 像素坐标的缩放, 用于把 Batch.Clip 换算成 scissor.
+    const double scale_x = static_cast<double>(width) / static_cast<double>(logical_width);
+    const double scale_y = static_cast<double>(height) / static_cast<double>(logical_height);
 
     // 上传(逐列表拼接; 顶点坐标在 CPU 侧变换到 NDC).
     auto* vdst = static_cast<ui::UIVertex*>(
@@ -774,17 +808,23 @@ void recordUIDrawLists(
             }
 
             // ---- 裁剪: Clip 是逻辑坐标, 与顶点同一坐标空间(Y 向下) ----
+            // 按 逻辑/像素 比例换算成 scissor 的像素矩形(与 SDL GPU 路径一致:
+            // 左/上向下取整, 右/下向上取整, 再夹到目标范围内).
             if (batch.Clip)
             {
                 const ui::UIRect& clip = *batch.Clip;
-                const int32_t left = static_cast<int32_t>(
-                    std::clamp(clip.X, 0.0f, static_cast<float>(full_scissor.Width)));
-                const int32_t top = static_cast<int32_t>(
-                    std::clamp(clip.Y, 0.0f, static_cast<float>(full_scissor.Height)));
-                const int32_t right = static_cast<int32_t>(
-                    std::clamp(clip.X + clip.Width, 0.0f, static_cast<float>(full_scissor.Width)));
-                const int32_t bottom = static_cast<int32_t>(
-                    std::clamp(clip.Y + clip.Height, 0.0f, static_cast<float>(full_scissor.Height)));
+                const int32_t left = static_cast<int32_t>(std::clamp(
+                    std::floor(static_cast<double>(clip.X) * scale_x),
+                    0.0, static_cast<double>(full_scissor.Width)));
+                const int32_t top = static_cast<int32_t>(std::clamp(
+                    std::floor(static_cast<double>(clip.Y) * scale_y),
+                    0.0, static_cast<double>(full_scissor.Height)));
+                const int32_t right = static_cast<int32_t>(std::clamp(
+                    std::ceil(static_cast<double>(clip.X + clip.Width) * scale_x),
+                    static_cast<double>(left), static_cast<double>(full_scissor.Width)));
+                const int32_t bottom = static_cast<int32_t>(std::clamp(
+                    std::ceil(static_cast<double>(clip.Y + clip.Height) * scale_y),
+                    static_cast<double>(top), static_cast<double>(full_scissor.Height)));
                 // 完全被裁掉: 整批跳过(RHI 不接受零面积 scissor).
                 if (right <= left || bottom <= top)
                     continue;
