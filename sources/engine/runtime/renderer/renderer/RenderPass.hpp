@@ -58,9 +58,14 @@ struct RenderView
  */
 struct RenderFrameResources
 {
-    /** 场景主深度(DepthPrePass 写, Opaque 读). */
+    /** 场景主深度(DepthPrePass 写, Opaque/Transparent 读). */
     rdg::ResourceId SceneDepth {};
-    // 未来扩展: GBuffer[0..N]、HDR SceneColor、HiZ、ShadowAtlas...
+    /** HDR 场景颜色(RGBA16F, Opaque/Transparent 写, PostProcess 读). */
+    rdg::ResourceId SceneColor {};
+    /** 阴影图集(D32, Shadow 写, Opaque 采样). */
+    rdg::ResourceId ShadowAtlas {};
+    /** 方向光的阴影 ViewProjection(Shadow Pass 写, Opaque 采样时上传帧常量). */
+    infra::Matrix4x4 ShadowViewProjection {};
 };
 
 /**

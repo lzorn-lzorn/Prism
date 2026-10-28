@@ -1,4 +1,20 @@
-﻿#pragma once
+#pragma once
+
+/**
+ * ============================================================================
+ *  [DEPRECATED] 此文件已退居遗留实现, 不再驱动任何帧录制路径.
+ * ============================================================================
+ *
+ *  帧图的主干已经收敛到 `renderer::rdg::RDGGraph`(见同目录 RDG.hpp):
+ *  `RendererServer::renderFrameGraph()` 与 `RenderPassScheduler` / 各子渲染器
+ *  均使用 `renderer::rdg::RDGGraph::addPass + compile + execute`, 具备拓扑排序、
+ *  Pass 裁剪、生命周期分析与显存别名能力.
+ *
+ *  本文件声明的 `runtime::renderer::RDGBuilder`(按声明顺序执行、无拓扑/裁剪/别名)
+ *  已被上述实现取代. 它仅因 `rdg/CMakeLists.txt` 的全量 glob 而仍被编译, 不再被
+ *  任何调用方引用; 保留仅为兼容历史引用, 新增代码一律使用 RDG.hpp 的 RDGGraph.
+ * ============================================================================
+ */
 
 #include <RHI.hpp>
 

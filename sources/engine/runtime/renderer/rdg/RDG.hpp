@@ -7,29 +7,18 @@
  *
  *  [在渲染分层中的位置] <<< 先读这一段 >>>
  *
- *  Renderer 层的 RDG 主干是 `rdg/RDGBuilder.hpp` (`runtime::renderer::RDGBuilder`):
- *  由 `RendererServer::renderFrameGraph()` 驱动, `SceneRenderer` 编排各子渲染器,
- *  是当前**唯一的帧录制路径**. 权威说明见 `documents/rdg_render_data_incremental_zh.md`.
+ *  本文件 (`rdg/RDG.hpp`, 命名空间 `renderer::rdg`) 是 Renderer 层 RDG 的**唯一主干**:
+ *  由 `RendererServer::renderFrameGraph()` 驱动, `SceneRenderer`(PassScheduler) 编排各
+ *  子渲染器, 是当前**唯一的帧录制路径**. 权威说明见
+ *  `documents/rdg_render_data_incremental_zh.md`.
  *
- *  本文件 (`rdg/RDG.hpp`, 命名空间 `renderer::rdg`) 是**算法侧的辅助设施**, 不是主干,
- *  也不是 `RDGBuilder` 的替代品:
+ *  图算法(依赖/拓扑/裁剪/生命周期/别名/屏障)已全部落在本文件及
+ *  RDGGraph.cpp / RDGPlan.cpp 中, 并配有 SeedRDGTests(CPU) 与 SeedRDGGpuTests(真实设备)
+ *  两组验证.
  *
- *      RDGBuilder (主干)              RDG.hpp (本文件, 辅助)
- *      ─────────────────────          ────────────────────────────────
- *      Pass 按声明顺序执行              Kahn 拓扑排序(声明顺序无关)
- *      无 Pass 裁剪                    无用 Pass 裁剪(反向存活传播)
- *      TransientCache 按名称复用        显存别名(按堆 + 槽位 + 生命周期复用)
- *      逐 Pass 状态追踪                 按"显存槽位"追踪(别名点自动 Undefined 转换)
- *      importImage/Buffer               import + keepAlive 导出标记
- *
- *  两者的定位是"主干保留编排与录制, 本文件提供它当前尚未具备的图算法":
- *  `RDGBuilder` 的 v1 边界(见其头文件 [当前版本(v1)边界])明确写了不做拓扑排序 /
- *  别名 / 裁剪, 本文件正是这三项的完备实现与验证. 后续应把本文件的算法**收敛进**
- *  `RDGBuilder.compile()`, 而不是让两套 RDG 长期并行.
- *
- *  在此之前, 请按以下规则使用, 避免出现两条帧录制路径:
- *      - 帧录制/编排: 一律用 `RDGBuilder` + `SceneRenderer`;
- *      - 需要别名收益或图的独立验证: 用本文件, 且**不要**与 `RDGBuilder` 同时驱动同一帧.
+ *  同目录 `rdg/RDGBuilder.hpp` 声明的 `runtime::renderer::RDGBuilder` 是**遗留实现**
+ *  (按声明顺序执行、无拓扑/裁剪/别名), 已不再被任何帧录制路径引用, 仅因全量 glob
+ *  仍被编译; 新增代码一律使用本文件的 `RDGGraph` / `RDGBuilder`(算法版).
  *
  *  [OVERVIEW]
  *  RDG (Render Dependency Graph) 是一套"先声明, 后编译, 再执行"的帧图调度系统.

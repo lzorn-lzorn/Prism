@@ -1,13 +1,15 @@
 #include <renderer/RenderPassScheduler.hpp>
 
-#include <renderer/MeshShaders.hpp>
 #include <renderer/UIShaders.hpp>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <fstream>
 #include <span>
+#include <stdexcept>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -59,6 +61,32 @@ namespace
     Desc.MemoryProperty = rhi::EMemoryProperty::DeviceLocal;
     Desc.Usage = rhi::EImageUsage_t::DepthStencil;
     Desc.SampleCount = rhi::ESampleCount::Count1;
+    return Desc;
+}
+
+/** @brief 构造 HDR 场景颜色纹理描述(RGBA16F, 可作为渲染目标并被后处理采样). */
+[[nodiscard]] rdg::TextureDesc makeColorDesc(uint32_t width, uint32_t height)
+{
+    rdg::TextureDesc Desc;
+    Desc.Format = rhi::EFormat::RGBA16_Float;
+    Desc.Dimension = rhi::EImageDimension::Texture2D;
+    Desc.Width = width;
+    Desc.Height = height;
+    Desc.Depth = 1;
+    Desc.MipLevels = 1;
+    Desc.ArrayLayers = 1;
+    Desc.SharingMode = rhi::ESharingMode::Exclusive;
+    Desc.MemoryProperty = rhi::EMemoryProperty::DeviceLocal;
+    Desc.Usage = rhi::EImageUsage_t::Target | rhi::EImageUsage_t::Sampled;
+    Desc.SampleCount = rhi::ESampleCount::Count1;
+    return Desc;
+}
+
+/** @brief 阴影图集深度描述: 既是深度附件, 又可被片元着色器采样. */
+[[nodiscard]] rdg::TextureDesc makeShadowDepthDesc(uint32_t width, uint32_t height)
+{
+    rdg::TextureDesc Desc = makeDepthDesc(width, height);
+    Desc.Usage = rhi::EImageUsage_t::DepthStencil | rhi::EImageUsage_t::Sampled;
     return Desc;
 }
 
@@ -200,13 +228,24 @@ void beginDepthScope(
 }
 
 // ============================================================================
-//  默认网格材质(scene mesh): 让尚未接入 MaterialSystem 的几何也能被画出来
+//  场景 PBR 网格材质(运行时从 SEED_SCENE_SHADER_DIR 加载 DXC 编译的 SPIR-V)
 // ============================================================================
+
+/** @brief 场景帧常量: 与 shaders/scene_mesh.frag.hlsl 的 FrameData cbuffer 对齐(128 字节). */
+struct alignas(16) SceneFrameConstants
+{
+    float CameraPosition[4];
+    float LightDirection[4];
+    float LightColor[4];
+    float ShadowMatrix[16];
+    float ShadowParams[4];
+};
+static_assert(sizeof(SceneFrameConstants) == 128, "SceneFrameConstants must be 128 bytes.");
 
 /** @brief 网格绘制的管线变体: 由所在 Pass 的渲染作用域决定. */
 enum class ESceneMeshVariant
 {
-    /** 深度预通道 / 阴影: 只写深度, 无颜色附件. */
+    /** 深度预通道 / 阴影: 只写深度, 无颜色附件, 无片元着色器. */
     DepthOnly,
     /** 不透明: 颜色 + 深度, 写深度. */
     Opaque,
@@ -214,18 +253,18 @@ enum class ESceneMeshVariant
     Transparent,
 };
 
-/**
- * @brief 默认网格材质的跨帧缓存(一条管线布局 + 三个变体管线).
- *
- * push constant 布局与 scene_mesh.vert.hlsl 对齐: MVP(64B) + World(64B) = 128B,
- * 正好是 Vulkan 保证的最小 push constant 容量.
- */
+/** @brief 场景网格材质的跨帧缓存(管线 + 帧 UBO + 阴影采样器). */
 struct SceneMeshCache
 {
     std::shared_ptr<rhi::RPipelineLayout> Layout;
+    std::shared_ptr<rhi::RBindGroupLayout> FrameLayout;
     std::shared_ptr<rhi::RPipeline> DepthOnly;
     std::shared_ptr<rhi::RPipeline> Opaque;
     std::shared_ptr<rhi::RPipeline> Transparent;
+    std::shared_ptr<rhi::RBuffer> FrameUBO;
+    std::byte* FrameUBOMapped { nullptr };
+    uint32_t FrameUBOSlotSize { 0 };
+    std::shared_ptr<rhi::RSampler> ShadowSampler;
     bool Ready { false };
 };
 
@@ -237,43 +276,106 @@ SceneMeshCache& sceneMeshCache()
 
 /** @brief 场景网格顶点: Position(float3) + Normal(float3) + Color(float4), stride 40. */
 constexpr uint32_t SceneMeshVertexStride = 40;
-/** @brief 默认网格材质的 push constant 字节数(MVP + World). */
+/** @brief 场景网格材质的 push constant 字节数(MVP + World). */
 constexpr uint32_t SceneMeshPushConstantSize = 128;
+/** @brief 帧在飞数量, 与 RendererServer 的帧上下文一致. */
+constexpr uint32_t SceneMeshFramesInFlight = 3;
 
-/** @brief 惰性创建默认网格材质的三条管线(仅一次). */
-void ensureSceneMeshCache(rhi::RDevice& device, SceneMeshCache& cache,
-    rhi::EFormat color_format, rhi::EFormat depth_format)
+/** @brief 从 SEED_SCENE_SHADER_DIR 加载一个 DXC 编译出的 SPIR-V 文件. */
+[[nodiscard]] std::vector<std::byte> loadSceneShaderSpv(const char* Name)
+{
+    const std::string Path = std::string(SEED_SCENE_SHADER_DIR) + "/" + Name;
+    std::ifstream Stream(Path, std::ios::binary | std::ios::ate);
+    if (!Stream)
+        throw std::runtime_error("Failed to open scene shader SPIR-V: " + Path);
+    const std::streamsize Size = Stream.tellg();
+    if (Size <= 0)
+        throw std::runtime_error("Empty scene shader SPIR-V: " + Path);
+    Stream.seekg(0, std::ios::beg);
+    std::vector<std::byte> Bytes(static_cast<size_t>(Size));
+    if (!Stream.read(reinterpret_cast<char*>(Bytes.data()), Size))
+        throw std::runtime_error("Failed to read scene shader SPIR-V: " + Path);
+    return Bytes;
+}
+
+[[nodiscard]] std::shared_ptr<rhi::RShader> createSceneShader(
+    rhi::RDevice& Device, rhi::EShaderStage_t Stage, const char* FileName, const char* DebugName)
+{
+    rhi::ShaderDescriptor Desc;
+    Desc.Stage = Stage;
+    Desc.ByteCode = loadSceneShaderSpv(FileName);
+    Desc.EntryPoint = "main";
+    Desc.DebugName = DebugName;
+    return Device.createShader(Desc);
+}
+
+/** @brief 惰性创建场景 PBR 网格材质的三条管线与帧资源(仅一次). */
+void ensureSceneMeshCache(rhi::RDevice& device, SceneMeshCache& cache)
 {
     if (cache.Ready)
         return;
 
-    rhi::ShaderDescriptor vs;
-    vs.Stage = rhi::EShaderStage_t::Vertex;
-    vs.ByteCode.assign(SceneMeshVertexSpv.begin(), SceneMeshVertexSpv.end());
-    vs.EntryPoint = "main";
-    vs.DebugName = "SceneMeshVertex";
-    auto vertex_shader = device.createShader(vs);
+    const auto vertex_shader = createSceneShader(device, rhi::EShaderStage_t::Vertex,
+        "scene_mesh.vert.spv", "SceneMeshVertex");
+    const auto pixel_shader = createSceneShader(device, rhi::EShaderStage_t::Pixel,
+        "scene_mesh.frag.spv", "SceneMeshPixel");
 
-    rhi::ShaderDescriptor ps;
-    ps.Stage = rhi::EShaderStage_t::Pixel;
-    ps.ByteCode.assign(SceneMeshPixelSpv.begin(), SceneMeshPixelSpv.end());
-    ps.EntryPoint = "main";
-    ps.DebugName = "SceneMeshPixel";
-    auto pixel_shader = device.createShader(ps);
+    // Set 0(帧): b0 = FrameData UBO, t1 = 阴影贴图, s2 = 阴影比较采样器.
+    rhi::BindGroupLayoutDescriptor frame_layout_desc;
+    frame_layout_desc.Entries = {
+        { .Binding = 0, .Type = rhi::EDescriptorType::UniformBuffer, .ArrayCount = 1,
+          .Visibility = rhi::EShaderStage_t::Pixel },
+        { .Binding = 1, .Type = rhi::EDescriptorType::SampledTexture, .ArrayCount = 1,
+          .Visibility = rhi::EShaderStage_t::Pixel },
+        { .Binding = 2, .Type = rhi::EDescriptorType::ComparisonSampler, .ArrayCount = 1,
+          .Visibility = rhi::EShaderStage_t::Pixel },
+    };
+    frame_layout_desc.DebugName = "SceneFrameLayout";
+    cache.FrameLayout = device.createBindGroupLayout(frame_layout_desc);
 
     rhi::PipelineLayoutDescriptor layout_desc;
+    layout_desc.BindGroupLayouts = { cache.FrameLayout };
     layout_desc.PushConstantRanges = {
         { .Stages = rhi::EShaderStage_t::Vertex, .Offset = 0, .Size = SceneMeshPushConstantSize }
     };
     layout_desc.DebugName = "SceneMeshLayout";
     cache.Layout = device.createPipelineLayout(layout_desc);
 
-    const auto make_pipeline = [&](ESceneMeshVariant variant, const char* name)
+    // 帧 UBO: 3 帧在飞, 每帧一个按设备对齐的槽位(持久映射, HostCoherent).
+    const uint64_t Alignment =
+        std::max<uint64_t>(device.getLimits().MinUniformBufferOffsetAlignment, 16);
+    cache.FrameUBOSlotSize = static_cast<uint32_t>(
+        ((sizeof(SceneFrameConstants) + Alignment - 1) / Alignment) * Alignment);
+    cache.FrameUBO = device.createBuffer(rhi::RBuffer::Descriptor_t {
+        .Size = static_cast<rhi::DeviceSizeType>(cache.FrameUBOSlotSize) * SceneMeshFramesInFlight,
+        .Usage = rhi::EBufferUsage::Uniform,
+        .MemoryUsage = rhi::EMemoryUsage::CPUToGPU,
+        .MemoryProperty = rhi::EMemoryProperty::HostVisible | rhi::EMemoryProperty::HostCoherent,
+        .PersistentlyMapped = true,
+        .DebugName = "SceneFrameUBO",
+    });
+    cache.FrameUBOMapped = static_cast<std::byte*>(cache.FrameUBO->map());
+
+    // 阴影比较采样器.
+    rhi::RSampler::Descriptor_t sampler_desc;
+    sampler_desc.MinFilter = rhi::EFilterMode::Linear;
+    sampler_desc.MagFilter = rhi::EFilterMode::Linear;
+    sampler_desc.AddressU = rhi::ESamplerAddressMode::ClampToEdge;
+    sampler_desc.AddressV = rhi::ESamplerAddressMode::ClampToEdge;
+    sampler_desc.AddressW = rhi::ESamplerAddressMode::ClampToEdge;
+    sampler_desc.CompareEnable = true;
+    sampler_desc.CompareOperation = rhi::ECompareOp::LessEqual;
+    sampler_desc.DebugName = "SceneShadowSampler";
+    cache.ShadowSampler = device.createSampler(sampler_desc);
+
+    const auto make_pipeline = [&](ESceneMeshVariant Variant, const char* Name)
     {
         rhi::GraphicsPipelineDescriptor desc;
         desc.Layout = cache.Layout;
         desc.Vertex.Shader = vertex_shader;
-        desc.Pixel.Shader = pixel_shader;
+        // 深度-only 无片元着色器, 只写深度(阴影 / 预通道).
+        if (Variant != ESceneMeshVariant::DepthOnly)
+            desc.Pixel.Shader = pixel_shader;
         desc.VertexInput.Buffers = {
             { .Binding = 0, .Stride = SceneMeshVertexStride, .InputRate = rhi::EVertexInputRate::PerVertex }
         };
@@ -282,19 +384,19 @@ void ensureSceneMeshCache(rhi::RDevice& device, SceneMeshCache& cache,
             { .Location = 1, .Binding = 0, .Format = rhi::EVertexFormat::Float3, .Offset = 12 },
             { .Location = 2, .Binding = 0, .Format = rhi::EVertexFormat::Float4, .Offset = 24 },
         };
-        // 编辑器预览场景以"看得见"为先: 不做背面剔除, 由深度测试保证遮挡正确,
-        // 这样调用方即使绕序不一致也不会整块消失.
+        // 预览几何绕序可能不一致, 不做背面剔除; 由深度测试保证遮挡.
         desc.Rasterizer.CullMode = rhi::ECullMode::None;
-        desc.DepthStencil.DepthTestEnable = false;
+        desc.DepthStencil.DepthTestEnable = true;
         desc.DepthStencil.DepthCompareOp = rhi::ECompareOp::LessEqual;
-        desc.DepthStencil.DepthWriteEnable = false;
-        desc.Rendering.DepthFormat = depth_format;
-        if (variant != ESceneMeshVariant::DepthOnly)
+        // 深度预通道写深度, 不透明写深度, 透明只测不写.
+        desc.DepthStencil.DepthWriteEnable = Variant != ESceneMeshVariant::Transparent;
+        desc.Rendering.DepthFormat = rhi::EFormat::D32_Float;
+        if (Variant != ESceneMeshVariant::DepthOnly)
         {
-            desc.Rendering.ColorFormats[0] = color_format;
+            desc.Rendering.ColorFormats[0] = rhi::EFormat::RGBA16_Float; // HDR 场景色
             desc.Rendering.ColorAttachmentCount = 1;
         }
-        if (variant == ESceneMeshVariant::Transparent)
+        if (Variant == ESceneMeshVariant::Transparent)
         {
             desc.Blend.Attachments[0].BlendEnable = true;
             desc.Blend.Attachments[0].Color.SrcFactor = rhi::EBlendFactor::SrcAlpha;
@@ -304,7 +406,7 @@ void ensureSceneMeshCache(rhi::RDevice& device, SceneMeshCache& cache,
             desc.Blend.Attachments[0].Alpha.DstFactor = rhi::EBlendFactor::OneMinusSrcAlpha;
             desc.Blend.Attachments[0].Alpha.Operation = rhi::EBlendOp::Add;
         }
-        desc.DebugName = name;
+        desc.DebugName = Name;
         return device.createGraphicsPipeline(desc);
     };
 
@@ -314,18 +416,124 @@ void ensureSceneMeshCache(rhi::RDevice& device, SceneMeshCache& cache,
     cache.Ready = true;
 }
 
+/** @brief 上传本帧帧常量并创建帧绑定组(引用当前阴影图视图). */
+[[nodiscard]] std::shared_ptr<rhi::RBindGroup> createSceneFrameBindGroup(
+    rhi::RDevice& device, SceneMeshCache& cache, uint32_t frame_index,
+    const std::shared_ptr<rhi::RImageView>& shadow_view, const SceneFrameConstants& constants)
+{
+    if (!cache.FrameUBOMapped || !shadow_view || !cache.ShadowSampler)
+        return {};
+    std::memcpy(cache.FrameUBOMapped + static_cast<size_t>(frame_index) * cache.FrameUBOSlotSize,
+        &constants, sizeof(constants));
+    const rhi::DeviceSizeType offset =
+        static_cast<rhi::DeviceSizeType>(frame_index) * cache.FrameUBOSlotSize;
+    return device.createBindGroup({
+        .Layout = cache.FrameLayout,
+        .Entries = {
+            { .Binding = 0, .ArrayElement = 0,
+              .Resource = rhi::BufferBinding { cache.FrameUBO, offset, sizeof(SceneFrameConstants) } },
+            { .Binding = 1, .ArrayElement = 0,
+              .Resource = rhi::TextureBinding { shadow_view, rhi::EDescriptorImageLayout::DepthStencilReadOnly } },
+            { .Binding = 2, .ArrayElement = 0,
+              .Resource = rhi::SamplerBinding { cache.ShadowSampler } },
+        },
+        .DebugName = "SceneFrameBindGroup",
+    });
+}
+
+/** @brief 方向光正交阴影 VP(以 Center 为中心的正交包围盒, Vulkan [0,1] 深度). */
+[[nodiscard]] infra::Matrix4x4 makeDirectionalShadowVP(
+    const infra::Vec3f& LightDir, const infra::Vec3f& Center, float HalfExtent)
+{
+    const infra::Vec3f Forward = LightDir.normalized();
+    const infra::Vec3f WorldUp = std::abs(Forward.y()) < 0.999f
+        ? infra::Vec3f { 0.0f, 1.0f, 0.0f }
+        : infra::Vec3f { 1.0f, 0.0f, 0.0f };
+    const infra::Vec3f Right = infra::Vec3f::cross(WorldUp, Forward).normalized();
+    const infra::Vec3f Up = infra::Vec3f::cross(Forward, Right);
+
+    const infra::Vec3f Eye = Center - Forward * HalfExtent;
+    infra::Matrix4x4 View = infra::Matrix4x4::identity();
+    View[0] = { Right.x(), Right.y(), Right.z(), -Right.dot(Eye) };
+    View[1] = { Up.x(), Up.y(), Up.z(), -Up.dot(Eye) };
+    View[2] = { Forward.x(), Forward.y(), Forward.z(), -Forward.dot(Eye) };
+    View[3] = { 0.0f, 0.0f, 0.0f, 1.0f };
+
+    const float n = 0.0f;
+    const float f = HalfExtent * 2.0f;
+    const float r = HalfExtent, l = -HalfExtent, t = HalfExtent, b = -HalfExtent;
+    infra::Matrix4x4 Proj = infra::Matrix4x4::identity();
+    Proj[0] = { 2.0f / (r - l), 0.0f, 0.0f, -(r + l) / (r - l) };
+    Proj[1] = { 0.0f, 2.0f / (t - b), 0.0f, -(t + b) / (t - b) };
+    Proj[2] = { 0.0f, 0.0f, 1.0f / (n - f), n / (n - f) };
+    Proj[3] = { 0.0f, 0.0f, 0.0f, 1.0f };
+
+    return Proj * View;
+}
+
+/** @brief 取方向光(优先交换包里的第一个方向光, 否则返回默认方向光). */
+[[nodiscard]] const LightData& getDirectionalLight(const RenderFrameSubmission* Submission)
+{
+    static const LightData DefaultLight = [] {
+        LightData Light;
+        Light.Type = ELightType::Directional;
+        Light.DirectionWS = infra::Vec3f { 0.35f, 0.80f, 0.45f };
+        Light.Color = infra::LinearColor4D { 1.0f, 1.0f, 1.0f, 1.0f };
+        Light.Intensity = 1.5f;
+        Light.CastShadow = true;
+        return Light;
+    }();
+    if (Submission)
+    {
+        for (const LightData& Light : Submission->Lights)
+        {
+            if (Light.Type == ELightType::Directional)
+                return Light;
+        }
+    }
+    return DefaultLight;
+}
+
+/** @brief 填充场景帧常量(与 shaders/scene_mesh.frag.hlsl 的 FrameData cbuffer 对齐). */
+[[nodiscard]] SceneFrameConstants makeFrameConstants(const RenderView& View,
+    const LightData& Light, const infra::Matrix4x4& ShadowVP, float ShadowMapSize)
+{
+    SceneFrameConstants C {};
+    C.CameraPosition[0] = View.CameraPosition.x();
+    C.CameraPosition[1] = View.CameraPosition.y();
+    C.CameraPosition[2] = View.CameraPosition.z();
+    C.CameraPosition[3] = 1.0f;
+
+    const infra::Vec3f Dir = Light.DirectionWS.normalized();
+    C.LightDirection[0] = Dir.x();
+    C.LightDirection[1] = Dir.y();
+    C.LightDirection[2] = Dir.z();
+    C.LightDirection[3] = 0.0f;
+
+    C.LightColor[0] = Light.Color.r();
+    C.LightColor[1] = Light.Color.g();
+    C.LightColor[2] = Light.Color.b();
+    C.LightColor[3] = Light.Intensity;
+
+    std::memcpy(C.ShadowMatrix, ShadowVP.M.data(), sizeof(float) * 16);
+
+    C.ShadowParams[0] = 0.0015f; // 深度 bias
+    C.ShadowParams[1] = ShadowMapSize;
+    C.ShadowParams[2] = Light.CastShadow ? 1.0f : 0.0f;
+    C.ShadowParams[3] = 0.05f;   // 环境项强度
+    return C;
+}
+
 /**
- * @brief 录制一个 DrawPacket: 优先用已解析的材质; 否则回落到默认网格材质.
+ * @brief 录制一个 DrawPacket: 优先用已解析的材质; 否则回落到默认 PBR 网格材质.
  *
- * - packet.Pipeline 非空: 走 MaterialSystem 已经解析好的完整状态(推送 packet.PushConstants);
- * - packet.Pipeline 为空: 用默认网格材质, MVP = ViewProjection * LocalToWorld,
- *   World = LocalToWorld, 这样在材质系统就绪前场景也能可见.
- *
- * @param variant        所在 Pass 的管线变体(决定颜色附件/深度写/混合).
- * @param view_projection 本帧相机的 View-Projection(默认材质推导 MVP 用).
+ * @param variant          所在 Pass 的管线变体(决定颜色附件/深度写/混合).
+ * @param view_projection  本帧相机或光的 View-Projection(默认材质推导 MVP 用).
+ * @param frame_bind_group 帧绑定组(不透明/透明 Pass 采样阴影用; 深度-only 传空).
  */
 void recordDrawPacket(rhi::RCommandList& command_list, const DrawPacket& packet,
-    ESceneMeshVariant variant, const infra::Matrix4x4& view_projection)
+    ESceneMeshVariant variant, const infra::Matrix4x4& view_projection,
+    const std::shared_ptr<rhi::RBindGroup>& frame_bind_group)
 {
     if (packet.Pipeline)
     {
@@ -348,8 +556,7 @@ void recordDrawPacket(rhi::RCommandList& command_list, const DrawPacket& packet,
     {
         SceneMeshCache& cache = sceneMeshCache();
         rhi::RDevice& device = command_list.getDevice();
-        // 颜色格式与深度格式取自当前渲染作用域的附件(与管线变体一致).
-        ensureSceneMeshCache(device, cache, rhi::EFormat::BGRA8_UNorm, rhi::EFormat::D32_Float);
+        ensureSceneMeshCache(device, cache);
         const std::shared_ptr<rhi::RPipeline>& pipeline =
             variant == ESceneMeshVariant::DepthOnly ? cache.DepthOnly
             : variant == ESceneMeshVariant::Transparent ? cache.Transparent
@@ -358,9 +565,13 @@ void recordDrawPacket(rhi::RCommandList& command_list, const DrawPacket& packet,
             return;
 
         command_list.bindPipeline(pipeline);
+        if (frame_bind_group)
+        {
+            const std::array groups { frame_bind_group };
+            command_list.bindBindGroups(rhi::EPipelineType::Graphics, cache.Layout, 0, groups);
+        }
 
-        // 着色器按"四个行向量"读取矩阵(见 scene_mesh.vert.hlsl 里关于
-        // DXC 把 mul(M,v) 降级为 OpVectorTimesMatrix 的说明), 这里直接按行拷贝.
+        // 着色器按"四个行向量"读取矩阵(见 scene_mesh.vert.hlsl 的说明), 直接按行拷贝.
         const infra::Matrix4x4 mvp = view_projection * packet.LocalToWorld;
         std::array<std::byte, SceneMeshPushConstantSize> constants {};
         std::memcpy(constants.data(), mvp.M.data(), sizeof(float) * 16);
@@ -373,7 +584,6 @@ void recordDrawPacket(rhi::RCommandList& command_list, const DrawPacket& packet,
         command_list.bindVertexBuffers(0, packet.VertexBindings);
 
     // 逐实例属性缓冲(binding 1, PerInstance): 预留的 GPU 实例化数据通路.
-    // 默认网格材质管线未声明该槽位, 此时绑定是"多余绑定", 被管线忽略、无副作用.
     if (packet.InstanceBuffer)
     {
         const rhi::VertexBufferBinding InstanceBinding { packet.InstanceBuffer, packet.InstanceOffset };
@@ -390,12 +600,114 @@ void recordDrawPacket(rhi::RCommandList& command_list, const DrawPacket& packet,
     }
 }
 
-/** @brief 录制一个已按 SortKey 排序的绘制列表(默认材质变体 + 相机矩阵). */
+/** @brief 录制一个已按 SortKey 排序的绘制列表(默认 PBR 材质变体 + VP 矩阵). */
 void recordDrawList(rhi::RCommandList& command_list, const DrawList& draw_list,
-    ESceneMeshVariant variant, const infra::Matrix4x4& view_projection)
+    ESceneMeshVariant variant, const infra::Matrix4x4& view_projection,
+    const std::shared_ptr<rhi::RBindGroup>& frame_bind_group = {})
 {
     for (const DrawPacket& packet : draw_list)
-        recordDrawPacket(command_list, packet, variant, view_projection);
+        recordDrawPacket(command_list, packet, variant, view_projection, frame_bind_group);
+}
+
+// ============================================================================
+//  后处理(全屏 ToneMapping)
+// ============================================================================
+
+struct PostCache
+{
+    std::shared_ptr<rhi::RPipelineLayout> Layout;
+    std::shared_ptr<rhi::RBindGroupLayout> TextureLayout;
+    std::shared_ptr<rhi::RPipeline> Pipeline;
+    std::shared_ptr<rhi::RSampler> Sampler;
+    bool Ready { false };
+};
+
+PostCache& postCache()
+{
+    static PostCache Cache;
+    return Cache;
+}
+
+void ensurePostCache(rhi::RDevice& device, PostCache& cache)
+{
+    if (cache.Ready)
+        return;
+
+    const auto vertex_shader = createSceneShader(device, rhi::EShaderStage_t::Vertex,
+        "fullscreen.vert.spv", "FullscreenVertex");
+    const auto pixel_shader = createSceneShader(device, rhi::EShaderStage_t::Pixel,
+        "post.frag.spv", "PostPixel");
+
+    rhi::BindGroupLayoutDescriptor layout_desc;
+    layout_desc.Entries = {
+        { .Binding = 0, .Type = rhi::EDescriptorType::SampledTexture, .ArrayCount = 1,
+          .Visibility = rhi::EShaderStage_t::Pixel },
+        { .Binding = 1, .Type = rhi::EDescriptorType::Sampler, .ArrayCount = 1,
+          .Visibility = rhi::EShaderStage_t::Pixel },
+    };
+    layout_desc.DebugName = "PostLayout";
+    cache.TextureLayout = device.createBindGroupLayout(layout_desc);
+
+    rhi::PipelineLayoutDescriptor pipe_layout_desc;
+    pipe_layout_desc.BindGroupLayouts = { cache.TextureLayout };
+    pipe_layout_desc.PushConstantRanges = {
+        { .Stages = rhi::EShaderStage_t::Pixel, .Offset = 0, .Size = 16 }
+    };
+    pipe_layout_desc.DebugName = "PostPipelineLayout";
+    cache.Layout = device.createPipelineLayout(pipe_layout_desc);
+
+    rhi::RSampler::Descriptor_t sampler_desc;
+    sampler_desc.MinFilter = rhi::EFilterMode::Linear;
+    sampler_desc.MagFilter = rhi::EFilterMode::Linear;
+    sampler_desc.AddressU = rhi::ESamplerAddressMode::ClampToEdge;
+    sampler_desc.AddressV = rhi::ESamplerAddressMode::ClampToEdge;
+    sampler_desc.AddressW = rhi::ESamplerAddressMode::ClampToEdge;
+    sampler_desc.DebugName = "PostSampler";
+    cache.Sampler = device.createSampler(sampler_desc);
+
+    rhi::GraphicsPipelineDescriptor pipe_desc;
+    pipe_desc.Layout = cache.Layout;
+    pipe_desc.Vertex.Shader = vertex_shader;
+    pipe_desc.Pixel.Shader = pixel_shader;
+    // 全屏三角形: 无顶点输入, 3 个顶点由 SV_VertexID 生成.
+    pipe_desc.Rasterizer.CullMode = rhi::ECullMode::None;
+    pipe_desc.DepthStencil.DepthTestEnable = false;
+    pipe_desc.DepthStencil.DepthWriteEnable = false;
+    pipe_desc.Rendering.ColorFormats[0] = rhi::EFormat::BGRA8_UNorm;
+    pipe_desc.Rendering.ColorAttachmentCount = 1;
+    pipe_desc.DebugName = "PostPipeline";
+    cache.Pipeline = device.createGraphicsPipeline(pipe_desc);
+    cache.Ready = true;
+}
+
+/** @brief 全屏采样 HDR 场景色并做 ToneMapping + gamma, 输出到当前(交换链)附件. */
+void recordPostPass(rhi::RCommandList& command_list, const std::shared_ptr<rhi::RImageView>& scene_view)
+{
+    PostCache& cache = postCache();
+    rhi::RDevice& device = command_list.getDevice();
+    ensurePostCache(device, cache);
+    if (!cache.Pipeline || !cache.Layout || !scene_view)
+        return;
+
+    const auto bind_group = device.createBindGroup({
+        .Layout = cache.TextureLayout,
+        .Entries = {
+            { .Binding = 0, .ArrayElement = 0, .Resource = rhi::TextureBinding { scene_view } },
+            { .Binding = 1, .ArrayElement = 0, .Resource = rhi::SamplerBinding { cache.Sampler } },
+        },
+        .DebugName = "PostBindGroup",
+    });
+    if (!bind_group)
+        return;
+
+    command_list.bindPipeline(cache.Pipeline);
+    const std::array groups { bind_group };
+    command_list.bindBindGroups(rhi::EPipelineType::Graphics, cache.Layout, 0, groups);
+    std::array<std::byte, 16> exposure {};
+    const float exposure_value = 1.0f;
+    std::memcpy(exposure.data(), &exposure_value, sizeof(exposure_value));
+    command_list.pushConstants(cache.Layout, rhi::EShaderStage_t::Pixel, 0, exposure);
+    command_list.draw(3, 1, 0, 0);
 }
 
 /**
@@ -872,11 +1184,26 @@ void releaseUIDrawCache() noexcept
     Cache.Ready = false;
 
     SceneMeshCache& Scene = sceneMeshCache();
+    if (Scene.FrameUBO && Scene.FrameUBOMapped)
+    {
+        Scene.FrameUBO->unmap();
+        Scene.FrameUBOMapped = nullptr;
+    }
     Scene.DepthOnly.reset();
     Scene.Opaque.reset();
     Scene.Transparent.reset();
     Scene.Layout.reset();
+    Scene.FrameLayout.reset();
+    Scene.FrameUBO.reset();
+    Scene.ShadowSampler.reset();
     Scene.Ready = false;
+
+    PostCache& Post = postCache();
+    Post.Pipeline.reset();
+    Post.Layout.reset();
+    Post.TextureLayout.reset();
+    Post.Sampler.reset();
+    Post.Ready = false;
 }
 
 // ============================================================================
@@ -886,9 +1213,17 @@ void releaseUIDrawCache() noexcept
 void ShadowRenderPass::addPasses(rdg::RDGGraph& Graph, const RenderContext& Context)
 {
     Graph.addPass(getName(), [&Context](rdg::RDGBuilder& b) {
-        // 阴影图集: 每个灯/级联一个区域, 深度-only. 灯光视角矩阵由后续接入.
+        // 阴影图集(可采样): 方向光视角的深度图.
         const rdg::ResourceId shadow_atlas = b.createTexture("ShadowAtlas",
-            makeDepthDesc(Context.Width, Context.Height));
+            makeShadowDepthDesc(Context.Width, Context.Height));
+        Context.FrameResources.ShadowAtlas = shadow_atlas;
+
+        // 方向光(优先取交换包里的方向光, 否则用默认光).
+        const LightData& Light = getDirectionalLight(Context.Submission);
+        const infra::Vec3f ShadowCenter = Context.View.CameraPosition;
+        Context.FrameResources.ShadowViewProjection =
+            makeDirectionalShadowVP(Light.DirectionWS, ShadowCenter, 40.0f);
+
         b.setRenderTargets({}, shadow_atlas);
         b.setType(rdg::ERDGPassType::Raster);
         b.setExecute([Context, shadow_atlas](rdg::RDGPassContext& ctx) {
@@ -897,10 +1232,10 @@ void ShadowRenderPass::addPasses(rdg::RDGGraph& Graph, const RenderContext& Cont
                 Context.Width, Context.Height);
             beginDepthScope(command_list, Context.Width, Context.Height,
                 ctx.getViewShared(shadow_atlas), &SceneRect);
+            // 用光的 ViewProjection 渲染阴影深度(不是相机 VP).
             if (Context.Submission)
                 recordDrawList(command_list, Context.Submission->ShadowDraws,
-                    ESceneMeshVariant::DepthOnly, Context.View.ViewProjection);
-            // TODO: 逐光源上传阴影视角矩阵(ShadowDraws 已按灯光/级联排序).
+                    ESceneMeshVariant::DepthOnly, Context.FrameResources.ShadowViewProjection);
             command_list.endRendering();
         });
     });
@@ -933,20 +1268,37 @@ void DepthPrePass::addPasses(rdg::RDGGraph& Graph, const RenderContext& Context)
 void OpaqueRenderPass::addPasses(rdg::RDGGraph& Graph, const RenderContext& Context)
 {
     Graph.addPass(getName(), [&Context](rdg::RDGBuilder& b) {
-        const std::array color { Context.Backbuffer };
+        // HDR 场景色(RGBA16F): Opaque/Transparent 写, PostProcess 读.
+        const rdg::ResourceId scene_color = b.createTexture("SceneColor",
+            makeColorDesc(Context.Width, Context.Height));
+        Context.FrameResources.SceneColor = scene_color;
+
+        const std::array color { scene_color };
         b.setRenderTargets(color, Context.FrameResources.SceneDepth);
+        // 阴影图是深度图, 采样时应处于只读深度布局.
+        b.read(Context.FrameResources.ShadowAtlas, rdg::EResourceState::DepthRead);
         b.setType(rdg::ERDGPassType::Raster);
-        b.setExecute([Context](rdg::RDGPassContext& ctx) {
+        b.setExecute([Context, scene_color](rdg::RDGPassContext& ctx) {
             auto& command_list = ctx.getCommandList();
             const rhi::RenderArea SceneRect = resolveSceneRect(Context.Submission,
                 Context.Width, Context.Height);
             beginColorScope(command_list, Context.Width, Context.Height,
-                ctx.getViewShared(Context.Backbuffer), rhi::ELoadOp::Clear,
+                ctx.getViewShared(scene_color), rhi::ELoadOp::Clear,
                 ctx.getViewShared(Context.FrameResources.SceneDepth), &SceneRect);
-            // 优先消费预处理的交换包; 无 Submission 时回退到 collectVisible(需 MaterialSystem 解析管线).
+
+            // 帧常量(相机/光/阴影 VP)+ 当前阴影图视图组成帧绑定组.
+            const LightData& Light = getDirectionalLight(Context.Submission);
+            const SceneFrameConstants frame_constants = makeFrameConstants(Context.View, Light,
+                Context.FrameResources.ShadowViewProjection, static_cast<float>(Context.Width));
+            SceneMeshCache& mesh_cache = sceneMeshCache();
+            ensureSceneMeshCache(command_list.getDevice(), mesh_cache);
+            const auto frame_bind_group = createSceneFrameBindGroup(command_list.getDevice(),
+                mesh_cache, Context.FrameIndex, ctx.getViewShared(Context.FrameResources.ShadowAtlas),
+                frame_constants);
+
             if (Context.Submission)
                 recordDrawList(command_list, Context.Submission->OpaqueDraws,
-                    ESceneMeshVariant::Opaque, Context.View.ViewProjection);
+                    ESceneMeshVariant::Opaque, Context.View.ViewProjection, frame_bind_group);
             command_list.endRendering();
         });
     });
@@ -955,20 +1307,30 @@ void OpaqueRenderPass::addPasses(rdg::RDGGraph& Graph, const RenderContext& Cont
 void TransparentRenderPass::addPasses(rdg::RDGGraph& Graph, const RenderContext& Context)
 {
     Graph.addPass(getName(), [&Context](rdg::RDGBuilder& b) {
-        const std::array color { Context.Backbuffer };
-        b.setRenderTargets(color);
+        const std::array color { Context.FrameResources.SceneColor };
+        b.setRenderTargets(color, Context.FrameResources.SceneDepth);
         b.setType(rdg::ERDGPassType::Raster);
         b.setExecute([Context](rdg::RDGPassContext& ctx) {
             auto& command_list = ctx.getCommandList();
             const rhi::RenderArea SceneRect = resolveSceneRect(Context.Submission,
                 Context.Width, Context.Height);
             beginColorScope(command_list, Context.Width, Context.Height,
-                ctx.getViewShared(Context.Backbuffer), rhi::ELoadOp::Load,
+                ctx.getViewShared(Context.FrameResources.SceneColor), rhi::ELoadOp::Load,
                 ctx.getViewShared(Context.FrameResources.SceneDepth), &SceneRect);
+
+            const LightData& Light = getDirectionalLight(Context.Submission);
+            const SceneFrameConstants frame_constants = makeFrameConstants(Context.View, Light,
+                Context.FrameResources.ShadowViewProjection, static_cast<float>(Context.Width));
+            SceneMeshCache& mesh_cache = sceneMeshCache();
+            ensureSceneMeshCache(command_list.getDevice(), mesh_cache);
+            const auto frame_bind_group = createSceneFrameBindGroup(command_list.getDevice(),
+                mesh_cache, Context.FrameIndex, ctx.getViewShared(Context.FrameResources.ShadowAtlas),
+                frame_constants);
+
             // 透明列表已按深度从后向前排序; 只读深度不写深度.
             if (Context.Submission)
                 recordDrawList(command_list, Context.Submission->TransparentDraws,
-                    ESceneMeshVariant::Transparent, Context.View.ViewProjection);
+                    ESceneMeshVariant::Transparent, Context.View.ViewProjection, frame_bind_group);
             command_list.endRendering();
         });
     });
@@ -979,13 +1341,14 @@ void PostProcessRenderPass::addPasses(rdg::RDGGraph& Graph, const RenderContext&
     Graph.addPass(getName(), [&Context](rdg::RDGBuilder& b) {
         const std::array color { Context.Backbuffer };
         b.setRenderTargets(color);
+        b.read(Context.FrameResources.SceneColor, rdg::EResourceState::PixelShaderResource);
         b.setType(rdg::ERDGPassType::Raster);
         b.setExecute([Context](rdg::RDGPassContext& ctx) {
             auto& command_list = ctx.getCommandList();
             beginColorScope(command_list, Context.Width, Context.Height,
-                ctx.getViewShared(Context.Backbuffer), rhi::ELoadOp::Load);
-            // TODO: Bloom -> ToneMapping -> (TAA), 全屏三角形采样场景色. 需要后处理管线.
-            (void)command_list;
+                ctx.getViewShared(Context.Backbuffer), rhi::ELoadOp::Clear);
+            // ToneMapping(Bloom/TAA 留待后续 Pass): 采样 HDR 场景色, 输出到交换链.
+            recordPostPass(command_list, ctx.getViewShared(Context.FrameResources.SceneColor));
             command_list.endRendering();
         });
     });
